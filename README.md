@@ -46,7 +46,7 @@ _Input: VCF for each chromosome; Output: sorted VCF to input into gatk table_
 CB_5.0_zip.concat.sort
 ```
 
-####Make GATK table for R
+#### Make GATK table for R
 ```
 
 ```
