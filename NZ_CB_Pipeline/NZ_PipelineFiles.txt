@@ -1,0 +1,6 @@
+NZ_Alignment.q
+NZ_bwasamse.q
+NZ_Samtoolsviewsort.q
+NZ_SamtoolsIndex.q
+NZ_BCFmpileup.q
+NZ_Call_lol.q
