@@ -9,24 +9,23 @@
 
 ### CB_Pipeline
 
-Trim, align, and sort files
+***
 
+#### Trim, align, and sort files
 _Use any of these based on which data you're using_
 ```
 CB_1.0_trim.align.sort
 CB_1.1_trim.align.sort_all
 CB_1.2_trim.align.sort_all
 ```
-Trim, align, and sort using BQSR adjustment 
-
+#### Trim, align, and sort using BQSR adjustment 
 _GOLD STANDARD; use both of these scripts instead of any of the previous_
 ```
 CB_1.3_trim.align.sort_all_BQSR
 CB_1.5_ApplyBQSR
 ```
 
-Reformatting .bam files
-
+#### Reformatting .bam files
 _Merge bam files into one, then split by reference (so by chromosome) to array variant calling_
 ```
 CB_2.0_merge.split
@@ -34,29 +33,27 @@ CB_2.1_.split
 CB_3.0_Index
 ```
 
-Variant Calling
-
+#### Variant Calling
 _Either of the two scripts; can use excluded regions for telomeres (T)_
 ```
 CB_4.0_CallVariants
 CB_4.0_CallVariants_T
 ```
 
-Zip, concatenate split outputs, and sort
-
+#### Zip, concatenate split outputs, and sort
 _Input: VCF for each chromosome; Output: sorted VCF to input into gatk table_
 ```
 CB_5.0_zip.concat.sort
 ```
 
-Make GATK table for R
+####Make GATK table for R
 ```
 
 ```
 
 ### Analysis
-
-Set parameters and create function
+***
+#### Set parameters and create function
 ```
 mindepth = 50
 maxdepth = 1500
@@ -76,7 +73,7 @@ PipelineFunc <- function(HighBulk, LowBulk, rawData = "mergedCuSO4.REF.SortedCat
                          )
   ```
   
-**Within Function**
+#### Within Function
 
 Import Data
   ```
@@ -145,7 +142,6 @@ Run stats
 
 Return dataframe
 ```
-    
   return(as.data.frame(df_filt))
 }
 ```
