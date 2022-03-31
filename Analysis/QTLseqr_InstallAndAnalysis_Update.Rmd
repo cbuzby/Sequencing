@@ -1,0 +1,557 @@
+---
+title: "QTLseq Method of Bulk Segregant Analysis"
+author: "Cassandra Buzby"
+date: "01/17/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+Keep in mind, use coolors.co for color palettes :)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+ggplot2::theme_set(theme_light())
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+#Original Plots:
+# plotQTLStats(SNPset = df_filt, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+# plotQTLStats(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+plotQTLStatsCB <- function (SNPset, subset = NULL, var = "nSNPs", scaleChroms = TRUE, 
+    line = TRUE, plotThreshold = FALSE, plotIntervals = FALSE, 
+    q = 0.05, ...) 
+{
+    if (!all(subset %in% unique(SNPset$CHROM))) {
+        whichnot <- paste(subset[base::which(!subset %in% unique(SNPset$CHROM))], 
+            collapse = ", ")
+        stop(paste0("The following are not true chromosome names: ", 
+            whichnot))
+    }
+    if (!var %in% c("nSNPs", "deltaSNP", "Gprime", 
+        "negLog10Pval")) 
+        stop("Please choose one of the following variables to plot: \"nSNPs\", \"deltaSNP\", \"Gprime\", \"negLog10Pval\"")
+    if ((plotThreshold == TRUE & var == "deltaSNP") | (plotThreshold == 
+        TRUE & var == "nSNPs")) {
+        message("FDR threshold is not plotted in deltaSNP or nSNPs plots")
+        plotThreshold <- FALSE
+    }
+    GprimeT <- 0
+    logFdrT <- 0
+    if (plotThreshold == TRUE) {
+        fdrT <- getFDRThreshold_CB(SNPset$pvalue, alpha = q)
+        if (is.na(fdrT)) {
+            warning("The q threshold is too low. No threshold line will be drawn")
+            plotThreshold <- FALSE
+        }
+        else {
+            logFdrT <- -log10(fdrT)
+            GprimeT <- SNPset[which(SNPset$pvalue == fdrT), "Gprime"]
+        }
+    }
+    SNPset <- if (is.null(subset)) {
+        SNPset
+    }
+    else {
+        SNPset[SNPset$CHROM %in% subset, ]
+    }
+    p <- ggplot2::ggplot(data = SNPset) + ggplot2::scale_x_continuous(breaks = seq(from = 0, 
+        to = max(SNPset$POS), by = 10^(floor(log10(max(SNPset$POS))))), 
+        #labels = format_genomic(), 
+        name = "Genomic Position (Mb)") + 
+        ggplot2::theme(plot.margin = ggplot2::margin(b = 10, 
+            l = 20, r = 20, unit = "pt"))
+    if (var == "Gprime") {
+        threshold <- GprimeT
+        p <- p + ggplot2::ylab("G' value")
+    }
+    if (var == "negLog10Pval") {
+        threshold <- logFdrT
+        p <- p + ggplot2::ylab(expression("-" * log[10] * 
+            "(p-value)"))
+    }
+    if (var == "nSNPs") {
+        p <- p + ggplot2::ylab("Number of SNPs in window")
+    }
+    if (var == "deltaSNP") {
+        var <- "tricubeDeltaSNP"
+        p <- p + ggplot2::ylab(expression(Delta * "(SNP-index)")) + 
+            ggplot2::ylim(-0.55, 0.55) + ggplot2::geom_hline(yintercept = 0, 
+            color = "black", alpha = 0.4)
+        if (plotIntervals == TRUE) {
+            ints_df <- dplyr::select(SNPset, CHROM, POS, dplyr::matches("CI_")) %>% 
+                tidyr::gather(key = "Interval", value = "value", 
+                  -CHROM, -POS)
+            p <- p + ggplot2::geom_line(data = ints_df, ggplot2::aes(x = POS, 
+                y = value, color = Interval)) + ggplot2::geom_line(data = ints_df, 
+                ggplot2::aes(x = POS, y = -value, color = Interval))
+        }
+    }
+    if (line) {
+        p <- p + ggplot2::geom_line(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (!line) {
+        p <- p + ggplot2::geom_point(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (plotThreshold == TRUE) 
+        p <- p + ggplot2::geom_hline(ggplot2::aes_string(yintercept = "threshold"), 
+            color = "red", size = 1, alpha = 0.4)
+    if (scaleChroms == TRUE) {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x", 
+            space = "free_x")
+    }
+    else {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x")
+    }
+    p
+}
+
+```
+
+Following directions for installation
+
+```{r, eval=FALSE}
+install.packages("devtools")
+
+##Updating Rtools from https://github.com/metrumresearchgroup/mrgsolve/issues/160 
+# path <- Sys.getenv("PATH")
+# path <- c("C:/rtools40/usr/bin", path) #changed from original verion to my path
+# path <- paste(path,collapse=";")
+# Sys.setenv(PATH=path)
+# 
+# Sys.which("make") #test that "make" is found in the right folder
+
+#################
+devtools::install_github("bmansfeld/QTLseqr")
+```
+
+
+
+### Using my own data for this
+
+#### Reformat as tables first
+
+```{r}
+HNGLCDRXY <- read.table("C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\HNGLVDRXY_gR_merged.vcf.output.table", header = TRUE)
+```
+
+Running Selected A vs Selected C
+
+```{r, warning=FALSE, include=FALSE}
+
+HighBulk <- "SelectedA"
+LowBulk <- "SelectedC"
+
+title <- paste(HighBulk, LowBulk, sep = " vs ")
+
+Chroms <- unique(HNGLCDRXY$CHROM)
+rawData <- "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\HNGLVDRXY_gR_merged.vcf.output.table"
+
+df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+
+#Filter SNPs based on some criteria
+#BUT WHAT DO THESE DO??? Why do they work this way? Why won't they let the rest of my data work?
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.20,
+        minTotalDepth = 100,
+        maxTotalDepth = 400,
+        minSampleDepth = 40,
+        minGQ = 99
+    )
+
+#df %>% merge(.,ChromKey)
+df_filt <- df
+
+
+#Run G' analysi
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e5, #1e6
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    popStruc = "F2",
+    bulkSize = c(25, 25),
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+df_filt$idu <- row.names(df_filt)
+q <- 0.01
+fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+
+df_filt$idu <- row.names(df_filt)
+#ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = CHROM)) + geom_point()
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = CHROM, shape = CHROM == "NC_001140.6")) + geom_point(alpha = 0.4) + ggtitle("Epistasis | Selected A vs Selected C -log(p)")
+
+SASC <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+SASC.p <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+############ Fancy plots from the Ziv script adjustments
+
+sasc.1 <- plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = F, q = 0.01)
+sasc.2 <- plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+sasc.3 <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(title)
+
+```
+
+Running Unselected C vs Selected C
+
+```{r, echo=FALSE, include = FALSE}
+library("QTLseqr")
+
+HighBulk <- "SelectedC"
+LowBulk <- "UnselectedC"
+
+title <- paste(HighBulk, LowBulk, sep = " vs ")
+
+Chroms <- unique(HNGLCDRXY$CHROM)
+rawData <- "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\HNGLVDRXY_gR_merged.vcf.output.table"
+
+df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+#Filter SNPs based on some criteria
+#BUT WHAT DO THESE DO??? Why do they work this way? Why won't they let the rest of my data work?
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.20,
+        minTotalDepth = 100,
+        maxTotalDepth = 400,
+        minSampleDepth = 40,
+        minGQ = 99
+    )
+
+
+#Run G' analysi
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    popStruc = "F2",
+    bulkSize = c(25, 25),
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+df_filt$idu <- row.names(df_filt)
+q <- 0.01
+fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+
+df_filt$idu <- row.names(df_filt)
+#ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = CHROM)) + geom_point()
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = CHROM, shape = CHROM == "NC_001140.6")) + geom_point() + ggtitle("Unselected C vs Selected C -log(p)")
+
+UCSC <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+UCSC.p <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+
+ucsc.1 <- plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = F, q = 0.01)
+ucsc.2 <- plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+ucsc.3 <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 2) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(title)
+```
+
+Running Unselected A vs Selected A
+
+```{r, echo=FALSE, include = FALSE}
+
+HighBulk <- "SelectedA"
+LowBulk <- "UnselectedA"
+title <- paste(HighBulk, LowBulk, sep = " vs ")
+Chroms <- unique(HNGLCDRXY$CHROM)
+rawData <- "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\HNGLVDRXY_gR_merged.vcf.output.table"
+
+df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+
+#Filter SNPs based on some criteria
+#BUT WHAT DO THESE DO??? Why do they work this way? Why won't they let the rest of my data work?
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.20,
+        minTotalDepth = 100,
+        maxTotalDepth = 400,
+        minSampleDepth = 40,
+        minGQ = 99
+    )
+
+
+#Run G' analysi
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    popStruc = "F2",
+    bulkSize = c(25, 25),
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+#Plot
+# plotQTLStats(SNPset = df_filt, var = "Gprime", plotThreshold = TRUE, q = 0.01)
+# plotQTLStats(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+# plot(df_filt$Gprime)
+# plot(df_filt$pvalue)
+# plot(df_filt$negLog10Pval)
+
+df_filt$idu <- row.names(df_filt)
+q <- 0.01
+fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+UASA <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+UASA.p <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+UASA.1 <- plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = F, q = 0.01)
+UASA.2 <- plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+UASA.3 <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 2) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(title)
+
+```
+
+Running Unselected A vs Selected A
+
+```{r, echo=FALSE, include = FALSE}
+library("QTLseqr")
+
+HighBulk <- "UnselectedA"
+LowBulk <- "UnselectedC"
+
+title <- paste(HighBulk, LowBulk, sep = " vs ")
+
+Chroms <- unique(HNGLCDRXY$CHROM)
+rawData <- "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\HNGLVDRXY_gR_merged.vcf.output.table"
+
+df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+#Filter SNPs based on some criteria
+#BUT WHAT DO THESE DO??? Why do they work this way? Why won't they let the rest of my data work?
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.20,
+        minTotalDepth = 100,
+        maxTotalDepth = 400,
+        minSampleDepth = 40,
+        minGQ = 99
+    )
+
+
+#Run G' analysis
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e6,
+    popStruc = "F2",
+    bulkSize = c(25, 25),
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+
+
+df_filt$idu <- row.names(df_filt)
+q <- 0.01
+fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+UAUC <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+UAUC.p <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  ggtitle(title) + scale_colour_manual(values=CBchromPalette)
+
+UAUC.1 <- plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = F, q = 0.01)
+UAUC.2 <- plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+UAUC.3 <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 2) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(title)
+
+```
+
+
+### Unselected vs Selected: Oak Chr I
+
+We would expect here that if selection is effective, that QTL for CuSO4 resistance would be detected, regardless of the context of Chromosome I. 
+
+```{r}
+UASA #Both Oak Chr I
+UASA.p
+```
+
+### Unselected vs Selected: Wine Chr I
+
+We would also expect the same QTL to be found in the context of Wine Chr I, assuming that the QTL are also not fully epistatic with the fixed chromosome.
+
+```{r}
+UCSC #Both Wine Chr I
+UCSC.p
+```
+
+
+### Unselected Bulks
+
+Comparing the unselected bulks, we would expect that no QTL be identified, or those that are would be interpreted as the QTL associated with growth between wine and oak chromosome I in YPD. 
+
+```{r}
+UAUC #No CuSO4, Oak/Wine Chr I
+UAUC.p
+```
+
+
+### Selected Bulks: Epistasis with Chromosome I
+
+Because these two bulks are comparing fixed Oak or Wine Chr I, the QTL identified as a result of selecting in CuSO4 are those loci that are epistatic with Chromosome I. This is the exciting part.
+
+```{r}
+SASC #Both Selected in CuSO4, Oak/Wine Chr I
+SASC.p
+```
+
+### All Faceted
+
+```{r}
+UAUC.3
+UASA.3
+ucsc.3
+sasc.3
+```
+
+### All Faceted, Originals
+
+```{r}
+UAUC.1
+UASA.1
+ucsc.1
+sasc.1
+```
+

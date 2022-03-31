@@ -1,0 +1,463 @@
+---
+title: "QTLseq Method of Bulk Segregant Analysis"
+author: "Cassandra Buzby"
+date: "02/09/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+Keep in mind, use coolors.co for color palettes :)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+ggplot2::theme_set(theme_light())
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+```
+
+```{r, include=FALSE}
+#Function to Plot
+plotQTLStatsCB <- function (SNPset, subset = NULL, var = "nSNPs", scaleChroms = TRUE, 
+    line = TRUE, plotThreshold = FALSE, plotIntervals = FALSE, 
+    q = 0.05, ...) 
+{
+    if (!all(subset %in% unique(SNPset$CHROM))) {
+        whichnot <- paste(subset[base::which(!subset %in% unique(SNPset$CHROM))], 
+            collapse = ", ")
+        stop(paste0("The following are not true chromosome names: ", 
+            whichnot))
+    }
+    if (!var %in% c("nSNPs", "deltaSNP", "Gprime", 
+        "negLog10Pval")) 
+        stop("Please choose one of the following variables to plot: \"nSNPs\", \"deltaSNP\", \"Gprime\", \"negLog10Pval\"")
+    if ((plotThreshold == TRUE & var == "deltaSNP") | (plotThreshold == 
+        TRUE & var == "nSNPs")) {
+        message("FDR threshold is not plotted in deltaSNP or nSNPs plots")
+        plotThreshold <- FALSE
+    }
+    GprimeT <- 0
+    logFdrT <- 0
+    if (plotThreshold == TRUE) {
+        fdrT <- getFDRThreshold_CB(SNPset$pvalue, alpha = q)
+        if (is.na(fdrT)) {
+            warning("The q threshold is too low. No threshold line will be drawn")
+            plotThreshold <- FALSE
+        }
+        else {
+            logFdrT <- -log10(fdrT)
+            GprimeT <- SNPset[which(SNPset$pvalue == fdrT), "Gprime"]
+        }
+    }
+    SNPset <- if (is.null(subset)) {
+        SNPset
+    }
+    else {
+        SNPset[SNPset$CHROM %in% subset, ]
+    }
+    p <- ggplot2::ggplot(data = SNPset) + ggplot2::scale_x_continuous(breaks = seq(from = 0, 
+        to = max(SNPset$POS), by = 10^(floor(log10(max(SNPset$POS))))), 
+        #labels = format_genomic(), 
+        name = "Genomic Position (Mb)") + 
+        ggplot2::theme(plot.margin = ggplot2::margin(b = 10, 
+            l = 20, r = 20, unit = "pt"))
+    if (var == "Gprime") {
+        threshold <- GprimeT
+        p <- p + ggplot2::ylab("G' value")
+    }
+    if (var == "negLog10Pval") {
+        threshold <- logFdrT
+        p <- p + ggplot2::ylab(expression("-" * log[10] * 
+            "(p-value)"))
+    }
+    if (var == "nSNPs") {
+        p <- p + ggplot2::ylab("Number of SNPs in window")
+    }
+    if (var == "deltaSNP") {
+        var <- "tricubeDeltaSNP"
+        p <- p + ggplot2::ylab(expression(Delta * "(SNP-index)")) + 
+            ggplot2::ylim(-0.55, 0.55) + ggplot2::geom_hline(yintercept = 0, 
+            color = "black", alpha = 0.4)
+        if (plotIntervals == TRUE) {
+            ints_df <- dplyr::select(SNPset, CHROM, POS, dplyr::matches("CI_")) %>% 
+                tidyr::gather(key = "Interval", value = "value", 
+                  -CHROM, -POS)
+            p <- p + ggplot2::geom_line(data = ints_df, ggplot2::aes(x = POS, 
+                y = value, color = Interval)) + ggplot2::geom_line(data = ints_df, 
+                ggplot2::aes(x = POS, y = -value, color = Interval))
+        }
+    }
+    if (line) {
+        p <- p + ggplot2::geom_line(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (!line) {
+        p <- p + ggplot2::geom_point(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (plotThreshold == TRUE) 
+        p <- p + ggplot2::geom_hline(ggplot2::aes_string(yintercept = "threshold"), 
+            color = "red", size = 1, alpha = 0.4)
+    if (scaleChroms == TRUE) {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x", 
+            space = "free_x")
+    }
+    else {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x")
+    }
+    p
+}
+
+```
+
+```{r, eval=FALSE, include = FALSE}
+#Following directions for installation
+
+install.packages("devtools")
+
+##Updating Rtools from https://github.com/metrumresearchgroup/mrgsolve/issues/160 
+# path <- Sys.getenv("PATH")
+# path <- c("C:/rtools40/usr/bin", path) #changed from original verion to my path
+# path <- paste(path,collapse=";")
+# Sys.setenv(PATH=path)
+# 
+# Sys.which("make") #test that "make" is found in the right folder
+
+#################
+devtools::install_github("bmansfeld/QTLseqr")
+```
+
+
+### Functions for running analysis and plots on all samples
+
+```{r, echo = FALSE}
+#################################################
+#Change this to analyze differently
+#################################################
+
+PipelineFunc <- function(HighBulk, LowBulk, rawData = "mergedCuSO4.REF.SortedCat.vcf.output.table"){
+  
+  #"C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\mergedCuSO4.REF.SortedCat.vcf.output.table"
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+  #Chroms = "NC_001142.9" #"NC_001140.6"
+  Chroms = tail(unique(HNGLCDRXY$CHROM), -1)
+  
+    
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = 10, #100
+        maxTotalDepth = 600, #400
+        minSampleDepth = 40, #40
+        minGQ = 50 #99
+    )
+
+  #df %>% merge(.,ChromKey)
+  #df_filt <- df
+  
+  #Run G' analysi
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = 2e4, #1e6
+      outlierFilter = "deltaSNP")
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = 1e6,
+      popStruc = "F2",
+      bulkSize = c(25, 25),
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+  
+  return(as.data.frame(df_filt))
+}
+
+#######################################################################
+# Change this to plot differently #
+#######################################################################
+
+plotallfunc <- function(df_filt, HighBulk, LowBulk){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+    
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # plot.gprime.idu <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  #   geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  #   ggtitle(mytitle) + scale_colour_manual(values=CBchromPalette)
+  # 
+  # plot.nlogp <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  #   geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  #   ggtitle(mytitle) + scale_colour_manual(values=CBchromPalette)
+
+#Fancy plots from the Ziv script adjustments
+
+  plot.gprime <- plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = F, q = 0.01)
+  plot.deltasnp <- plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+  plot.gprime.CB <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+    #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(mytitle)
+  
+  #print(plot.gprime.idu)
+  #print(plot.nlogp)
+  
+  pointsofsig <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = abs(deltaSNP) < 0.1)) + geom_point(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+    #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(mytitle)
+  
+  print(plot.gprime.CB)
+  print(plot.gprime)
+  print(plot.deltasnp)
+  print(pointsofsig)
+}
+```
+
+## All Data Through Functions
+
+```{r, include = FALSE}
+SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA")
+SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC")
+Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC")
+Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC")
+
+```
+
+### Checking out the files
+
+```{r}
+#rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\mergedCuSO4.REF.SortedCat.vcf.output.table"
+
+rawData = "mergedCuSO4.REF.SortedCat.vcf.output.table"
+Chroms <- ChromKey$CHROM
+
+OakI_Selected <- importFromGATK(
+        file = rawData,
+        highBulk = "SelectedC",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Selected")
+
+OakI_Unselected <- importFromGATK(
+        file = rawData,
+        highBulk = "UnselectedC",
+        lowBulk = "SelectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Unselected")
+
+WineI_Selected <- importFromGATK(
+        file = rawData,
+        highBulk = "SelectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Selected")
+
+WineI_Unselected <- importFromGATK(
+        file = rawData,
+        highBulk = "UnselectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Unselected")
+
+OakI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> OakI_Selected
+
+OakI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> OakI_Unselected
+
+WineI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> WineI_Selected
+
+WineI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> WineI_Unselected
+
+rbind(OakI_Selected, OakI_Unselected, WineI_Selected, WineI_Unselected) %>% merge(., ChromKey) -> HNG
+
+ggplot(HNG, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference Allele Frequency")
+
+ggplot(HNG, aes(x = AD_REF.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference AD (unfiltered allele depth)")
+
+ggplot(HNG, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt AD (unfiltered allele depth)")
+
+ggplot(HNG, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("DP (filtered depth, at the sample level)")
+
+ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+
+ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+
+table(HNG$GQ.HIGH)
+
+ggplot(HNG, aes(x = SNPindex.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("SNP Index")
+
+```
+
+
+### Traditional BSA (Selected vs Unselected)
+```{r}
+plotallfunc(SAUA, HighBulk = "SelectedA", LowBulk = "UnselectedA")
+plotallfunc(SCUC, HighBulk = "SelectedC", LowBulk = "UnselectedC")
+
+```
+
+### Unselected Bulks
+
+These two bulks should only differ at Chr I since that is the fixed chromosome; all other loci should segregate evenly and be at approximately 50/50 frequency.
+```{r}
+plotallfunc(Unselected, HighBulk = "UnselectedC", LowBulk = "UnselectedA")
+
+```
+
+### Selected Bulks: Epistasis with Chromosome I
+```{r}
+
+plotallfunc(Selected, HighBulk = "SelectedA", LowBulk = "SelectedC")
+
+```
+
+
+```{r, eval = FALSE}
+HighBulk <- "SelectedC"
+LowBulk <- "UnselectedC"
+rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\mergedCuSO4.REF.SortedCat.vcf.output.table"
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+  #Chroms = "NC_001142.9" #"NC_001140.6"
+  Chroms = tail(unique(HNGLCDRXY$CHROM), -1)
+  
+    
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+        )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = 10, #100
+        maxTotalDepth = 600, #400
+        minSampleDepth = 4, #40
+        minGQ = 99 #99
+    )
+
+  #df %>% merge(.,ChromKey)
+  #df_filt <- df
+  
+  #Run G' analysi
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = 2e4, #1e6
+      outlierFilter = "deltaSNP")
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = 1e6,
+      popStruc = "F2",
+      bulkSize = c(25, 25),
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+  
+  ##### NEW ###########
+  
+  sig_SCUC <- getSigRegions(df_filt)
+  
+```
+
+```{r, eval = FALSE}
+#Plotting the stats part
+
+ggplot(df_filt, aes(x = abs(deltaSNP), y = Gprime, col = abs(deltaSNP) < 0.1)) + geom_point()
+
+ggplot(data = df_filt, aes(x = POS, y = Gprime, color = abs(deltaSNP) < 0.1)) + geom_point(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+    #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x") + ggtitle(mytitle)
+
+```
+
+

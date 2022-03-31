@@ -1,0 +1,59 @@
+module load sra-tools/2.10.9
+prefetch $SRA_id
+fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra
+
+#sra-pub-src-6/SRR5331805/DGY279_R1.fastq.gz
+
+############## What I actually tried #############
+
+module load sra-tools/2.10.9
+SRA_id=SRR5331805
+
+prefetch $SRA_id
+fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra
+
+#################################################
+
+for i in listofSRAIDs; SRA_id=$i; fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra; done
+
+listofSRAIDs
+
+SRR5331805
+SRR5331804
+SRR5331803
+SRR5331802
+SRR5331801
+SRR5331800
+SRR5331799
+SRR5331798
+SRR5331793
+SRR5331792
+SRR5331791
+SRR5331790
+SRR5331789
+SRR5331788
+SRR5331787
+SRR5331786
+
+#first 16 of https://www.ncbi.nlm.nih.gov/sra?linkname=bioproject_sra_all&from_uid=378675
+
+#might also work as
+
+for k in 1:wc-l listofSRAIDs; do for i in sed -n $'linenumber'p listofSRAIDs; do SRA_id=$i; fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra; done; done
+
+##Also this?
+for (( i=1; i<=10; i++ ))
+do
+   echo -n "$i "
+done
+echo ""
+
+
+for (( i=1; i<=10; i++ )); do SRA_id='sed -n $i'p' listofSRAIDs.txt'; echo $SRA_id; done
+
+#WORKS:
+for (( i=1; i<=10; i++ )); do SRA_id=`sed -n $i'p' listofSRAIDs.txt`; echo $SRA_id; done
+
+for (( i=1; i<=10; i++ )); do SRA_id=`sed -n $i'p' listofSRAIDs.txt`; fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra; done
+
+for (( i=11; i<=16; i++ )); do SRA_id=`sed -n $i'p' listofSRAIDs.txt`; fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip ${SRA_id}/${SRA_id}.sra; done

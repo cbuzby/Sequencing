@@ -1,0 +1,808 @@
+---
+title: "QTLseq Method of Bulk Segregant Analysis: Ziv Data"
+author: "Cassandra Buzby"
+date: "02/08/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+Keep in mind, use coolors.co for color palettes :)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+ggplot2::theme_set(theme_light())
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+library("QTLseqr")
+#NC_001136.10
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+```
+
+```{r, echo = FALSE}
+#Original
+plotQTLStatsCB <- function (SNPset, subset = NULL, var = "nSNPs", scaleChroms = TRUE, 
+    line = TRUE, plotThreshold = FALSE, plotIntervals = FALSE, 
+    q = 0.05, ...) 
+{
+    if (!all(subset %in% unique(SNPset$CHROM))) {
+        whichnot <- paste(subset[base::which(!subset %in% unique(SNPset$CHROM))], 
+            collapse = ", ")
+        stop(paste0("The following are not true chromosome names: ", 
+            whichnot))
+    }
+    if (!var %in% c("nSNPs", "deltaSNP", "Gprime", 
+        "negLog10Pval")) 
+        stop("Please choose one of the following variables to plot: \"nSNPs\", \"deltaSNP\", \"Gprime\", \"negLog10Pval\"")
+    if ((plotThreshold == TRUE & var == "deltaSNP") | (plotThreshold == 
+        TRUE & var == "nSNPs")) {
+        message("FDR threshold is not plotted in deltaSNP or nSNPs plots")
+        plotThreshold <- FALSE
+    }
+    GprimeT <- 0
+    logFdrT <- 0
+    if (plotThreshold == TRUE) {
+        fdrT <- getFDRThreshold(SNPset$pvalue, alpha = q)
+        if (is.na(fdrT)) {
+            warning("The q threshold is too low. No threshold line will be drawn")
+            plotThreshold <- FALSE
+        }
+        else {
+            logFdrT <- -log10(fdrT)
+            GprimeT <- SNPset[which(SNPset$pvalue == fdrT), "Gprime"]
+        }
+    }
+    SNPset <- if (is.null(subset)) {
+        SNPset
+    }
+    else {
+        SNPset[SNPset$CHROM %in% subset, ]
+    }
+    p <- ggplot2::ggplot(data = SNPset) + ggplot2::scale_x_continuous(breaks = seq(from = 0, 
+        to = max(SNPset$POS), by = 10^(floor(log10(max(SNPset$POS))))), 
+        #labels = format_genomic(), 
+        name = "Genomic Position (Mb)") + 
+        ggplot2::theme(plot.margin = ggplot2::margin(b = 10, 
+            l = 20, r = 20, unit = "pt"))
+    if (var == "Gprime") {
+        threshold <- GprimeT
+        p <- p + ggplot2::ylab("G' value")
+    }
+    if (var == "negLog10Pval") {
+        threshold <- logFdrT
+        p <- p + ggplot2::ylab(expression("-" * log[10] * 
+            "(p-value)"))
+    }
+    if (var == "nSNPs") {
+        p <- p + ggplot2::ylab("Number of SNPs in window")
+    }
+    if (var == "deltaSNP") {
+        var <- "tricubeDeltaSNP"
+        p <- p + ggplot2::ylab(expression(Delta * "(SNP-index)")) + 
+            ggplot2::ylim(-0.55, 0.55) + ggplot2::geom_hline(yintercept = 0, 
+            color = "black", alpha = 0.4)
+        if (plotIntervals == TRUE) {
+            ints_df <- dplyr::select(SNPset, CHROM, POS, dplyr::matches("CI_")) %>% 
+                tidyr::gather(key = "Interval", value = "value", 
+                  -CHROM, -POS)
+            p <- p + ggplot2::geom_line(data = ints_df, ggplot2::aes(x = POS, 
+                y = value, color = Interval)) + ggplot2::geom_line(data = ints_df, 
+                ggplot2::aes(x = POS, y = -value, color = Interval))
+        }
+    }
+    if (line) {
+        p <- p + ggplot2::geom_line(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (!line) {
+        p <- p + ggplot2::geom_point(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    if (plotThreshold == TRUE) 
+        p <- p + ggplot2::geom_hline(ggplot2::aes_string(yintercept = "threshold"), 
+            color = "red", size = 1, alpha = 0.4)
+    if (scaleChroms == TRUE) {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x", 
+            space = "free_x")
+    }
+    else {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x")
+    }
+    p
+}
+```
+
+
+Following directions for installation
+
+```{r, eval=FALSE}
+install.packages("devtools")
+
+##Updating Rtools from https://github.com/metrumresearchgroup/mrgsolve/issues/160 
+# path <- Sys.getenv("PATH")
+# path <- c("C:/rtools40/usr/bin", path) #changed from original verion to my path
+# path <- paste(path,collapse=";")
+# Sys.setenv(PATH=path)
+# 
+# Sys.which("make") #test that "make" is found in the right folder
+
+#################
+devtools::install_github("bmansfeld/QTLseqr")
+```
+
+## Naomi's Data
+
+### Compare allele depths between Naomi's data and my data (telomere version)
+
+Load in Data
+```{r, echo=FALSE}
+
+#load the package
+thetable <- read.table("Data/mergedF12.SortedCat.vcf.output.table", header = TRUE)
+Chroms <- unique(thetable$CHROM)
+
+ZivTable <- "Data/mergedF12.SortedCat.vcf.output.table"
+
+ZivSelected <- importFromGATK(
+        file = ZivTable,
+        highBulk = "SRR5331793_1.fastq",
+        lowBulk = "SRR5331801_1.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "ZivSelected", DAT = "Ziv")
+
+ZivUnselected <- importFromGATK(
+        file = ZivTable,
+        lowBulk = "SRR5331793_1.fastq",
+        highBulk = "SRR5331801_1.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "ZivUnselected", DAT = "Ziv")
+
+ZivSelected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> ZivSelected
+
+ZivUnselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> ZivUnselected
+
+
+
+```
+
+
+```{r}
+TelTable <- "Data/TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+
+Chroms <- ChromKey$CHROM
+
+OakI_Selected <- importFromGATK(
+        file = TelTable,
+        highBulk = "SelectedC",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Selected", DAT = "Buzby")
+
+OakI_Unselected <- importFromGATK(
+        file = TelTable,
+        highBulk = "UnselectedC",
+        lowBulk = "SelectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Unselected", DAT = "Buzby")
+
+WineI_Selected <- importFromGATK(
+        file = TelTable,
+        highBulk = "SelectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Selected", DAT = "Buzby")
+
+WineI_Unselected <- importFromGATK(
+        file = TelTable,
+        highBulk = "UnselectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Unselected", DAT = "Buzby")
+
+OakI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> OakI_Selected
+
+OakI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> OakI_Unselected
+
+WineI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> WineI_Selected
+
+WineI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset, DAT) -> WineI_Unselected
+
+rbind(OakI_Selected, OakI_Unselected, WineI_Selected, WineI_Unselected, ZivSelected, ZivUnselected) %>% merge(., ChromKey) -> HNG
+
+```
+
+```{r, eval = FALSE}
+ggplot(HNG, aes(x = REF_FRQ, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference Allele Frequency") 
+
+ggplot(HNG, aes(x = AD_REF.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference AD (unfiltered allele depth)")
+
+ggplot(HNG, aes(x = AD_ALT.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt AD (unfiltered allele depth)") 
+
+ggplot(HNG, aes(x = DP.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("DP (filtered depth, at the sample level)")
+
+# ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+# 
+# ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+
+ggplot(HNG, aes(x = SNPindex.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("SNP Index") 
+
+```
+
+```{r, echo = FALSE}
+ggplot(HNG, aes(x = REF_FRQ, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference Allele Frequency by Dataset") 
+
+ggplot(HNG, aes(x = AD_REF.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference AD (unfiltered allele depth) by Dataset")
+
+ggplot(HNG, aes(x = AD_ALT.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt AD (unfiltered allele depth) by Dataset") 
+ggplot(HNG, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt AD (unfiltered allele depth) by Bulk") 
+
+ggplot(HNG, aes(x = DP.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("DP (filtered depth, at the sample level) by Dataset")
+ggplot(HNG, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("DP (filtered depth, at the sample level) by Bulk")
+
+# ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+# 
+# ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+
+ggplot(HNG, aes(x = SNPindex.HIGH, fill = DAT)) + geom_density(alpha = 0.5, size = 1) + ggtitle("SNP Index") 
+
+```
+
+
+### Run on all chromosomes
+```{r}
+##Example Code
+
+#load the package
+thetable <- read.table("Data/mergedF12.SortedCat.vcf.output.table", header = TRUE)
+
+#Set sample and file names
+HighBulk <- "SRR5331793_1.fastq"
+LowBulk <- "SRR5331801_1.fastq"
+file <- "Data/mergedF12.SortedCat.vcf.output.table"
+
+#Choose which chromosomes will be included in the analysis (i.e. exclude smaller contigs)
+#Chroms <- paste0(rep("Chr", 12), 1:12)
+Chroms <- unique(thetable$CHROM)
+
+#Import SNP data from file
+df <-importFromGATK(
+        file = file,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+     )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+df_filt <- df
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.2
+        minTotalDepth = 50, #100
+        maxTotalDepth = 800, #400
+        minSampleDepth = 10, #40
+        minGQ = 20 #99
+    )
+
+#Run G' analysis
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e5,#1e6
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 1e5, #1e6
+    popStruc = "F2",
+    bulkSize = c(25, 25),
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+#My Plots
+# plot(df_filt$Gprime)
+# plot(df_filt$pvalue)
+# plot(df_filt$negLog10Pval)
+
+df_filt$idu <- row.names(df_filt)
+# ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = CHROM)) + geom_point()
+
+# ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+#   geom_point(size = 2, alpha = 0.5) + 
+#   scale_colour_manual(values=CBchromPalette) + 
+#   xlab("Specific Nucleotides by Index") +
+#     ggtitle("Ziv Data F12 Selected vs Unselected")
+
+#Plot
+plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = T, q = 0.01)
+plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = T, q = 0.05)
+plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+#export summary CSV
+# getQTLTable(SNPset = df_filt, alpha = 0.01, export = TRUE, fileName = "my_BSA_QTL.csv")
+
+ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette) + 
+  #geom_vline(xintercept = 1154216, linetype = "dashed", size = 1) + #HXT7 gene
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x")+ theme(legend.position = "bottom")
+
+
+```
+
+### Run on Chromosome IV
+
+```{r, echo = FALSE}
+##Example Code
+getwd()
+#load the package
+thetable <- read.table("Data/mergedF12.SortedCat.vcf.output.table", header = TRUE)
+
+#Set sample and file names
+HighBulk <- "SRR5331793_1.fastq"
+LowBulk <- "SRR5331801_1.fastq"
+file <- "Data/mergedF12.SortedCat.vcf.output.table"
+
+#Choose which chromosomes will be included in the analysis (i.e. exclude smaller contigs)
+#Chroms <- paste0(rep("Chr", 12), 1:12)
+Chroms <- unique(thetable$CHROM)
+Chroms <- "NC_001136.10"
+
+#Import SNP data from file
+df <-importFromGATK(
+        file = file,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms
+     )
+
+df %>% merge(.,ChromKey) %>% na.omit() -> df
+
+df_filt <- df
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.2
+        minTotalDepth = 50, #100
+        maxTotalDepth = 800, #400
+        minSampleDepth = 10, #40
+        minGQ = 20 #99
+    )
+
+#Run G' analysis
+df_filt <- runGprimeAnalysis(
+    SNPset = df_filt,
+    windowSize = 4e4,#1e6
+    outlierFilter = "deltaSNP")
+
+#Run QTLseq analysis
+df_filt <- runQTLseqAnalysis(
+    SNPset = df_filt,
+    windowSize = 5e4, #1e6
+    popStruc = "F2",
+    bulkSize = c(25, 25), #25
+    replications = 10000,
+    intervals = c(95, 99)
+)
+
+df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+#My Plots
+# plot(df_filt$Gprime)
+# plot(df_filt$pvalue)
+# plot(df_filt$negLog10Pval)
+
+df_filt$idu <- row.names(df_filt)
+# ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = CHROM)) + geom_point()
+
+# ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+#   geom_point(size = 2, alpha = 0.5) + 
+#   scale_colour_manual(values=CBchromPalette) + 
+#   xlab("Specific Nucleotides by Index") +
+#     ggtitle("Ziv Data F12 Selected vs Unselected")
+
+#Plot
+plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = T, q = 0.01)
+plotQTLStatsCB(SNPset = df_filt, var = "Gprime", plotThreshold = T, q = 0.05)
+
+plotQTLStatsCB(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+#export summary CSV
+# getQTLTable(SNPset = df_filt, alpha = 0.01, export = TRUE, fileName = "my_BSA_QTL.csv")
+
+ggplot(data = df_filt, aes(x = POS, y = Gprime, color = chromosomes)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+    scale_colour_manual(values=CBchromPalette[4]) + 
+  geom_vline(xintercept = 1154216, linetype = "dashed", size = 1) + #HXT7 gene
+  facet_grid(~chromosomes, scales = "free_x", space = "free_x")
+
+
+```
+
+
+
+```{r, eval = FALSE, include = FALSE}
+#New
+#SNPset
+subset = NULL 
+var = "nSNPs"
+scaleChroms = TRUE
+line = TRUE
+plotThreshold = FALSE
+plotIntervals = FALSE
+q = 0.05
+
+SNPset = df_filt
+var = "Gprime"
+plotThreshold = TRUE
+q = 0.01
+
+getFDRThreshold_CB <- function (pvalues, alpha = 0.01){
+    sortedPvals <- sort(pvalues, decreasing = FALSE)
+    pAdj <- p.adjust(sortedPvals, method = "BH")
+    if (!any(pAdj < alpha)) {
+        fdrThreshold <- 1
+    }
+    else {
+        fdrThreshold <- sortedPvals[max(which(pAdj < alpha))]
+    }
+    return(fdrThreshold)
+}
+
+format_genomic <- function(...) {
+      # Format a vector of numeric values according
+      # to the International System of Units.
+      # http://en.wikipedia.org/wiki/SI_prefix
+      #
+      # Based on code by Ben Tupper
+      # https://stat.ethz.ch/pipermail/r-help/2012-January/299804.html
+      # Args:
+      #   ...: Args passed to format()
+      #
+      # Returns:
+      #   A function to format a vector of strings using
+      #   SI prefix notation
+      #
+
+      function(x) {
+            limits <- c(1e0,   1e3, 1e6)
+            #prefix <- c("","Kb","Mb")
+
+            # Vector with array indices according to position in intervals
+            i <- findInterval(abs(x), limits)
+
+            # Set prefix to " " for very small values < 1e-24
+            i <- ifelse(i==0, which(limits == 1e0), i)
+
+            paste(format(round(x/limits[i], 1),
+                         trim=TRUE, scientific=FALSE, ...)
+                #  ,prefix[i]
+            )
+      }
+}
+
+#Start Here
+    if (!all(subset %in% unique(SNPset$CHROM))) {
+        whichnot <- paste(subset[base::which(!subset %in% unique(SNPset$CHROM))], 
+            collapse = ", ")
+        stop(paste0("The following are not true chromosome names: ", 
+            whichnot))
+    }
+
+    if (!var %in% c("nSNPs", "deltaSNP", "Gprime", 
+        "negLog10Pval")) 
+        stop("Please choose one of the following variables to plot: \"nSNPs\", \"deltaSNP\", \"Gprime\", \"negLog10Pval\"")
+
+    if ((plotThreshold == TRUE & var == "deltaSNP") | (plotThreshold == 
+        TRUE & var == "nSNPs")) {
+        message("FDR threshold is not plotted in deltaSNP or nSNPs plots")
+        plotThreshold <- FALSE
+    }
+## All False
+
+    GprimeT <- 0
+    logFdrT <- 0
+    if (plotThreshold == TRUE) {
+        fdrT <- getFDRThreshold(SNPset$pvalue, alpha = q)
+        if (is.na(fdrT)) {
+            warning("The q threshold is too low. No threshold line will be drawn")
+            plotThreshold <- FALSE
+        }
+        else {
+            logFdrT <- -log10(fdrT)
+            GprimeT <- SNPset[which(SNPset$pvalue == fdrT), "Gprime"]
+        }
+    }
+    SNPset <- if (is.null(subset)) {
+        SNPset
+    } else {
+        SNPset[SNPset$CHROM %in% subset, ]
+    }
+  
+  #Plot Here
+    
+    p <- ggplot2::ggplot(data = SNPset) + ggplot2::scale_x_continuous(breaks = seq(from = 0, 
+        to = max(SNPset$POS), by = 10^(floor(log10(max(SNPset$POS))))), 
+        #labels = format_genomic(), 
+        name = "Genomic Position (Mb)") + 
+        ggplot2::theme(plot.margin = ggplot2::margin(b = 10, 
+            l = 20, r = 20, unit = "pt"))
+    
+    if (var == "Gprime") {
+        threshold <- GprimeT
+        p <- p + ggplot2::ylab("G' value")
+    }
+    # if (var == "negLog10Pval") {
+    #     threshold <- logFdrT
+    #     p <- p + ggplot2::ylab(expression("-" * log[10] * 
+    #         "(p-value)"))
+    # }
+    # if (var == "nSNPs") {
+    #     p <- p + ggplot2::ylab("Number of SNPs in window")
+    # }
+    # if (var == "deltaSNP") {
+    #     var <- "tricubeDeltaSNP"
+    #     p <- p + ggplot2::ylab(expression(Delta * "(SNP-index)")) + 
+    #         ggplot2::ylim(-0.55, 0.55) + ggplot2::geom_hline(yintercept = 0, 
+    #         color = "black", alpha = 0.4)
+    #     if (plotIntervals == TRUE) {
+    #         ints_df <- dplyr::select(SNPset, CHROM, POS, dplyr::matches("CI_")) %>% 
+    #             tidyr::gather(key = "Interval", value = "value", 
+    #               -CHROM, -POS)
+    #         p <- p + ggplot2::geom_line(data = ints_df, ggplot2::aes(x = POS, 
+    #             y = value, color = Interval)) + ggplot2::geom_line(data = ints_df, 
+    #             ggplot2::aes(x = POS, y = -value, color = Interval))
+    #     }
+    # }
+    if (line) {
+        p <- p + ggplot2::geom_line(ggplot2::aes_string(x = "POS", 
+            y = var), ...)
+    }
+    # if (!line) {
+    #     p <- p + ggplot2::geom_point(ggplot2::aes_string(x = "POS", 
+    #         y = var))
+    # }
+    if (plotThreshold == TRUE) 
+        p <- p + ggplot2::geom_hline(ggplot2::aes_string(yintercept = "threshold"), 
+            color = "red", size = 1, alpha = 0.4)
+    
+    if (scaleChroms == TRUE) {
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x", 
+            space = "free_x")
+    }else{
+        p <- p + ggplot2::facet_grid(~CHROM, scales = "free_x")
+    }
+    p
+
+```
+
+
+```{r, eval=FALSE, include = FALSE}
+## Running gPrime Analysis by Hand
+
+library(dplyr)
+tricubeStat <- function(POS, Stat, windowSize = 2e6, ...)
+{
+    if (windowSize <= 0)
+        stop("A positive smoothing window is required")
+    stats::predict(locfit::locfit(Stat ~ locfit::lp(POS, h = windowSize, deg = 0), ...), POS)
+}
+
+getG <- function(LowRef, HighRef, LowAlt, HighAlt)
+{
+    exp <- c(
+        (LowRef + HighRef) * (LowRef + LowAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowRef + HighRef) * (HighRef + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowRef + LowAlt) * (LowAlt + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowAlt + HighAlt) * (HighRef + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt)
+    )
+    obs <- c(LowRef, HighRef, LowAlt, HighAlt)
+    
+    G <-
+        2 * (rowSums(obs * log(
+            matrix(obs, ncol = 4) / matrix(exp, ncol = 4)
+        )))
+    return(G)
+}
+
+
+SNPset = df
+windowSize = 1e6
+outlierFilter = "deltaSNP"
+filterThreshold = 0.1
+
+message("Counting SNPs in each window...")
+SNPset <- SNPset %>% dplyr::group_by(CHROM) %>% dplyr::mutate(nSNPs = countSNPs_cpp(POS = POS, 
+        windowSize = windowSize))
+
+message("Calculating tricube smoothed delta SNP index...")
+SNPset <- SNPset %>% dplyr::mutate(tricubeDeltaSNP = tricubeStat(POS = POS, 
+        Stat = deltaSNP, windowSize))
+    
+message("Calculating G and G' statistics...")
+    
+SNPset <- SNPset %>% dplyr::mutate(G = getG(LowRef = AD_REF.LOW, 
+                                            HighRef = AD_REF.HIGH, 
+                                            LowAlt = AD_ALT.LOW, 
+                                            HighAlt = AD_ALT.HIGH), 
+                                   Gprime = tricubeStat(POS = POS, Stat = G, windowSize = windowSize)) 
+  
+str(SNPset)
+
+SNPsetPVAL <- SNPset %>% dplyr::ungroup() # %>% 
+#   dplyr::mutate(pvalue = getPvals(Gprime = Gprime, 
+#                                   deltaSNP = deltaSNP, 
+#                                   outlierFilter = outlierFilter, 
+#                                   filterThreshold = filterThreshold), 
+#         negLog10Pval = -log10(pvalue), qvalue = p.adjust(p = pvalue, method = "BH"))
+    
+
+
+```
+
+Trying out the getPvals function next:
+
+```{r, include = FALSE, eval = FALSE}
+Gprime <- SNPsetPVAL$Gprime
+deltaSNP = SNPsetPVAL$deltaSNP
+outlierFilter = c("deltaSNP", "Hampel")
+filterThreshold
+
+
+    if (outlierFilter == "deltaSNP") {
+        if (abs(filterThreshold) >= 0.5) {
+            stop("filterThreshold should be less than 0.5")
+        }
+        message("Using deltaSNP-index to filter outlier regions with a threshold of ", 
+            filterThreshold)
+        trimGprime <- Gprime[abs(deltaSNP) < abs(filterThreshold)]
+    } else {
+        message("Using Hampel's rule to filter outlier regions")
+        lnGprime <- log(Gprime)
+        medianLogGprime <- median(lnGprime)
+        MAD <- median(medianLogGprime - lnGprime[lnGprime <= 
+            medianLogGprime])
+        trimGprime <- Gprime[lnGprime - median(lnGprime) <= 5.2 * 
+            MAD]
+    }
+
+    medianTrimGprime <- median(trimGprime)
+    message("Estimating the mode of a trimmed G prime set using the 'modeest' package...")
+    #Changes
+    trimGprime <- trimGprime %>% na.omit()
+    ###
+    modeTrimGprime <- modeest::mlv(x = trimGprime, bw = 0.5, 
+        method = "hsm")[1]
+    muE <- log(medianTrimGprime)
+    varE <- abs(muE - log(modeTrimGprime))
+    message("Calculating p-values...")
+    pval <- 1 - plnorm(q = Gprime, meanlog = muE, sdlog = sqrt(varE))
+    # return(pval)
+    
+#FINISHING RUNNING THIS:
+    
+  SNPsetPVAL <- SNPset %>% dplyr::ungroup() %>% 
+  dplyr::mutate(pvalue = pval, 
+        negLog10Pval = -log10(pvalue), qvalue = p.adjust(p = pvalue, method = "BH"))
+    
+
+```
+
+### Notes
+
+The FDR is based on the getFDRThreshold() function, which uses the adjusted sorted p-values from the data:
+
+```{r, eval = FALSE}
+> getFDRThreshold
+function (pvalues, alpha = 0.01) 
+{
+    sortedPvals <- sort(pvalues, decreasing = FALSE)
+    pAdj <- p.adjust(sortedPvals, method = "BH")
+    if (!any(pAdj < alpha)) {
+        fdrThreshold <- NA
+    }
+    else {
+        fdrThreshold <- sortedPvals[max(which(pAdj < alpha))]
+    }
+    return(fdrThreshold)
+}
+```
+
+The p-values are determined by:
+
+```{r, eval = FALSE}
+#Making gprime:
+SNPset <- SNPset %>% dplyr::mutate(G = getG(LowRef = AD_REF.LOW, 
+                                            HighRef = AD_REF.HIGH, 
+                                            LowAlt = AD_ALT.LOW, 
+                                            HighAlt = AD_ALT.HIGH), 
+                                   Gprime = tricubeStat(POS = POS, Stat = G, windowSize = windowSize)) 
+  
+
+#Finding pvalues
+SNPsetPVAL <- SNPset %>% dplyr::ungroup() %>% 
+  dplyr::mutate(pvalue = getPvals(Gprime = Gprime,
+                                  deltaSNP = deltaSNP,
+                                  outlierFilter = outlierFilter,
+                                  filterThreshold = filterThreshold),
+        negLog10Pval = -log10(pvalue), qvalue = p.adjust(p = pvalue, method = "BH"))
+
+  ######################################
+
+  #the getPvals function:
+> getPvals
+function (Gprime, deltaSNP = NULL, outlierFilter = c("deltaSNP", 
+    "Hampel"), filterThreshold) 
+{
+    if (outlierFilter == "deltaSNP") {
+        if (abs(filterThreshold) >= 0.5) {
+            stop("filterThreshold should be less than 0.5")
+        }
+        message("Using deltaSNP-index to filter outlier regions with a threshold of ", 
+            filterThreshold)
+        trimGprime <- Gprime[abs(deltaSNP) < abs(filterThreshold)]
+    }
+    else {
+        message("Using Hampel's rule to filter outlier regions")
+        lnGprime <- log(Gprime)
+        medianLogGprime <- median(lnGprime)
+        MAD <- median(medianLogGprime - lnGprime[lnGprime <= 
+            medianLogGprime])
+        trimGprime <- Gprime[lnGprime - median(lnGprime) <= 5.2 * 
+            MAD]
+    }
+    medianTrimGprime <- median(trimGprime)
+    message("Estimating the mode of a trimmed G prime set using the 'modeest' package...")
+    modeTrimGprime <- modeest::mlv(x = trimGprime, bw = 0.5, 
+        method = "hsm")[1]
+    muE <- log(medianTrimGprime)
+    varE <- abs(muE - log(modeTrimGprime))
+    message("Calculating p-values...")
+    pval <- 1 - plnorm(q = Gprime, meanlog = muE, sdlog = sqrt(varE))
+    return(pval)
+}
+```
+
+tricubeStat function can be found here: https://rdrr.io/github/bmansfeld/QTLseqR/src/R/G_functions.R 
+
+

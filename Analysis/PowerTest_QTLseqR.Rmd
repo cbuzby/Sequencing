@@ -1,0 +1,68 @@
+---
+title: "False Discovery and Power for Detection Testing"
+author: "Cassandra Buzby"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+ggplot2::theme_set(theme_light())
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#8FC93A",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+```
+
+## Estimating Power for Detection
+
+Alleles will segregate with some randomness in a population, and so each bulk will contain some randomness in the proportion of alleles. Sequencing will also identify alleles with some randomness, which means that each bulk will have a frequency that is not necessarily 50/50. In QTLseqR, the program takes in the reference and allele frequencies, so what was aligned as each variant or non-variant, and then calculates using the G' statistic for the difference between these alleles compared to the next variant over, using a sliding window.
+
+We want to know the following:
+
+* What effect size can we detect in our approach given our sample size?
+
+* What window size should we use for this approach?
+
+### What effect size can we detect?
+
+First, simulate the data. We need loci that provide a growth advantage and then to sample that for sequencing and then to run the test over and over to see how often they would be detected? So to start, the frequency would be different because the advantage would allow for x amount of difference in growth; perhaps correlate growth rate and growth advantage?
+
+```{r}
+#Allele associated with a 50% higher growth rate after 24 hours?
+
+GR <- 0.4 #doubles per hour
+AdjustedGR <- GR *1.5 #with the new allele
+
+PopFreqStart <- 1/10^6
+GrowthTime <- 24
+PopEnd <- 2^(GR*GrowthTime)*(1/PopFreqStart)
+
+AdjPopEnd <- 2^(AdjustedGR*GrowthTime)
+AdjPopEnd_Freq <- AdjPopEnd/PopEnd
+
+Expected_Freq <- (2^(GR*GrowthTime))/PopEnd
+
+#But this would be if just one strain had a genotype that contributed this much
+#What about at a 50/50 ratio?
+
+```
+
