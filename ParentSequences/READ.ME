@@ -1,0 +1,47 @@
+#Goal: align oak and wine parent sequences to S288C reference to call variants, then use this as the excluded regions which gatk BQSR should ignore
+module load samtools/intel/1.14
+samtools index ../ZivSequences/SRR5331805_1.fastq.aln-se.bam
+samtools index ../ZivSequences/SRR5331804_1.fastq.aln-se.bam
+
+sbatch CB_4.0_CallVariants_OakWineParent.q ../ZivSequences/SRR5331805_1.fastq.aln-se.bam SRR5331805_1_Oak
+sbatch CB_4.0_CallVariants_OakWineParent.q ../ZivSequences/SRR5331804_1.fastq.aln-se.bam SRR5331804_1_Wine
+
+#Compress and merge VCFs
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+
+java -jar $PICARD_JAR MergeVcfs \
+          I=SRR5331805_1_Oak.vcf \
+          I=SRR5331804_1_Wine.vcf \
+          O=OakWine_variants.vcf.gz
+
+java -jar $PICARD_JAR MergeVcfs \
+          I=OakParent.vcf \
+          I=WineParent.vcf \
+          O=OakWine_variants.vcf.gz
+
+#Instead of merging, try merging beforehand and then calling both sets of variants?
+
+samtools merge -o OakWine.bam ../ZivSequences/SRR5331805_1.fastq.aln-se.bam ../ZivSequences/SRR5331804_1.fastq.aln-se.bam
+samtools index OakWine.bam
+
+sbatch CB_4.0_CallVariants_OakWineParent.q OakWine.bam
+
+#Next, zip and sort the vcf file, and then use that in the next step #RUNNING NOW
+sbatch ../CB_Pipeline/CB_5.0_zip.concat.sort.q OakWine
+
+#Assuming this works, use OakWine.sorted.vcf.gz(?) as input into the CB_1.5_ApplyBQSR thing
+
+sbatch ../CB_Pipeline/MakeBQSRTable.q ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4 OakWine_variants.vcf.gz
+
+sbatch ../CB_Pipeline/ApplyBQSR.q ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4 ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4_recal_data.table
+
+#output is ${1}.BQSR.bam
+#STUFF THAT HAPPENS AFTER (edit to make new 2.0 file for just splitting this argument):
+sbatch ../CB_Pipeline/CB_2.1_.split.q ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4_bqsr.bam
+for i in ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4_bqsr.REF_NC*bam ; do sbatch ../CB_Pipeline/CB_3.0_Index.q $i; done
+for i in ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4_bqsr.REF_NC*bam; do sbatch ../CB_Pipeline/CB_4.0_CallVariants.q $i; done
+sbatch ../CB_Pipeline/CB_5.0_zip.concat.sort.q ../CB_NewProcessData_HNGLVDRXY/mergedCuSO4_bqsr.REF_NC*
+

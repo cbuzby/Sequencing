@@ -1,0 +1,23 @@
+#Once oak and wine parents are in the same vcf (or if you want to use both separately) then run the pipeline on the individual samples (bam files) and THEN merge them together
+
+sbatch ../CB_Pipeline/MakeBQSRTable.q ../CB_NewProcessData_HNGLVDRXY/UnselectedC.aln-se.bam OakWine_variants.vcf.gz
+sbatch ../CB_Pipeline/MakeBQSRTable.q ../CB_NewProcessData_HNGLVDRXY/SelectedC.aln-se.bam OakWine_variants.vcf.gz
+sbatch ../CB_Pipeline/MakeBQSRTable.q ../CB_NewProcessData_HNGLVDRXY/UnselectedA.aln-se.bam OakWine_variants.vcf.gz
+sbatch ../CB_Pipeline/MakeBQSRTable.q ../CB_NewProcessData_HNGLVDRXY/SelectedA.aln-se.bam OakWine_variants.vcf.gz
+
+sbatch ../CB_Pipeline/ApplyBQSR.q ../CB_NewProcessData_HNGLVDRXY/UnselectedC.aln-se.bam ../CB_NewProcessData_HNGLVDRXY/UnselectedC.aln-se.bam_recal_data.table
+sbatch ../CB_Pipeline/ApplyBQSR.q ../CB_NewProcessData_HNGLVDRXY/SelectedC.aln-se.bam ../CB_NewProcessData_HNGLVDRXY/SelectedC.aln-se.bam_recal_data.table
+sbatch ../CB_Pipeline/ApplyBQSR.q ../CB_NewProcessData_HNGLVDRXY/UnselectedA.aln-se.bam ../CB_NewProcessData_HNGLVDRXY/UnselectedA.aln-se.bam_recal_data.table
+sbatch ../CB_Pipeline/ApplyBQSR.q ../CB_NewProcessData_HNGLVDRXY/SelectedA.aln-se.bam ../CB_NewProcessData_HNGLVDRXY/SelectedA.aln-se.bam_recal_data.table
+
+#then merge and concat them
+sbatch ../CB_Pipeline/CB_2.0_merge.split.q ../CB_NewProcessData_HNGLVDRXY/MergedBQSR ../CB_NewProcessData_HNGLVDRXY/UnselectedC.aln-se.bam_bqsr.bam ../CB_NewProcessData_HNGLVDRXY/SelectedC.aln-se.bam_bqsr.bam ../CB_NewProcessData_HNGLVDRXY/UnselectedA.aln-se.bam_bqsr.bam ../CB_NewProcessData_HNGLVDRXY/SelectedA.aln-se.bam_bqsr.bam
+
+#output is ${1}.BQSR.bam
+#STUFF THAT HAPPENS AFTER (edit to make new 2.0 file for just splitting this argument):
+for i in ../CB_NewProcessData_HNGLVDRXY/MergedBQSR*bam ; do sbatch ../CB_Pipeline/CB_3.0_Index.q $i; done
+
+for i in ../CB_NewProcessData_HNGLVDRXY/MergedBQSR*bam; do sbatch ../CB_Pipeline/CB_4.0_CallVariants.q $i; done
+
+sbatch ../CB_Pipeline/CB_5.0_zip.concat.sort.q ../CB_NewProcessData_HNGLVDRXY/MergedBQSR*vcf
+
