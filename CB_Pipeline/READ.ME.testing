@@ -1,0 +1,2 @@
+sbatch CB_4.1_CallVariantsGVCF.q /scratch/cb4097/Sequencing/HNGLVDRXY_Feb/g_y.REF_CABIKA010000001.1.bam
+

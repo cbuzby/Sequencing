@@ -1,0 +1,17 @@
+#Run the following pipeline with Naomi's data and then re-run with mine:
+#Need to add in quality scores using gatk GQSR and joint genotyping, so those will be the .1 versions of each script
+
+
+sbatch CB_1.0_trim.align.sort.q Unselected_OakI
+sbatch CB_1.0_trim.align.sort.q Unselected_WineI
+sbatch CB_1.0_trim.align.sort.q Selected_OakI
+sbatch CB_1.0_trim.align.sort.q Selected_WineI
+
+sbatch CB_2.0_merge.split.q *fastq.gz newfile.bam
+
+#sbatch CB_3.0_Index.q 
+
+sbatch CB_4.0_CallVariants.q
+
+#Copy paste the script or run it as is
+CB_5.0_zip.concat.sort.q g_y
