@@ -14,6 +14,9 @@ Notes from Grace: use repeatmasker (isb), or trim off telomeres
 * probably also stops the transposons
 * there could also be variants
 
+SNP-indices: defined as the number of reads containing a SNP divided by the total sequencing depth at that SNP
+
+${\Delta}$SNP:  the difference of the low value bulk SNP-index from the high value bulk SNP-index
 
 
 ```{r setup, include=FALSE}
@@ -41,7 +44,16 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
+
 ```
+
+## Dataset:
+
+```{r}
+#rawData = "Data\\TEST2_MergedBQSR.output.table"
+rawData = "Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+```
+
 
 ```{r, include=FALSE}
 #Function to Plot
@@ -159,7 +171,7 @@ PipelineFunc <- function(HighBulk, LowBulk, rawData,
                          maxdepth = maxdepth,
                          minsampledepth = minsampledepth,
                          mingq = mingq,
-                         windowSize = 5e4,
+                         windowSize = 3e4, #5e4 works
                          Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
                                  "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
                                  "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
@@ -282,7 +294,7 @@ plotallfunc <- function(df_filt, HighBulk, LowBulk){
     #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle(mytitle)
   
-  print(plot.gprime.CB)
+  #print(plot.gprime.CB)
   #print(pointsofsig)
   print(plot.gprime)
   print(plot.deltasnp + theme(legend.position = "bottom")) 
@@ -297,7 +309,7 @@ Here I loaded in each bulk through ```importFromGATK()``` and then concatenated 
 The density plots show the range of each of these fields, and helps to pick filters to use in downstream steps.
 
 ```{r, include = FALSE}
-rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+#rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
 
 Chroms <- ChromKey$CHROM
 
@@ -355,76 +367,83 @@ rbind(OakI_Selected, OakI_Unselected, WineI_Selected, WineI_Unselected) %>% merg
 ```
 
 
-```{r, echo = FALSE, eval = FALSE}
-head(HNG)
+```{r, echo = FALSE}
+#head(HNG)
+#unique(HNG$CHROM)
 
-ggplot(HNG, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference Allele Frequency") + facet_wrap(~CHROM)
+HNG <- subset(HNG, chromosomes != "M")
+ggplot(HNG, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Reference Allele Frequency") + facet_wrap(~chromosomes)
 
-ggplot(HNG, aes(x = AD_REF.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Reference AD (unfiltered allele depth)") + 
-  geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")
+ggplot(HNG, aes(x = AD_REF.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Reference AD (unfiltered allele depth)") + 
+  geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")+ facet_wrap(~chromosomes)
 
-ggplot(HNG, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt AD (unfiltered allele depth)") + 
-  geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")
+ggplot(HNG, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Alt AD (unfiltered allele depth)") + 
+  geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")+ facet_wrap(~chromosomes)
 
-ggplot(HNG, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("DP (filtered depth, at the sample level)") + geom_vline(xintercept = minsampledepth, linetype = "dashed")
+ggplot(HNG, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("DP (filtered depth, at the sample level)") + geom_vline(xintercept = minsampledepth, linetype = "dashed")+ facet_wrap(~chromosomes)
 
-ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+#ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")+ facet_wrap(~chromosomes)
 
-ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")
+#ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")+ facet_wrap(~chromosomes)
 
-table(HNG$GQ.HIGH)
+#table(HNG$GQ.HIGH)
 
-ggplot(HNG, aes(x = SNPindex.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + ggtitle("SNP Index") 
+ggplot(HNG, aes(x = SNPindex.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("SNP Index")+ facet_wrap(~chromosomes)
 
 ```
 
 ### Extracting Stats for Telomeres
 
+
 ```{r, echo = FALSE}
 HNG %>% group_by(CHROM) %>% mutate(Start = min(POS) + 350, End = max(POS) - 350) -> HNGt
 
 # ggplot(HNGt, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-#   ggtitle("Reference Allele Frequency") 
+#   ggtitle("Reference Allele Frequency by Tel Region") 
 
 ggplot(HNGt, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("Reference Allele Frequency") + 
+  ggtitle("Reference Allele Frequency by Tel Region") + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End))+ theme(legend.position = "bottom")
 
 ggplot(HNGt, aes(x = AD_REF.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("Reference AD (unfiltered allele depth)") + 
+  ggtitle("Reference AD (unfiltered allele depth by Tel Region)") + 
   #geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed") + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End))+ theme(legend.position = "bottom")
 
 ggplot(HNGt, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("Alt AD (unfiltered allele depth)") + 
+  ggtitle("Alt AD (unfiltered allele depth) by Tel Region") + 
   #geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")  + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End))+ theme(legend.position = "bottom")
 
 ggplot(HNGt, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("DP (filtered depth, at the sample level)") + #geom_vline(xintercept = minsampledepth, linetype = "dashed")  + 
+  ggtitle("DP (filtered depth, at the sample level) by Tel Region") + #geom_vline(xintercept = minsampledepth, linetype = "dashed")  + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End))+ theme(legend.position = "bottom")
 
 ggplot(HNGt, aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")  + 
+  ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct) by Tel Region")  + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End)) + theme(legend.position = "bottom")
 
 ggplot(HNGt, aes(x = SNPindex.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 1) + 
-  ggtitle("SNP Index") + 
+  ggtitle("SNP Index by Tel Region") + 
   facet_grid(cols = vars(HNGt$POS < HNGt$Start | HNGt$POS > HNGt$End)) + theme(legend.position = "bottom")
 
 ```
 
+${\Delta}$SNP:  the difference of the low value bulk SNP-index from the high value bulk SNP-index
+
+
 ## Run All Data Through Functions
 
 ```{r, include = FALSE}
-rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+#rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
 #rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\mergedCuSO4_bqsr.REF_NC_001133.9.bam.SortedCat.vcf.output.table"
 
-SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData) #BulkSize = c(2.1e9, 1.26e10),
-SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10))
-Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9))
-Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10))
+HNG %>% filter(CHROM != "NC_001133.9") -> HNGc
 
+SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10), Chroms = unique(HNGc$CHROM))
+SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10), Chroms = unique(HNGc$CHROM))
+Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9), Chroms = unique(HNGc$CHROM))
+Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10), Chroms = unique(HNGc$CHROM))
 ```
 
 ```{r, eval = FALSE, echo = FALSE}
@@ -444,10 +463,12 @@ Raw data is defined as a vcf.output.table, downloaded from $SCRATCH/Sequencing/*
 ```{r, eval = FALSE}
 #rawData = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
 
-SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10))
-SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10))
-Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9))
-Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10))
+HNG %>% filter(CHROM != "NC_001133.9") -> HNGc
+
+SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10), Chroms = unique(HNGc$CHROM))
+SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10), Chroms = unique(HNGc$CHROM))
+Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9), Chroms = unique(HNGc$CHROM))
+Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10), Chroms = unique(HNGc$CHROM))
 
 ```
 
@@ -471,12 +492,11 @@ These two bulks should only differ at Chr I since that is the fixed chromosome; 
 ```{r}
 # plotallfunc(subset(Unselected, Gprime < 50), HighBulk = "UnselectedC", LowBulk = "UnselectedA")
 plotallfunc(Unselected, HighBulk = "UnselectedC", LowBulk = "UnselectedA")
+plotallfunc(subset(Unselected, Gprime < 20), HighBulk = "UnselectedC", LowBulk = "UnselectedA")
 
 ```
 
 ### Selected Bulks: Epistasis with Chromosome I
-
-
 
 ```{r}
 
@@ -510,11 +530,23 @@ Oak_8 <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA",
                            rawData = rawData, 
                            Chroms = "NC_001140.6", windowSize = 1e4)
 
+Oak_5 <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", 
+                           rawData = rawData, 
+                           Chroms = "NC_001137.3", windowSize = 1e4)
+
+Oak_7 <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", 
+                           rawData = rawData, 
+                           Chroms = "NC_001139.9", windowSize = 2e4)
+
+Oak_11 <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", 
+                           rawData = rawData, 
+                           Chroms = "NC_001143.9", windowSize = 1e4)
 
 ```
 
 
-```{r, echo = FALSE}
+```{r, eval = FALSE}
+
 plot.deltasnp <- plotQTLStatsCB(SNPset = Selected_3, var = "deltaSNP", plotIntervals = TRUE)
 
 
@@ -533,22 +565,29 @@ ggplot(data = Selected_3, aes(x = POS, y = Gprime)) + geom_line(size = 1, color 
 
 ### Identifying CUP1 gene on Chr VIII
 
-```{r, echo = FALSE}
+```{r}
 
-plotallfunc(Oak_8, HighBulk = "SelectedA", LowBulk = "SelectedC")
-plot.deltasnp <- plotQTLStatsCB(SNPset = Oak_8, var = "deltaSNP", plotIntervals = TRUE)
+# ggplot(data = Oak_8, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1, color = CBchromPalette[7]) + 
+#   scale_x_continuous(breaks = seq(from = 0, to = max(Oak_8$POS), 
+#                                   by = 10^(floor(log10(max(Oak_8$POS))))), 
+#                     # labels = format_genomic(), 
+#                     name = "Genomic Position (Mb)") +
+#   theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+#   guides(colour = "none") +
+#     geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+#     geom_vline(xintercept = c(105586), col = "gray", linetype = "dotted", size = 1) + #CEN8
+#   facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Oak Fixed, Chr VIII")
 
 
-ggplot(data = Oak_8, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1, color = CBchromPalette[7]) + 
-  scale_x_continuous(breaks = seq(from = 0, to = max(Oak_8$POS), 
-                                  by = 10^(floor(log10(max(Oak_8$POS))))), 
-                    # labels = format_genomic(), 
-                    name = "Genomic Position (Mb)") +
-  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
-  guides(colour = "none") +
-    geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
-    geom_vline(xintercept = c(105586), col = "gray", linetype = "dotted", size = 1) + #CEN8
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Oak Fixed, Chr VIII")
+plotQTLStats(SNPset = Oak_5, var = "Gprime", plotThreshold = TRUE, q = 0.01) + geom_vline(xintercept = Oak_5$POS[Oak_5$Gprime == max(Oak_5$Gprime)], linetype = "dashed", color = "blue")
+Oak_5$POS[Oak_5$Gprime == max(Oak_5$Gprime)] #TIM9
+plotQTLStats(SNPset = Oak_7, var = "Gprime", plotThreshold = TRUE, q = 0.01) + geom_vline(xintercept = Oak_7$POS[Oak_7$Gprime == max(Oak_7$Gprime)], linetype = "dashed", color = "blue")
+Oak_7$POS[Oak_7$Gprime == max(Oak_7$Gprime)] #YGL007C-A
+plotQTLStats(SNPset = Oak_8, var = "Gprime", plotThreshold = TRUE, q = 0.01) + geom_vline(xintercept = Oak_8$POS[Oak_8$Gprime == max(Oak_8$Gprime)], linetype = "dashed", color = "blue")
+Oak_8$POS[Oak_8$Gprime == max(Oak_8$Gprime)] #CUP1
+plotQTLStats(SNPset = Oak_11, var = "Gprime", plotThreshold = TRUE, q = 0.01) + geom_vline(xintercept = Oak_11$POS[Oak_11$Gprime == max(Oak_11$Gprime)], linetype = "dashed", color = "blue")
+Oak_11$POS[Oak_11$Gprime == max(Oak_11$Gprime)] #PXL1
+
 
 ```
 
@@ -642,5 +681,20 @@ ggplot(data = subset(NullComparison, Gprime < 50), aes(x = POS, y = Gprime, colo
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Comparison of Selected Total and Unselected Total")+ theme(legend.position = "bottom")
 
 ```
+
+#### Chr XVI Peak
+
+Since there seems to be some discrepancy between selected and unselected in Chr XVI, zooming in on that chromosome to look. It is probably an artifact since there isn't anything in that region in the Oak or Wine fixed (QTL) and the peak is extremely narrow.
+
+```{r}
+#Pulling out Chr XVI for epistasis
+Selected_16 <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", 
+                           rawData = rawData, 
+                           Chroms = "NC_001148.4", windowSize = 1e4)
+
+plotallfunc(Selected_16, HighBulk = "SelectedA", LowBulk = "SelectedC")
+
+```
+
 
 
