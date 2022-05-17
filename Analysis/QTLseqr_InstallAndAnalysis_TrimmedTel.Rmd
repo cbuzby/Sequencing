@@ -450,11 +450,15 @@ Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", ra
 head(SAUA)
 
 SAUA %>% filter(Gprime > 20) -> SAUAfilt20
-
 write.csv(SAUAfilt20, file = "SAUAfilt20.csv")
 
-ggplot(SAUA, aes(x = POS, y = Gprime)) + geom_line() + facet_grid(cols = vars(CHROM))
+#ggplot(SAUA, aes(x = POS, y = Gprime)) + geom_line() + facet_grid(cols = vars(CHROM))
 
+SAUA %>% filter(Gprime > 10) -> SAUAfilt10
+write.csv(SAUAfilt10, file = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\SAUAfilt10.csv")
+
+SAUA %>% filter(Gprime > 5) -> SAUAfilt05
+write.csv(SAUAfilt05, file = "C:\\Users\\cassa\\OneDrive\\Documents\\R_SiegalLab\\SequencingPractice\\SAUAfilt05.csv")
 ```
 
 

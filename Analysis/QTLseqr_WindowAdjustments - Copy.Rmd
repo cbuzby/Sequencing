@@ -1,0 +1,1911 @@
+---
+title: "QTLseq Method of Bulk Segregant Analysis"
+author: "Cassandra Buzby"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+Keep in mind, use coolors.co for color palettes :)
+
+Notes from Grace: use repeatmasker (isb), or trim off telomeres
+* institute for systems biology, seattle
+* probably also stops the transposons
+* there could also be variants
+
+SNP-indices: defined as the number of reads containing a SNP divided by the total sequencing depth at that SNP
+
+${\Delta}$SNP:  the difference of the low value bulk SNP-index from the high value bulk SNP-index
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+#ggplot2::theme_set(theme_light())
+ggplot2::theme_set(theme_cowplot())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+load("Selected_4-13-22.Rdata")
+load("Unselected_4-13-22.Rdata")
+
+getwd()
+```
+
+## Dataset:
+
+Be sure to load in the BQSR-adjusted data.
+
+```{r}
+rawData = "Data\\TEST2_MergedBQSR.output.table"
+#rawData = "Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+```
+
+
+### Functions for running analysis and plots on all samples
+
+Three functions (two below) complete the analysis uniformly between each pair of bulks. I've defined the min and max depths, in sample depth, and min genome quality at the top, and then used these arguments in ```PipelineFunc``` which analyzes the data using QTLseqR functions ```filterSNPs()``` , ```runGprimeAnalysis``` , and ```runQTLseqAnalysis```. 
+
+*removed*:
+I have also adjustd ```plotQTLStatsCB()``` from QTLSeqR's function ```plotQTLStats()``` to remove errors in not having enough points to create a threshold, since this was sometimes present in a single chromosome and then prevented the remaining chromosomes from being analyzed. Now that more data is passing the filters, I will likely change this back.
+
+The last function is ```plotallfunc()```, in which I input the output dataframe (filtered and analyzed) by ```PipelineFunc()``` to several plots, some of which are built into QTLSeqR and some of which I have created myself to better separate the data. Both functions are printed below, and each is then used on all samples (hidden) to produce the plots below.
+
+
+```{r}
+#################################################
+#Change this to analyze all differently
+#################################################
+
+mindepth = 50
+maxdepth = 1500
+minsampledepth = 50
+mingq = 0.98
+
+PipelineFunc <- function(HighBulk, LowBulk, rawData,
+                         mindepth = mindepth,
+                         maxdepth = maxdepth,
+                         minsampledepth = minsampledepth,
+                         mingq = mingq,
+                         windowSize = 2e4, #5e4 works
+                         Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4"),
+                         BulkSize = 1000
+                         ){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms #"NC_001133.9" #
+        )
+
+df %>% merge(.,ChromKey) %>% 
+  as.data.frame() %>% na.omit() -> df
+
+colnames(df)[1] <- "NC_Chrom"
+colnames(df)[which(colnames(df) == "chromosomes")] <- "CHROM"
+
+df$CHROM <- factor(df$CHROM, levels = c("I", "II", "III", "IV", 
+                                        "V", "VI", "VII", "VIII", 
+                                        "IX", "X", "XI", "XII", 
+                                        "XIII", "XIV", "XV", "XVI", "M"))
+#################################
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = mindepth, #100
+        maxTotalDepth = maxdepth, #400
+        minSampleDepth = minsampledepth, #40
+        minGQ = mingq #99
+    )
+
+  #df %>% merge(.,ChromKey)
+  #df_filt <- df
+  
+  #Run G' analysis
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize,
+      popStruc = "F2",
+      bulkSize = 1000, #c(25, 25)
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+    
+  return(as.data.frame(df_filt))
+}
+
+#######################################################################
+# Change this to plot differently #
+#######################################################################
+
+plotallfunc <- function(df_filt, HighBulk, LowBulk){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+    
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # plot.gprime.idu <- ggplot(df_filt, aes(x = as.numeric(idu), y = Gprime, color = chromosomes)) + 
+  #   geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = GprimeT, linetype = "dashed") +
+  #   ggtitle(mytitle) + scale_colour_manual(values=CBchromPalette)
+  # 
+  # plot.nlogp <- ggplot(df_filt, aes(x = as.numeric(idu), y = negLog10Pval, color = chromosomes)) + 
+  #   geom_point(size = 3, alpha = 0.8) + geom_hline(yintercept = -log(0.05), linetype = "dashed") +
+  #   ggtitle(mytitle) + scale_colour_manual(values=CBchromPalette)
+
+  plot.gprime <- plotQTLStats(SNPset = df_filt, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+  plot.deltasnp <- plotQTLStats(SNPset = df_filt, var = "deltaSNP", plotIntervals = TRUE)
+
+  
+  plot.gprime.CB <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+    #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle(mytitle)
+  
+  #print(plot.gprime.idu)
+  #print(plot.nlogp)
+  
+  pointsofsig <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = abs(deltaSNP) < 0.1)) + geom_point(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+    #geom_vline(xintercept = 212535, linetype = "dashed", size = 1) + #CUP1 gene
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle(mytitle)
+  
+  #print(plot.gprime.CB)
+  #print(pointsofsig)
+  print(plot.gprime)
+  print(plot.deltasnp + theme(legend.position = "bottom")) 
+}
+
+```
+
+### Summaries of Files
+
+Here I loaded in each bulk through ```importFromGATK()``` and then concatenated the data frames so that each had uniform names for their columns (ie AD, DP, PL, and GQ). These fields refer to allele depth (AD) of either reference or alternate allele, unfiltered depth (DP) of the reads, genome quality (GQ) which is apparently only up to 99, and PL I don't remember (but look this up).
+
+The density plots show the range of each of these fields, and helps to pick filters to use in downstream steps.
+
+```{r, eval = FALSE}
+Chroms <- ChromKey$CHROM
+
+OakI_Selected <- importFromGATK(
+        file = rawData,
+        highBulk = "SelectedC",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Selected")
+
+OakI_Unselected <- importFromGATK(
+        file = rawData,
+        highBulk = "UnselectedC",
+        lowBulk = "SelectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Unselected")
+
+WineI_Selected <- importFromGATK(
+        file = rawData,
+        highBulk = "SelectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Selected")
+
+WineI_Unselected <- importFromGATK(
+        file = rawData,
+        highBulk = "UnselectedA",
+        lowBulk = "UnselectedC",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Unselected")
+
+OakI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> OakI_Selected
+
+OakI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> OakI_Unselected
+
+WineI_Selected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> WineI_Selected
+
+WineI_Unselected %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                REF_FRQ, deltaSNP, Dataset) -> WineI_Unselected
+
+rbind(OakI_Selected, OakI_Unselected, WineI_Selected, WineI_Unselected) %>% merge(., ChromKey) -> HNG
+
+#save file to load in later
+save(HNG, file = "HNG_4-13-22.Rdata")
+```
+
+
+```{r}
+
+load("HNG_4-13-22.Rdata")
+
+HNG <- subset(HNG, chromosomes != "M")
+# ggplot(HNG, aes(x = REF_FRQ, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Reference Allele Frequency") + facet_wrap(~chromosomes)
+# 
+# ggplot(HNG, aes(x = AD_REF.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Reference AD (unfiltered allele depth)") + 
+#   geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")+ facet_wrap(~chromosomes)
+# 
+# ggplot(HNG, aes(x = AD_ALT.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Alt AD (unfiltered allele depth)") + 
+#   geom_vline(xintercept = c(mindepth,maxdepth), linetype = "dashed")+ facet_wrap(~chromosomes)
+
+ggplot(HNG, aes(x = DP.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("DP (filtered depth, at the sample level)") + geom_vline(xintercept = minsampledepth, linetype = "dashed")+ facet_wrap(~chromosomes)
+
+#ggplot(HNG[HNG$GQ.HIGH > 97,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")+ facet_wrap(~chromosomes)
+
+#ggplot(HNG[HNG$GQ.HIGH < 99,], aes(x = GQ.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("Genotype Quality (Phred-scaled confidence that the genotype assignment  is correct)")+ facet_wrap(~chromosomes)
+
+#table(HNG$GQ.HIGH)
+
+#ggplot(HNG, aes(x = SNPindex.HIGH, fill = Dataset)) + geom_density(alpha = 0.5, size = 0.8) + ggtitle("SNP Index")+ facet_wrap(~chromosomes)
+
+```
+
+${\Delta}$SNP:  the difference of the low value bulk SNP-index from the high value bulk SNP-index
+
+## Run All Data Through Functions
+
+```{r, eval = FALSE}
+
+HNG %>% filter(CHROM != "NC_001133.9") -> HNGc
+
+SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10), Chroms = unique(HNGc$CHROM), windowSize = 1e4)
+SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10), Chroms = unique(HNGc$CHROM))
+Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9), Chroms = unique(HNGc$CHROM))
+Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10), Chroms = unique(HNGc$CHROM))
+
+save(SAUA, file = "SAUA_4-13-22.Rdata")
+save(SCUC, file = "SCUC_4-13-22.Rdata")
+save(Selected, file = "Selected_4-13-22.Rdata")
+save(Unselected, file = "Unselected_4-13-22.Rdata")
+
+```
+
+```{r, eval = FALSE}
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+load("Selected_4-13-22.Rdata")
+load("Unselected_4-13-22.Rdata")
+```
+
+Raw data is defined as a vcf.output.table, downloaded from $SCRATCH/Sequencing/* where that iteration of the sequencing pipeline has been stored. Naming of these variables and the pipeline itself is stored in READ.ME in each folder.
+
+```{r, eval = FALSE}
+
+HNG %>% filter(CHROM != "NC_001133.9") -> HNGc
+
+SAUA <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10), Chroms = unique(HNGc$CHROM))
+SCUC <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10), Chroms = unique(HNGc$CHROM))
+Selected <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9), Chroms = unique(HNGc$CHROM))
+Unselected <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10), Chroms = unique(HNGc$CHROM))
+
+```
+
+## Checking out stats for FDR on the Unselected bulks
+
+This code shows how the getFDRThreshold() function works, though I attempted to use the pvalue to be above the FDR threshold rather than the adjusted p-value, which makes this more complicated.
+
+```{r, eval = FALSE}
+#Their FDR function
+fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q) #q is 0.01
+
+getFDRThreshold <- function (pvalues, alpha = 0.01) 
+  {
+    sortedPvals <- sort(pvalues, decreasing = FALSE)
+    pAdj <- p.adjust(sortedPvals, method = "BH")
+    if (!any(pAdj < alpha)) {
+        fdrThreshold <- NA
+    }
+    else {
+        fdrThreshold <- sortedPvals[max(which(pAdj < alpha))]
+    }
+    return(fdrThreshold)
+  }
+
+fdrT_Unselected <- getFDRThreshold(Unselected$pvalue, alpha = 0.01)
+GprimeT <- Unselected[which(Unselected$pvalue == fdrT_Unselected), "Gprime"]
+
+
+```
+
+
+## Adjusting window sizes to figure out new stats
+
+First, let's plot the G values for each rather than the G' values (so no window is used). [Code is included but it's not worth looking at these plots].
+
+```{r, eval = FALSE}
+fdrT_Unselected <- getFDRThreshold(Unselected$pvalue, alpha = 0.01)
+GprimeT <- Unselected[which(Unselected$pvalue == fdrT_Unselected), "Gprime"]
+
+
+head(SAUA)
+df_filt <- SAUA
+
+ggplot(data = subset(df_filt, G < 100), aes(x = POS, y = G, color = CHROM)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+  geom_hline(yintercept = GprimeT, color = "red", alpha = 0.5) +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("SAUA G")
+
+ggplot(data = subset(df_filt, Gprime < 100), aes(x = POS, y = Gprime, color = CHROM)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+  geom_hline(yintercept = GprimeT, color = "red", alpha = 0.5) +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("SAUA Gprime")
+
+
+for(i in unique(df_filt$CHROM)){
+  chromplot <- ggplot(data = subset(df_filt, CHROM == i), aes(x = POS, y = G)) + geom_line() +
+    scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    name = "Genomic Position") +
+    theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+      geom_hline(yintercept = GprimeT, color = "red", alpha = 0.5) +
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + ggtitle(paste("Chromosome ", i))
+  print(chromplot)
+}
+
+for(i in unique(df_filt$CHROM)){
+  chromplot <- ggplot(data = subset(df_filt, CHROM == i), aes(x = POS, y = Gprime)) + geom_line() + 
+    scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    name = "Genomic Position") +
+    theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  guides(colour = "none") + 
+      geom_hline(yintercept = GprimeT, color = "red", alpha = 0.5) +
+    scale_colour_manual(values=CBchromPalette) + ggtitle(paste("Chromosome ", i))
+  print(chromplot)
+}
+  
+```
+
+## Re-evaluating the G' Window Stuff
+
+```{r}
+runGprimeAnalysis <- function (SNPset, windowSize = 1e+06, outlierFilter = "deltaSNP", 
+    filterThreshold = 0.1, ...) 
+{
+    message("Counting SNPs in each window...")
+    SNPset <- SNPset %>% dplyr::group_by(CHROM) %>% dplyr::mutate(nSNPs = countSNPs_cpp(POS = POS, 
+        windowSize = windowSize))
+    
+    message("Calculating tricube smoothed delta SNP index...")
+    SNPset <- SNPset %>% dplyr::mutate(tricubeDeltaSNP = tricubeStat(POS = POS, 
+        Stat = deltaSNP, windowSize, ...))
+    
+    message("Calculating G and G' statistics...")
+    SNPset <- SNPset %>% dplyr::mutate(G = getG(LowRef = AD_REF.LOW, 
+        HighRef = AD_REF.HIGH, LowAlt = AD_ALT.LOW, HighAlt = AD_ALT.HIGH), 
+        Gprime = tricubeStat(POS = POS, Stat = G, windowSize = windowSize, 
+            ...)) %>% dplyr::ungroup() %>% dplyr::mutate(pvalue = getPvals(Gprime = Gprime, 
+        deltaSNP = deltaSNP, outlierFilter = outlierFilter, filterThreshold = filterThreshold), 
+        negLog10Pval = -log10(pvalue), qvalue = p.adjust(p = pvalue, 
+            method = "BH"))
+    return(as.data.frame(SNPset))
+}
+
+#So how many SNPs are within each chromosome?
+
+ggplot(SAUA, aes(x = POS, color = CHROM)) + geom_density() + ggtitle("SNP Density by Position for Selected/Unselected Wine") +
+      scale_colour_manual(values=CBchromPalette)
+
+ggplot(SCUC, aes(x = POS, color = CHROM)) + geom_density() + ggtitle("SNP Density by Position for Selected/Unselected Oak") +
+      scale_colour_manual(values=CBchromPalette)
+ggplot(Unselected, aes(x = POS, color = CHROM)) + geom_density() + ggtitle("SNP Density by Position for Unselected Bulks") +
+      scale_colour_manual(values=CBchromPalette)
+ggplot(Selected, aes(x = POS, color = CHROM)) + geom_density() + ggtitle("SNP Density by Position for Selected Bulks") +
+      scale_colour_manual(values=CBchromPalette)
+
+ggplot(subset(SCUC, CHROM == "XII" | CHROM == "IV"), aes(x = POS, color = CHROM)) + geom_density()
+```
+
+## How big is each chromosome?
+
+```{r}
+SAUA %>% group_by(CHROM) %>% summarize(MP = max(POS)) -> maxpositions
+
+ggplot(maxpositions, aes(x = CHROM, y = MP, fill = CHROM)) + geom_col() + ylim(0, max(maxpositions$MP)) + ggtitle("Approximate length of each Chromosome") + scale_fill_manual(values=CBchromPalette) +  guides(fill = "none") 
+```
+
+
+## What is the min window size you can have per chromosome?
+
+```{r}
+tricubeStat <- function(POS, Stat, windowSize = 2e6, ...)
+{
+    if (windowSize <= 0)
+        stop("A positive smoothing window is required")
+    stats::predict(locfit::locfit(Stat ~ locfit::lp(POS, h = windowSize, deg = 0), ...), POS)
+}
+
+getG <- function(LowRef, HighRef, LowAlt, HighAlt)
+{
+    exp <- c(
+        (LowRef + HighRef) * (LowRef + LowAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowRef + HighRef) * (HighRef + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowRef + LowAlt) * (LowAlt + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt),
+        (LowAlt + HighAlt) * (HighRef + HighAlt) / (LowRef + HighRef + LowAlt + HighAlt)
+    )
+    obs <- c(LowRef, HighRef, LowAlt, HighAlt)
+    
+    G <-
+        2 * (rowSums(obs * log(
+            matrix(obs, ncol = 4) / matrix(exp, ncol = 4)
+        )))
+    return(G)
+}
+```
+
+```{r, eval = FALSE}
+df <- SAUA
+perm <- data.frame()
+
+window <- 3000
+
+temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "II"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom II")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_III <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "III"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_III, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom III")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_IV <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "IV"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_IV, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom IV")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_V <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "V"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_V, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom V") + geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_VI <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "VI"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_VI, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom VI")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_VII <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "VII"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_VII, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom VII")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_VIII <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "VIII"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_VIII, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom VIII")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_IX <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "IX"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_IX, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom IX")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_X <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "X"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_X, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom X")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XI <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XI"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XI, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XI")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XII <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XII"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XII, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XII")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XIII <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XIII"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XIII, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XIII")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XIV <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XIV"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XIV, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XIV")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XV <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XV"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XV, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XV")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+temp_XVI <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XVI"),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+ggplot(temp_XVI, aes(x = POS, y = Gprime)) + geom_line() + ggtitle("Chrom XVI")+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+
+```
+
+### Do this in a loop - Window Size 3000
+
+Not including figures since each prints on its own; see plots below for 3k and 30k window sizes.
+
+```{r, eval=FALSE}
+df <- Unselected
+perm <- data.frame()
+
+window <- 3000
+
+
+
+perm_Unselected <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_Unselected <- rbind(perm_Unselected, temp_II)
+}
+
+perm_Unselected_3000 <- perm_Unselected
+
+#Selected A
+df <- SAUA
+perm <- data.frame()
+
+window <- 3000
+
+perm_A <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+#Selected C
+
+df <- SCUC
+perm <- data.frame()
+
+window <- 3000
+
+perm_C <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_C <- rbind(perm_C, temp_II)
+}
+
+```
+
+
+
+### Window Size 8000
+
+```{r, eval=FALSE}
+#Unselected
+df <- Unselected
+perm <- data.frame()
+
+window <- 8000
+
+perm_Unselected <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_Unselected <- rbind(perm_Unselected, temp_II)
+}
+
+perm_Unselected_3000 <- perm_Unselected
+
+#Selected A
+df <- SAUA
+perm <- data.frame()
+
+
+perm_A <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+#Selected C
+
+df <- SCUC
+perm <- data.frame()
+
+perm_C <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_C <- rbind(perm_C, temp_II)
+}
+
+```
+
+### Window Size 12,000
+
+```{r, eval=FALSE}
+#Unselected
+df <- Unselected
+perm <- data.frame()
+
+window <- 12000
+
+perm_Unselected <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_Unselected <- rbind(perm_Unselected, temp_II)
+}
+
+perm_Unselected_3000 <- perm_Unselected
+
+#Selected A
+df <- SAUA
+perm <- data.frame()
+
+
+perm_A <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+#Selected C
+
+df <- SCUC
+perm <- data.frame()
+
+perm_C <- data.frame()
+for(i in unique(df$CHROM)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == i),
+      windowSize = window, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom", i))+ geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot)
+
+  perm_C <- rbind(perm_C, temp_II)
+}
+
+```
+
+### Loop through window sizes of a single chromosome XVI
+
+Each plot is through ```plotQTLStats```, which automatically plots the FDR threshold calculated by ```getFDRthreshold()```. It is notable that the threshold is not present in every window size, in a pattern that is not consistent (ie, it is not only missing in higher window sizes or lower window sizes). Automatic thresholds are plotted in red, whereas my calculated thresholds are plotted manually in blue.
+
+```{r}
+#Selected A
+df <- SAUA
+perm <- data.frame()
+
+
+# perm_A <- data.frame()
+# for(i in c(3000, 6000, 12000, 24000, 48000)){
+#   temp_II <- runGprimeAnalysis(
+#       SNPset = subset(df, CHROM == "XVI"),
+#       windowSize = i, #1e6
+#       outlierFilter = "deltaSNP", maxk = 1000)
+#     plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom XVI | Window ", i)) + 
+#     geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "cyan")
+#   print(plot)
+# 
+#   perm_A <- rbind(perm_A, temp_II)
+# }
+# 
+
+# Trying this but with the automatic FDR
+
+perm_A <- data.frame()
+for(i in c(3000, 6000, 12000, 24000, 48000)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XVI"),
+      windowSize = i, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+    plot.gprime <- plotQTLStats(SNPset = temp_II, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+    plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom XVI | Window ", i)) + 
+    geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "cyan")
+  print(plot.gprime)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+```
+
+### Loop through window sizes of a single chromosome IV
+
+
+```{r}
+getFDRThreshold_CB <- function (pvalues, Gprime, alpha = 0.01) 
+  {
+    sortedPvals <- sort(c(0.0001, 0.00001, 0.000001, 0.0000001, pvalues), decreasing = FALSE)
+    pAdj <- p.adjust(sortedPvals, method = "BH")
+    
+    fdrThreshold <- sortedPvals[max(which(pAdj < 0.01))]
+    
+    #plot(temp_II$Gprime~log(temp_II$pvalue))
+    testlogp <- lm(temp_II$Gprime~log(temp_II$pvalue))
+    Gthreshold <- exp(testlogp$coefficients[2]*log(fdrThreshold) + testlogp$coefficients[1])
+    
+    return(Gthreshold)
+}
+
+```
+
+```{r}
+#Selected A
+df <- SAUA
+perm <- data.frame()
+
+
+perm_A <- data.frame()
+for(i in c(3000, 6000, 12000, 24000, 48000)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "IV"),
+      windowSize = i, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+  fdrt_II <- getFDRThreshold_CB(temp_II$pvalue)
+    plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom XVI | Window ", i)) + 
+    #geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "cyan") +
+      geom_hline(yintercept = fdrt_II, color = "skyblue")
+  print(plot)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+
+# Trying this but with the automatic FDR
+
+perm_A <- data.frame()
+for(i in c(3000, 6000, 12000, 24000, 48000)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "IV"),
+      windowSize = i, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+    plot.gprime <- plotQTLStats(SNPset = temp_II, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+    plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom XVI | Window ", i)) + 
+    geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "skyblue")
+  print(plot.gprime)
+
+  perm_A <- rbind(perm_A, temp_II)
+}
+
+```
+
+
+### Correlating pval, adjp, and Gprime
+
+```{r}
+
+df <- SAUA
+perm_A <- data.frame()
+i <- 30000
+temp_II <- runGprimeAnalysis(
+    SNPset = subset(df, CHROM == "IV"),
+    windowSize = i, #1e6
+    outlierFilter = "deltaSNP", maxk = 1000)
+
+# #Don't run this in a loop
+sortedPvals <- sort(temp_II$pvalue, decreasing = FALSE)
+pAdj <- p.adjust(sortedPvals, method = "BH")
+
+plot(sortedPvals, pAdj, main = "Sorted vs Adjusted p-values, Wine")
+abline(h = 0.01)
+
+plot(temp_II$Gprime, log(temp_II$pvalue), main = "Gprime vs log(p-value) for Wine")
+abline(lm(temp_II$Gprime~log(temp_II$pvalue)), col = "blue") #this one matches when pval is on x axis
+abline(lm(log(temp_II$pvalue)~temp_II$Gprime), col = "red") #this matches when gprime is on x axis - NOT WHAT WE WANT
+
+testlogp <- lm(temp_II$Gprime~log(temp_II$pvalue))
+testlogp$coefficients
+
+log(0.01)
+
+```
+
+
+### What would the FDR line be without Chr V, VII, VIII, and XI?
+
+Use default window size 30,000. These did not automatically plot an FDR threshold, indicating that there would not have been one at this window size(?)
+
+```{r}
+
+PFunc <- function(HighBulk, LowBulk, rawData,
+                         mindepth = mindepth,
+                         maxdepth = maxdepth,
+                         minsampledepth = minsampledepth,
+                         mingq = mingq,
+                         windowSize = 3e4, #5e4 works
+                         Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 #"NC_001137.3", 
+                                 "NC_001138.5", #"NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", #"NC_001143.9", 
+                                 "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4"),
+                         BulkSize = 1000
+                         ){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms #"NC_001133.9" #
+        )
+
+df %>% merge(.,ChromKey) %>% 
+  #group_by(CHROM) %>% mutate(Start = min(POS) + 350, End = max(POS) - 350) %>% 
+  as.data.frame() %>% na.omit() -> df
+
+colnames(df)[1] <- "NC_Chrom"
+colnames(df)[which(colnames(df) == "chromosomes")] <- "CHROM"
+
+df$CHROM <- factor(df$CHROM, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+#################################
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = mindepth, #100
+        maxTotalDepth = maxdepth, #400
+        minSampleDepth = minsampledepth, #40
+        minGQ = mingq #99
+    )
+
+  #Run G' analysi
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize, #1e6
+      outlierFilter = "deltaSNP")
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize,
+      popStruc = "F2",
+      bulkSize = 1000, #c(25, 25)
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+    
+  return(as.data.frame(df_filt))
+}
+```
+
+##### Wine Selected vs Unselected with Threshold Calculated w/o Major QTL
+
+```{r}
+SAUA_wo_5_7_8_11 <- PFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10))
+
+plotQTLStats(SNPset = SAUA_wo_5_7_8_11, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+```
+
+##### Oak Selected vs Unselected with Threshold Calculated w/o Major QTL
+
+```{r}
+SCUC_wo_5_7_8_11 <- PFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(2.1e9, 1.26e10))
+
+plotQTLStats(SNPset = SCUC_wo_5_7_8_11, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+```
+
+
+```{r}
+SAUA_wo_5_7_8_11$bulk = "Wine Chr I"
+SCUC_wo_5_7_8_11$bulk = "Oak Chr I"
+
+rbind(SAUA_wo_5_7_8_11[,c("POS", "CHROM", "Gprime", "bulk")], SCUC_wo_5_7_8_11[,c("POS", "CHROM", "Gprime", "bulk")]) -> TestPlot
+
+ggplot(TestPlot, aes(x = POS, y = Gprime, color = bulk)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(TestPlot$POS),
+                                  by = 10^(floor(log10(max(TestPlot$POS))))),
+                    # labels = format_genomic(),
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt"), axis.text.x = element_blank()) +
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Comparison of Oak and Wine without Chr V, VII, VIII, XI")
+
+
+```
+
+### Rescaling G' to compare what each would have been
+
+This didn't work since it was based on the max value
+
+```{r}
+#Rescaling G' to match the other plot
+rescale_factor <- max(TestPlot$Gprime[TestPlot$bulk == "Oak Chr I"])/max(TestPlot$Gprime[TestPlot$bulk == "Wine Chr I"])
+
+TestPlot$ScaledGPrime <- NA
+TestPlot$ScaledGPrime[TestPlot$bulk == "Oak Chr I"] <- TestPlot$Gprime[TestPlot$bulk == "Oak Chr I"]
+TestPlot$ScaledGPrime[TestPlot$bulk == "Wine Chr I"] <- TestPlot$Gprime[TestPlot$bulk == "Wine Chr I"]*rescale_factor
+
+
+ggplot(TestPlot, aes(x = POS, y = ScaledGPrime, color = bulk)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(TestPlot$POS), 
+                                  by = 10^(floor(log10(max(TestPlot$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt"), axis.text.x = element_blank()) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Comparison of Oak and Wine without Chr V, VII, VIII, XI")
+  
+
+```
+
+### So what about epistasis without the chromosomes where misalignment seems to happen?
+
+Actually, just change the telomere trimming to see what happens. This also wasn't super successful.
+
+```{r}
+PFuncep <- function(HighBulk, LowBulk, rawData,
+                         mindepth = mindepth,
+                         maxdepth = maxdepth,
+                         minsampledepth = minsampledepth,
+                         mingq = mingq,
+                         windowSize = 3e4, #5e4 works
+                         Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", #"NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4"),
+                         BulkSize = 1000
+                         ){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms #"NC_001133.9" #
+        )
+
+df %>% merge(.,ChromKey) %>% 
+  #group_by(CHROM) %>% mutate(Start = min(POS) + 800, End = max(POS) - 800) %>% 
+  group_by(CHROM) %>% mutate(Start = min(POS) + max(POS)*0.4, End = max(POS) - max(POS)*0.4) %>% 
+  as.data.frame() %>% na.omit() -> df
+
+colnames(df)[1] <- "NC_Chrom"
+colnames(df)[which(colnames(df) == "chromosomes")] <- "CHROM"
+
+df$CHROM <- factor(df$CHROM, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+#################################
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = mindepth, #100
+        maxTotalDepth = maxdepth, #400
+        minSampleDepth = minsampledepth, #40
+        minGQ = mingq #99
+    )
+
+  #Run G' analysi
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize, #1e6
+      outlierFilter = "deltaSNP")
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize,
+      popStruc = "F2",
+      bulkSize = 1000, #c(25, 25)
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+    
+  return(as.data.frame(df_filt))
+}
+
+Epistasis_wo_7_8_12 <- PFuncep(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.26e10))
+plotQTLStats(SNPset = Epistasis_wo_7_8_12, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+# Epistasis_wo_7_8_12[which(Epistasis_wo_7_8_12$Gprime == max(Epistasis_wo_7_8_12$Gprime)),"POS"]
+# maxpositions
+# 
+# 1084337 - 1065110
+# 
+# 1065110/1084337
+```
+
+### Check on Chr III and XVI which have some potential hits
+
+```{r}
+df <- Selected
+perm_A <- data.frame()
+for(i in c(3000, 6000, 12000, 24000, 48000)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "III"),
+      windowSize = i, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+    plot.gprime <- plotQTLStats(SNPset = temp_II, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+    plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom III | Window ", i)) + 
+    geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+    
+  print(plot.gprime)
+
+  #perm_A <- rbind(perm_A, temp_II)
+}
+
+perm_A <- data.frame()
+for(i in c(3000, 6000, 12000, 24000, 48000)){
+  temp_II <- runGprimeAnalysis(
+      SNPset = subset(df, CHROM == "XVI"),
+      windowSize = i, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+    plot.gprime <- plotQTLStats(SNPset = temp_II, var = "Gprime", plotThreshold = TRUE, q = 0.01) #changed plotThreshold back to true to test
+
+    plot <- ggplot(temp_II, aes(x = POS, y = Gprime)) + geom_line() + ggtitle(paste("Chrom XVI | Window ", i)) + 
+    geom_hline(yintercept = 2.5, alpha = 0.5, size = 2, color = "red")
+  print(plot.gprime)
+
+  #perm_A <- rbind(perm_A, temp_II)
+}
+
+
+```
+
+
+```{r, eval = F}
+ggplot(subset(TestPlot, CHROM == "XVI"), aes(x = POS, y = ScaledGPrime, color = bulk)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(TestPlot$POS), 
+                                  by = 10^(floor(log10(max(TestPlot$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt"), axis.text.x = element_blank()) + 
+  guides(colour = "none") +
+    scale_colour_manual(values=CBchromPalette) + ggtitle("Oak vs Wine Chr XVI, Window 30,000")
+
+Epistasis_XVI <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis")
+  
+NULL_XVI <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL")
+  
+subset(TestPlot, CHROM == "XVI") %>% select(-ScaledGPrime) %>% rbind(.,Epistasis_XVI, NULL_XVI) %>% ggplot(., aes(x = POS, y = Gprime, color = bulk)) + geom_line(alpha = 0.8, size = 1) + ggtitle("Comparison of Chr XVI QTL from each bulk")
+
+```
+
+
+```{r, eval = F}
+### Reducing the window size of Chr XVI to test
+
+
+Epistasis_XVI <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "XVI"),
+      windowSize = 12000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "12k") 
+  
+NULL_XVI <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "XVI"),
+      windowSize = 12000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "12k")
+
+Wine_XVI <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "XVI"),
+      windowSize = 12000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "12k")
+  
+Oak_XVI <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "XVI"),
+      windowSize = 12000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "12k")
+
+rbind(Epistasis_XVI, NULL_XVI, Wine_XVI, Oak_XVI) %>% ggplot(., aes(x = POS, y = Gprime, color = bulk)) + geom_line(alpha = 0.8, size = 1) + ggtitle("Comparison of Chr XVI | Window 12,000")
+
+
+```
+
+```{r, eval = F}
+Epistasis_XVI <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "XVI"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "3k") 
+  
+NULL_XVI <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "XVI"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "3k")
+
+Wine_XVI <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "XVI"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "3k")
+  
+Oak_XVI <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "XVI"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "3k")
+
+
+Epistasis_XVI_30 <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "30k") 
+  
+NULL_XVI_30 <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "30k")
+
+Wine_XVI_30 <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "30k")
+  
+Oak_XVI_30 <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "XVI"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "30k")
+
+rbind(Epistasis_XVI, NULL_XVI, Wine_XVI, Oak_XVI, Epistasis_XVI_30, NULL_XVI_30, Wine_XVI_30, Oak_XVI_30) %>% 
+  ggplot(., aes(x = POS, y = Gprime, color = bulk, alpha = window)) + geom_line(size = 1) +
+  scale_alpha_discrete(range = c(1, 0.2)) + ggtitle("Comparison of Chr XVI | Window 3k and 30k") 
+
+
+```
+
+
+```{r, eval = F}
+### Checking windows with Chr VIII
+
+Epistasis_VIII <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "VIII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "3k") 
+  
+NULL_VIII <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "VIII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "3k")
+
+Wine_VIII <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "VIII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "3k")
+  
+Oak_VIII <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "VIII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "3k")
+
+
+Epistasis_VIII_30 <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "VIII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "30k") 
+  
+NULL_VIII_30 <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "VIII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "30k")
+
+Wine_VIII_30 <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "VIII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "30k")
+  
+Oak_VIII_30 <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "VIII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "30k")
+
+rbind(Epistasis_VIII, NULL_VIII, Wine_VIII, Oak_VIII, Epistasis_VIII_30, NULL_VIII_30, Wine_VIII_30, Oak_VIII_30) %>% 
+  ggplot(., aes(x = POS, y = Gprime, color = bulk, alpha = window)) + geom_line(size = 1) +
+  scale_alpha_discrete(range = c(1, 0.2)) + ggtitle("Comparison of Chr VIII | Window 3k and 30k") 
+
+
+```
+
+### Checking windows for specific chromosomes
+
+Turned this into a loop so these remain for the original code and are not executed.
+
+```{r, eval = FALSE}
+Epistasis_VII <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "VII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "3k") 
+  
+NULL_VII <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "VII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "3k")
+
+Wine_VII <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "VII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "3k")
+  
+Oak_VII <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "VII"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "3k")
+
+
+Epistasis_VII_30 <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "VII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "30k") 
+  
+NULL_VII_30 <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "VII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "30k")
+
+Wine_VII_30 <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "VII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "30k")
+  
+Oak_VII_30 <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "VII"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "30k")
+
+rbind(Epistasis_VII, NULL_VII, Wine_VII, Oak_VII, Epistasis_VII_30, NULL_VII_30, Wine_VII_30, Oak_VII_30) %>% 
+  ggplot(., aes(x = POS, y = Gprime, color = bulk, alpha = window)) + geom_line(size = 1) +
+  scale_alpha_discrete(range = c(1, 0.2)) + ggtitle("Comparison of Chr VII | Window 3k and 30k") 
+
+
+```
+
+```{r, eval = FALSE}
+Epistasis_X <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "X"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "3k") 
+  
+NULL_X <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "X"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "3k")
+
+Wine_X <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "X"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "3k")
+  
+Oak_X <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "X"),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "3k")
+
+
+Epistasis_X_30 <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == "X"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "30k") 
+  
+NULL_X_30 <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == "X"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "30k")
+
+Wine_X_30 <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == "X"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "30k")
+  
+Oak_X_30 <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == "X"),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "30k")
+
+rbind(Epistasis_X, NULL_X, Wine_X, Oak_X, Epistasis_X_30, NULL_X_30, Wine_X_30, Oak_X_30) %>% 
+  ggplot(., aes(x = POS, y = Gprime, color = bulk, alpha = window)) + geom_line(size = 1) +
+  scale_alpha_discrete(range = c(1, 0.2)) + ggtitle("Comparison of Chr X | Window 3k and 30k") 
+
+
+```
+
+## Loop through comparison of window sizes
+
+```{r}
+for(i in unique(SAUA$CHROM)){
+  Epistasis_X <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == i),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "3k") 
+  
+NULL_X <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == i),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "3k")
+
+Wine_X <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == i),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "3k")
+  
+Oak_X <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == i),
+      windowSize = 3000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "3k")
+
+
+Epistasis_X_30 <- runGprimeAnalysis(
+      SNPset = subset(Selected, CHROM == i),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Epistasis", window = "30k") 
+  
+NULL_X_30 <- runGprimeAnalysis(
+      SNPset = subset(Unselected, CHROM == i),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "NULL", window = "30k")
+
+Wine_X_30 <- runGprimeAnalysis(
+      SNPset = subset(SAUA, CHROM == i),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Wine", window = "30k")
+  
+Oak_X_30 <- runGprimeAnalysis(
+      SNPset = subset(SCUC, CHROM == i),
+      windowSize = 30000, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000) %>% select(POS, CHROM, Gprime) %>% mutate(bulk = "Oak", window = "30k")
+
+plot <- rbind(Epistasis_X, NULL_X, Wine_X, Oak_X, Epistasis_X_30, NULL_X_30, Wine_X_30, Oak_X_30) %>% 
+  ggplot(., aes(x = POS, y = Gprime, color = bulk, alpha = window)) + geom_line(size = 1) +
+  scale_alpha_discrete(range = c(1, 0.2)) + ggtitle(paste("Comparison of Chr ", i, " | Window 3k and 30k"))
+
+print(plot)
+  
+}
+```
+
+## Testing p values
+
+```{r}
+
+ggplot(subset(SAUA, CHROM == "IV"), aes(x = POS, y = Gprime, color = pvalue)) + geom_point(alpha = 0.2)
+ggplot(SAUA, aes(x = Gprime, y = pvalue, color = CHROM)) + geom_point(alpha = 0.1)
+
+ggplot(subset(SAUA, CHROM == "IV"), aes(x = POS, y = Gprime, color = pvalue < 0.05)) + geom_point(alpha = 0.2)
+ggplot(subset(SAUA, CHROM == "V"), aes(x = POS, y = Gprime, color = pvalue < 0.05)) + geom_point(alpha = 0.2)
+ggplot(subset(SAUA, CHROM == "VI"), aes(x = POS, y = Gprime, color = pvalue < 0.05)) + geom_point(alpha = 0.2)
+ggplot(subset(SAUA, CHROM == "VII"), aes(x = POS, y = Gprime, color = pvalue < 0.05)) + geom_point(alpha = 0.2)
+ggplot(subset(SAUA, CHROM == "VIII"), aes(x = POS, y = Gprime, color = pvalue < 0.05)) + geom_point(alpha = 0.2)
+
+
+SAUA %>% select(POS, CHROM, Gprime, pvalue) %>% mutate(bulk = "WineSU") -> WineSU
+SCUC %>% select(POS, CHROM, Gprime, pvalue) %>% mutate(bulk = "OakSU")-> OakSU
+Unselected %>% select(POS, CHROM, Gprime, pvalue) %>% mutate(bulk = "Uns")-> Uns
+Selected %>% select(POS, CHROM, Gprime, pvalue) %>% mutate(bulk = "Sel")-> Sel
+
+rbind(WineSU, OakSU, Uns, Sel) %>% ggplot(., aes(x = Gprime, y = log(pvalue), color = bulk)) + geom_point(alpha = 0.1) + geom_hline(yintercept = log(0.05))
+rbind(WineSU, OakSU, Uns, Sel) %>% ggplot(., aes(x = Gprime, y = pvalue, color = bulk)) + geom_point(alpha = 0.1)
+
+
+```
+
+## Correlating G Statistics
+
+The values that are correlated between the two selected bulks are probably the ones that are actually real?
+
+```{r}
+
+cbind(Wine = SAUA$G, Oak = SCUC$G) -> Gstats
+GS <- as.data.frame(Gstats)
+ggplot(GS, aes(x = Wine, y = Oak)) + geom_point(alpha = 0.2)
+
+summary(lm(GS$Wine~GS$Oak))
+
+SAUA %>% select(Gprime, G, CHROM, POS, pvalue) %>% mutate(bulk = "Wine") -> WineG
+SCUC %>% select(Gprime, G, CHROM, POS, pvalue) %>% mutate(bulk = "Oak") %>% rbind(WineG) -> GS_Covariate
+
+summary(lm(GS_Covariate$G ~ GS_Covariate$bulk*GS_Covariate$POS))
+
+ggplot(GS_Covariate, aes(x = POS, y = G, color = bulk)) + geom_point(alpha = 0.1)
+ggplot(GS_Covariate, aes(x = POS, y = Gprime, color = bulk)) + geom_point(alpha = 0.1)
+
+dim(SAUA)
+dim(SCUC)
+
+0.05/49624
+
+
+sum(SAUA$pvalue < (0.05/49596))
+sum(SCUC$pvalue < (0.05/49624))
+
+fdr_bonf_Wine <- which(SAUA$pvalue == max(SAUA$pvalue[SAUA$pvalue < (0.05/49596)]))
+fdr_bonf_Oak <- which(SCUC$pvalue == max(SCUC$pvalue[SCUC$pvalue < (0.05/49624)]))
+
+fdrT_wine <- SAUA$Gprime[fdr_bonf_Wine]
+fdrT_Oak <- SCUC$Gprime[fdr_bonf_Oak]
+
+
+```
+
+## Notes from Mark
+
+* could downsample coverage if actually concerned
+* use unselected/unselected for a 5% FDR (or 1%)
+* use a contingency table for proportionality for a statistic with the unselected bulks?
+
+## Using the Unselected with a 1% FDR 
+
+Because the Unselected bulks should not have any QTL, any significance would be called by chance. In this case, where 1% of the region are hits, we can call this the 1% false discovery rate, which is basically equivalent to a cutoff of having an alpha of 0.01 (but without adjusting p-values to correspond with the multiple tests). I then applied this cutoff to the Selected vs Unselected (QTL) bulks of each fixed Chromosome I to plot what would be significant.
+
+```{r}
+FDR_Unselected <- Unselected%>% arrange(Gprime) %>% summarise(quantile(Gprime, c(0.99)))
+FDR_Unselected
+Unselected%>% arrange(Gprime) %>% select(Gprime) %>% mutate(Index = 1:length(Gprime)) -> sortedgprime
+
+plot(sortedgprime)
+
+```
+
+```{r}
+df_filt <- SAUA
+
+  plot <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "skyblue", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + ylim(c(0, 100)) +
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Wine with Unselected DF")
+  print(plot)
+
+df_filt <- SCUC
+
+  plot <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "skyblue", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + ylim(c(0, 100)) +
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Oak with Unselected DF")
+  print(plot)
+
+  df_filt <- Selected
+
+  plot <- ggplot(data = df_filt, aes(x = POS, y = Gprime, color = CHROM)) + geom_line(size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "skyblue", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + ylim(c(0, 100)) +
+    scale_colour_manual(values=CBchromPalette) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Epistasis (Selected v Selected) with Unselected DF") 
+  print(plot)
+  
+```
+
+```{r}
+  
+SAUA %>% mutate(dataset = "Oak") %>% select(POS, CHROM, Gprime, dataset) -> WineTemp
+SCUC %>% mutate(dataset = "Wine") %>% select(POS, CHROM, Gprime, dataset) %>% rbind(WineTemp) -> CombinedWineOak
+
+ggplot(CombinedWineOak, aes(x = POS, y = Gprime, color = dataset)) + geom_line(size = 0.8) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CombinedWineOak$POS), 
+                                  by = 10^(floor(log10(max(CombinedWineOak$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + #ylim(c(0, 50)) +
+    scale_colour_manual(values=CBchromPalette[6:5]) + 
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Oak and Wine QTL with Unselected-Based FDR") 
+
+```
+
+## What are these hits?
+
+To utilize this FDR threshold, I ran the find QTL table function from QTLseqR. This allows for comparison of the actual peaks and finding of the genes that are associated with resistance to CuSO4.
+
+```{r}
+getQTLTable_CB <- function (SNPset, method = "Gprime", alpha = 0.05, interval = 99, 
+    export = FALSE, fileName = "QTL.csv") 
+{
+    conf <- paste0("CI_", interval)
+    if (!method %in% c("Gprime", "QTLseq")) {
+        stop("method must be either \"Gprime\" or \"QTLseq\"")
+    }
+    if ((method == "Gprime") & !("qvalue" %in% colnames(SNPset))) {
+        stop("Please first use runGprimeAnalysis to calculate q-values")
+    }
+    if ((method == "QTLseq") & !(any(names(SNPset) %in% 
+        conf))) {
+        stop("Cant find the requested confidence interval. Please check that the requested interval exsits or first use runQTLseqAnalysis to calculate confidence intervals")
+    }
+    #fdrT <- getFDRThreshold(SNPset$pvalue, alpha = alpha)
+    #GprimeT <- SNPset[which(SNPset$pvalue == fdrT), "Gprime"]
+    GprimeT <- 5.057289
+    SNPset <- SNPset %>% dplyr::group_by(CHROM)
+    if (method == "QTLseq") {
+        qtltable <- SNPset %>% dplyr::mutate(passThresh = abs(tricubeDeltaSNP) > 
+            abs(!!as.name(conf))) %>% dplyr::group_by(CHROM, 
+            run = {
+                run = rle(passThresh)
+                rep(seq_along(run$lengths), run$lengths)
+            }) %>% dplyr::filter(passThresh == TRUE) %>% dplyr::ungroup() %>% 
+            dplyr::group_by(CHROM) %>% dplyr::group_by(CHROM, 
+            qtl = {
+                qtl = rep(seq_along(rle(run)$lengths), rle(run)$lengths)
+            }) %>% dplyr::select(-run) %>% dplyr::summarize(start = min(POS), 
+            end = max(POS), length = end - start, nSNPs = length(POS), 
+            avgSNPs_Mb = round(length(POS)/(max(POS) - min(POS)) * 
+                1e+06), peakDeltaSNP = ifelse(mean(tricubeDeltaSNP) >= 
+                0, max(tricubeDeltaSNP), min(tricubeDeltaSNP)), 
+            posPeakDeltaSNP = POS[which.max(abs(tricubeDeltaSNP))], 
+            avgDeltaSNP = mean(tricubeDeltaSNP))
+    }
+    else {
+      #CHANGE THIS PART
+        qtltable <- SNPset %>% dplyr::mutate(passThresh = Gprime <= GprimeT) %>% #dplyr::mutate(passThresh = qvalue <= alpha) %>% 
+          dplyr::group_by(CHROM, run = {
+            run = rle(passThresh)
+            rep(seq_along(run$lengths), run$lengths)
+        }) %>% dplyr::filter(passThresh == T) %>% dplyr::ungroup() %>% 
+            dplyr::group_by(CHROM) %>% dplyr::group_by(CHROM, 
+            qtl = {
+                qtl = rep(seq_along(rle(run)$lengths), rle(run)$lengths)
+            }) %>% dplyr::select(-run) %>% dplyr::summarize(start = min(POS), 
+            end = max(POS), length = end - start, nSNPs = length(POS), 
+            avgSNPs_Mb = round(length(POS)/(max(POS) - min(POS)) * 
+                1e+06), peakDeltaSNP = ifelse(mean(tricubeDeltaSNP) >= 
+                0, max(tricubeDeltaSNP), min(tricubeDeltaSNP)), 
+            posPeakDeltaSNP = POS[which.max(abs(tricubeDeltaSNP))], 
+            avgDeltaSNP = mean(tricubeDeltaSNP), maxGprime = max(Gprime), 
+            posMaxGprime = POS[which.max(Gprime)], meanGprime = mean(Gprime), 
+            sdGprime = sd(Gprime), AUCaT = sum(diff(POS) * (((head(Gprime, 
+                -1) + tail(Gprime, -1))/2) - GprimeT)), meanPval = mean(pvalue), 
+            meanQval = mean(qvalue))
+    }
+    qtltable <- as.data.frame(qtltable)
+    if (export) {
+        write.csv(file = fileName, x = qtltable, row.names = FALSE)
+    }
+    return(qtltable)
+}
+
+
+# qtltable <- SAUA %>% dplyr::mutate(passThresh = Gprime <= GprimeT) %>% #dplyr::mutate(passThresh = qvalue <= alpha) %>% 
+#           dplyr::group_by(CHROM, run = {
+#             run = rle(passThresh)
+#             rep(seq_along(run$lengths), run$lengths)
+#         }) %>% dplyr::filter(passThresh == T) %>% dplyr::ungroup() %>% 
+#             dplyr::group_by(CHROM) %>% dplyr::group_by(CHROM, 
+#             qtl = {
+#                 qtl = rep(seq_along(rle(run)$lengths), rle(run)$lengths)
+#             }) %>% dplyr::select(-run) %>% dplyr::summarize(start = min(POS), 
+#             end = max(POS), length = end - start, nSNPs = length(POS), 
+#             avgSNPs_Mb = round(length(POS)/(max(POS) - min(POS)) * 
+#                 1e+06), peakDeltaSNP = ifelse(mean(tricubeDeltaSNP) >= 
+#                 0, max(tricubeDeltaSNP), min(tricubeDeltaSNP)), 
+#             posPeakDeltaSNP = POS[which.max(abs(tricubeDeltaSNP))], 
+#             avgDeltaSNP = mean(tricubeDeltaSNP), maxGprime = max(Gprime), 
+#             posMaxGprime = POS[which.max(Gprime)], meanGprime = mean(Gprime), 
+#             sdGprime = sd(Gprime), AUCaT = sum(diff(POS) * (((head(Gprime, 
+#                 -1) + tail(Gprime, -1))/2) - GprimeT)), meanPval = mean(pvalue), 
+#             meanQval = mean(qvalue))
+# 
+#           qtltable <- as.data.frame(qtltable)
+#     
+
+WineTable <- getQTLTable_CB(SNPset = SCUC)
+OakTable <- getQTLTable_CB(SNPset = SAUA)
+
+WineTable %>% select(CHROM, POS = posMaxGprime, Gprime = maxGprime) %>% mutate(bulk = "Wine QTL") -> WineT
+OakTable %>% select(CHROM, POS = posMaxGprime, Gprime = maxGprime) %>% mutate(bulk = "Oak QTL") %>% rbind(WineT) -> CombinedTable
+
+
+SAUA %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "Oak") %>% rbind(CombinedTable) ->CombinedTable
+SCUC %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "Wine") %>% rbind(CombinedTable) ->CombinedTable
+
+ggplot(CombinedTable) + 
+  geom_line(data = subset(CombinedTable, bulk == "Wine" | bulk == "Oak"), aes(x = POS, y = Gprime, color = bulk)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + ylim(c(0, 100)) +
+    scale_colour_manual(values=CBchromPalette[c(2,1)]) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  geom_vline(data=filter(CombinedTable, bulk == "Wine QTL"), aes(xintercept=POS), alpha = 0.4, color = "firebrick", linetype = "dashed")+
+  geom_vline(data=filter(CombinedTable, bulk == "Oak QTL"), aes(xintercept=POS), alpha = 0.4, color = "skyblue") +
+  ggtitle("QTL Table Results for Oak or Wine") + theme(axis.text.x = element_blank())
+
+plot(SAUA$pvalue, SAUA$qvalue)
+abline(h = 0.05)
+abline(v = 0.01)
+
+plot(SAUA$Gprime, SAUA$qvalue)
+
+
+```
+
+#### Separating out by chromosome so that the plot is legible
+
+So these are clearly wrong, which is strange but not surprising given that I messed with their function. Back to that and then I'll fix these plots.
+
+```{r}
+for(i in unique(CombinedTable$CHROM)){
+  
+  ChromTable <- subset(CombinedTable, CHROM == i)
+  
+ plot <-  ggplot(ChromTable) + 
+  geom_line(data = subset(ChromTable, bulk == "Wine" | bulk == "Oak"), aes(x = POS, y = Gprime, color = bulk), size = 1) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(df_filt$POS), 
+                                  by = 10^(floor(log10(max(df_filt$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position (Mb)") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + 
+    scale_colour_manual(values=CBchromPalette[c(2,1)]) +  geom_vline(data=filter(ChromTable, bulk == "Wine QTL"), aes(xintercept=POS), alpha = 0.4, color = "firebrick", linetype = "dashed", size = 1)+
+  geom_vline(data=filter(ChromTable, bulk == "Oak QTL"), aes(xintercept=POS), alpha = 0.4, color = "skyblue", size = 1) +
+  ggtitle("QTL Table Results for Oak or Wine") + theme(axis.text.x = element_blank())
+ 
+ print(plot)
+}
+```
+
+
+### Investigating negative G' values
+
+```{r}
+SCUC[SCUC$G < 0,]
+```
+
+### Traditional QTL calling
+
+```{r}
+WineQTL <- getQTLTable(SNPset = SCUC) %>% mutate(bulk = "Wine", type = "QTL")
+OakQTL <- getQTLTable(SNPset = SAUA) %>% mutate(bulk = "Oak", type = "QTL")
+
+rbind(WineQTL, OakQTL) %>% ggplot(., aes(x = posMaxGprime, y = maxGprime, color = bulk)) + geom_point(size = 3)+ ggtitle("Locations of Peaks Called in Oak or Wine") + scale_color_manual(values = c("lightblue", "firebrick")) + facet_grid(~CHROM) 
+
+```
+
+### Traditional QTL calling
+
+```{r}
+SelQTL <- getQTLTable(SNPset = Selected) %>% mutate(bulk = "Epistasis", type = "Epistatic")
+UnselQTL <- getQTLTable(SNPset = Unselected) %>% mutate(bulk = "NULL", type = "Epistatic")
+
+#rbind(SelQTL, UnselQTL) %>% ggplot(., aes(x = posMaxGprime, y = maxGprime, color = bulk)) + geom_point(size = 3, shape = 1)+ ggtitle("Locations of Peaks Called in Selected or Unselected Bulks") + facet_grid(~CHROM) 
+
+rbind(WineQTL, OakQTL, SelQTL, UnselQTL) %>% 
+  ggplot(., aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = type)) + 
+  geom_point(size = 3)+ 
+  scale_shape_manual(values = c(1, 16)) + scale_color_manual(values = c("black", "gray", "lightblue", "firebrick")) +
+  ggtitle("Locations of Peaks Called in Selected or Unselected Bulks") + facet_grid(~CHROM)
+
+rbind(WineQTL, OakQTL, SelQTL, UnselQTL) %>% 
+  ggplot(., aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = type)) + 
+  geom_point(size = 3)+ ylim(0, 10) +
+  scale_shape_manual(values = c(1, 16)) + scale_color_manual(values = c("black", "gray", "lightblue", "firebrick")) +
+  ggtitle("Locations of Peaks Called in Selected or Unselected Bulks") + facet_grid(~CHROM)
+
+rbind(WineQTL, OakQTL, SelQTL, UnselQTL) %>% filter(CHROM == "XIII") %>%
+  ggplot(., aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = type)) + 
+  geom_point(size = 3)+ #ylim(0, 10) +
+  scale_shape_manual(values = c(1, 16)) + scale_color_manual(values = c("black", "gray", "lightblue", "firebrick")) +
+  ggtitle("Locations of Peaks Called in Selected or Unselected Bulks") + facet_grid(~CHROM)
+```
+
+### Mapping these peaks onto the curves
+
+```{r}
+
+SCUC %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "Wine", type = "QTL") -> WineAll
+SAUA %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "Oak", type = "QTL") -> OakAll
+Selected %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "Epistasis", type = "Epistatic") -> SelEp
+Unselected %>% select(CHROM, POS, Gprime) %>% mutate(bulk = "NULL", type = "Epistatic") -> NullEp
+
+save(WineQTL, file = "C://Users/cassa/OneDrive/Documents/SiegalLab/LITERATURE/Supplements/WineQTL.Rdata")
+
+CombinedTable <- rbind(WineAll, OakAll, SelEp, NullEp)
+CombinedPeaks <- rbind(WineQTL, OakQTL, SelQTL, UnselQTL)
+
+#Normal QTL plot
+ggplot(CombinedTable) + 
+  geom_line(data = subset(CombinedTable), aes(x = POS, y = Gprime, color = bulk), size = 0.8, alpha = 0.7) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CombinedTable$POS), 
+                                  by = 10^(floor(log10(max(CombinedTable$POS))))), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  #geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none", shape = "none") +
+  scale_color_manual(values = c("black", "gray", "lightblue", "firebrick")) +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  
+  geom_point(data=filter(CombinedPeaks, bulk == "Wine"),
+             aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = type), alpha = 0.7, color = "firebrick", size = 4)+
+  geom_point(data=filter(CombinedPeaks, bulk == "Oak"),
+             aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = type), alpha = 0.7, color = "lightblue", size = 4)+
+  ggtitle("QTL Table Results for Oak or Wine") + theme(axis.text.x = element_blank())
+
+
+#Epistasis Plot
+ggplot(CombinedTable) + 
+  geom_line(data = subset(CombinedTable, type == "Epistatic"), aes(x = POS, y = Gprime, color = bulk), alpha = 0.8) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CombinedTable$POS), 
+                                  by = 10^(floor(log10(max(CombinedTable$POS))))), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  #geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  #guides(colour = "none", shape = "none") + 
+  #ylim(0, 10) +
+  scale_color_manual(values = c("purple", "gray")) +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+ geom_point(data=filter(CombinedPeaks, bulk == "Epistasis"),
+             aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = bulk), alpha = 0.4, color = "purple", size = 3)+
+  geom_point(data=filter(CombinedPeaks, bulk == "NULL"),
+             aes(x = posMaxGprime, y = maxGprime, color = bulk, shape = bulk), alpha = 0.4, color = "gray", size = 3)+
+    ggtitle("QTL Table Results for Epistasis and Null Bulks") + theme(axis.text.x = element_blank())
+
+
+```
+

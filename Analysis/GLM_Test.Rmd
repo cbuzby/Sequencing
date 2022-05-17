@@ -1,0 +1,523 @@
+---
+title: "GLM for BSA Testing"
+author: "Cassandra Buzby"
+date: "5/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+
+library(foreach)
+library(doParallel)
+
+#ggplot2::theme_set(theme_light())
+ggplot2::theme_set(theme_cowplot())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+#load("Selected_4-13-22.Rdata")
+#load("Unselected_4-13-22.Rdata")
+
+```
+
+## Testing Mark's idea for stats on BSA
+
+Using logistic regression, where parent and bulk are each a binary, and the allele frequency is the response. Mark's simulations included additive and epistatic odds ratios, so now I need to use the read counts to actually get the stats to do this?
+
+### Mark's Simulation
+
+Running the code to see how it works since I'm an idiot with no brain.
+
+```{r, eval = FALSE}
+set.seed(12345)
+sim <- 100        # number of simulations
+C <- 2000           # mean sequencing coverage
+p <- 0.5            # probability of inheriting oak allele
+additive_odds <-  1.1  # odds ratio of getting oak allele in selected bulk (regardless of chr 1 parent)
+epistatic_odds <- 1.2  # odds ratio of getting oak allele in selected bulk from oak chr 1 vs. wine chr 1
+# initialize data frame to hold simulation statistics:
+sim_df <- data.frame(P_intercept = double(),P_bulk = double(),P_parent = double(),P_interaction = double(),
+                     z_intercept = double(),z_bulk = double(),z_parent = double(),z_interaction = double())
+
+# GIVEN THESE PARAMETERS, THE PROBABILITY OF GETTING THE OAK ALLELE IN EACH BULK IS:
+p_unselected_wineChr1 <- p
+p_unselected_oakChr1 <- p
+p_selected_wineChr1 <- p * additive_odds / (1 - p + p * additive_odds)
+p_selected_oakChr1 <- p_selected_wineChr1 * epistatic_odds /
+                      (1 - p_selected_wineChr1 + p_selected_wineChr1 * epistatic_odds)
+
+# RUN SIMULATIONS:
+C_unselected_wineChr1 <- rpois(sim,C) # number of reads from unselected bulk from wine chromosome 1 cross
+C_unselected_oakChr1 <- rpois(sim,C)  # number of reads from unselected bulk from oak chromosome 1 cross
+C_selected_wineChr1 <- rpois(sim,C)   # number of reads from selected bulk from wine chromosome 1 cross
+C_selected_oakChr1 <- rpois(sim,C)    # number of reads from selected bulk from oak chromosome 1 cross
+
+for (i in 1:sim) {
+  # SAMPLE READS FROM EACH BULK
+  reads_unselected_wineChr1 <- sample(c("wine","oak"),C_unselected_wineChr1[i],replace=TRUE,
+                                      prob=c(1-p_unselected_wineChr1,p_unselected_wineChr1))
+  reads_unselected_oakChr1 <- sample(c("wine","oak"),C_unselected_oakChr1[i],replace=TRUE,
+                                      prob=c(1-p_unselected_oakChr1,p_unselected_oakChr1))
+  reads_selected_wineChr1 <- sample(c("wine","oak"),C_selected_wineChr1[i],replace=TRUE,
+                                      prob=c(1-p_selected_wineChr1,p_selected_wineChr1))
+  reads_selected_oakChr1 <- sample(c("wine","oak"),C_selected_oakChr1[i],replace=TRUE,
+                                     prob=c(1-p_selected_oakChr1,p_selected_oakChr1))
+  reads_df <- data.frame(reads = factor(c(reads_unselected_wineChr1,
+                                          reads_unselected_oakChr1,
+                                          reads_selected_wineChr1,
+                                          reads_selected_oakChr1),levels = c("wine","oak")))
+  reads_df$bulk <- factor(rep(c("unselected","selected"),
+                              c(C_unselected_wineChr1[i]+C_unselected_oakChr1[i],
+                                C_selected_wineChr1[i]+C_selected_oakChr1[i])),
+                         levels = c("unselected","selected"))
+  reads_df$parent <- factor(rep(c("wineChr1","oakChr1","wineChr1","oakChr1"),
+                                c(C_unselected_wineChr1[i],C_unselected_oakChr1[i],
+                                  C_selected_wineChr1[i],C_selected_oakChr1[i])),
+                         levels = c("wineChr1","oakChr1"))
+  # NOW DO LOGISTIC REGRESSION
+  log_reg <- glm(reads ~ bulk + parent + bulk:parent,family=binomial,data=reads_df)
+  sim_df[i,] <- c(coef(summary(log_reg))[,4],coef(summary(log_reg))[,3])
+}
+```
+
+So the output of this is... a list of either oak or wine at every location, and then the glm looks at that by two other columns. So if I just have the counts for each and not the individual reads, would that work?
+
+## Converting SAUA and SCUC into the correct format for glm
+
+```{r}
+AllSU <- inner_join(SCUC, SAUA, by = c("POS", "CHROM"), suffix = c(".Wine", ".Oak"))
+
+# head(AllSU)
+# str(AllSU)
+
+AllSU %>% select(CHROM, POS, 
+                 AD_REF.LOW.Wine, AD_ALT.LOW.Wine, AD_REF.HIGH.Wine, AD_ALT.HIGH.Wine,
+                 AD_REF.LOW.Oak, AD_ALT.LOW.Oak, AD_REF.HIGH.Oak, AD_ALT.HIGH.Oak) -> RefAltSU
+
+RefAltSU %>% pivot_longer(-c(CHROM, POS)) %>% mutate(allele = gsub(x = name, pattern = "AD_(.[A-Z]*).*", replacement = "\\1")) %>% 
+  mutate(bulk = gsub(x = name, pattern = "AD_([A-Z]*).([A-Z]*).*", replacement = "\\2")) %>% 
+  mutate(parent = gsub(x = name, pattern = "AD_([A-Z]*).([A-Z]*).(*)", replacement = "\\3")) %>% select(-name) -> RASU_Pivot
+
+# gsub(x = RASU_Pivot[1,"name"], pattern = "AD_(.[A-Z]*).*", replacement = "\\1") #
+# gsub(x = RASU_Pivot[2,"name"], pattern = "AD_([A-Z]*).([A-Z]*).*", replacement = "\\2")
+# gsub(x = RASU_Pivot[2,"name"], pattern = "AD_([A-Z]*).([A-Z]*).(*)", replacement = "\\3")
+
+RASU_Pivot$allele <- factor(RASU_Pivot$allele)
+RASU_Pivot$bulk <- factor(RASU_Pivot$bulk, levels = c("LOW", "HIGH"))
+RASU_Pivot$parent <- factor(RASU_Pivot$parent)
+
+head(RASU_Pivot)
+```
+
+## Actually running glm with a table
+
+```{r}
+#Mark's code
+
+# log_reg_contingency_table <- glm(reads~bulk+parent+bulk:parent,
+#                                  weights=n,
+#                                  family=binomial,
+#                                  data=contingency_table)
+
+testRASU <- subset(RASU_Pivot, POS == 178)
+
+glm(allele~bulk+parent+bulk:parent,
+                                 weights=value,
+                                 family=binomial,
+                                 data=testRASU) %>% .$coefficients %>% combine() 
+
+#it worked for one locus!! now what do I save for each position?
+
+summary(glm(allele~bulk+parent+bulk:parent,
+                                 weights=value,
+                                 family=binomial,
+                                 data=testRASU))
+```
+
+```{r}
+myglm <- function(x){
+  glm(allele~bulk+parent+bulk:parent,
+                                 weights=value,
+                                 family=binomial,
+                                 data=x) %>% .$coefficients -> result
+  
+  return(result[1])
+
+}
+
+RASU_III <- subset(RASU_Pivot, CHROM == "III") 
+RASU_III[1:16,] %>% group_by(POS) %>% summarise(glm = myglm(.))
+```
+
+```{r}
+#It turns out this doesn't work
+
+subset(RASU_Pivot, CHROM == "III") %>% group_by(CHROM, POS) %>% 
+  summarise(glm = myglm(.), coefficient = c("intercept", "bulk", "parent", "interaction")) %>% 
+  pivot_wider(names_from = coefficient, values_from = glm) -> GLMResults_III
+```
+
+### Maybe using summarise for this?
+
+```{r, eval = FALSE}
+RASU_Pivot %>% group_by(CHROM, POS) %>% glm(allele~bulk+parent+bulk:parent,
+                                 weights=value,
+                                 family=binomial,data=.) %>% .$coefficients
+```
+
+## Testing this a different way
+
+```{r, eval = FALSE}
+RASU_Pivot %>% mutate(CHROM_POS = paste(CHROM, POS, sep = "_")) -> RP
+
+CP <- data.frame(CHROM_POS = unique(RP$CHROM_POS), glm_intercept = NA)
+for(i in unique(RP$CHROM_POS)){
+  res <- myglm(RP[RP$CHROM_POS == i])
+  CP$glm[CP$CHROM_POS == i] <- res
+}
+```
+# Adding in the parental loci
+
+```{r}
+read.table("Wine_VCF.txt", header = TRUE) %>% mutate(parent = "Wine") -> WineTemp
+read.table("Oak_VCF.txt", header = TRUE) %>% mutate(parent = "Oak") -> OakTemp
+
+ParentalVCF <- rbind(WineTemp, OakTemp) %>% arrange(CHROM, POS) %>% select(CHROM, POS, REF, ALT, parent) %>% merge(ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes)
+
+ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+
+SNPids$Type <- NA
+SNPids$Type[is.na(SNPids$Wine) == TRUE] <- "Oak"
+SNPids$Type[is.na(SNPids$Oak) == TRUE] <- "Wine"
+SNPids$Type[SNPids$Wine == SNPids$Oak] <- "Alt"
+
+SNPids[is.na(SNPids$Type),]
+
+ggplot(SNPids, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+```
+```{r, eval = FALSE}
+RASU_Pivot %>% merge(SNPids) -> ReadsParental
+
+save(ReadsParental, file = "ReadsParental.Rdata")
+```
+
+```{r}
+load("ReadsParental.Rdata")
+
+#Look at the difference between Alt and Oak/Wine in this plot vs above
+ggplot(ReadsParental, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+```
+
+This is interesting because the number of positions that were called in each bulk amplifies the oak and wine alleles but not the alt alleles, which is good for keeping the most data of quality. 
+
+```{r}
+ReadsParental %>% filter(Type == "Alt") %>% ggplot(., aes(x = value, fill = allele)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt vs Ref where Oak/Wine are Equivalent")
+
+ReadsParental %>% filter(Type != "Alt") %>% ggplot(., aes(x = value, fill = allele)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt vs Ref where Oak/Wine are not Equivalent")
+```
+
+
+## Converting reference and alternate into oak and wine
+
+```{r}
+
+load("ReadsParental.Rdata")
+
+ReadsParental %>% filter(Type == "Oak" | Type == "Wine") -> logregParental
+
+logregParental$reads[logregParental$allele == "ALT"] <- logregParental$Type[logregParental$allele == "ALT"]
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Oak"] <- "Wine"
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Wine"] <- "Oak"
+
+logregParental$reads <- factor(logregParental$reads)
+head(logregParental)
+```
+
+## Actually running glm on each position by oak and wine
+
+Why does it keep giving the same answer???? Use this section to figure out what the output should be that is saved for a single glm()
+
+```{r, eval = FALSE}
+
+mynewglm <- function(reads, bulk, parent, value, data){
+  result <- glm(reads~bulk*parent, weights = value, family = binomial, data = data)
+  return(result$coefficients[1])
+}
+
+logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% 
+  filter(CHROM == "II") %>% head(.,32) %>%
+  group_by(POS) %>% 
+  summarise(mynewglm(reads, bulk, parent, value, data = .))
+
+logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% 
+  filter(CHROM == "II") %>% head(.,32) -> testII
+
+resII <- summary(glm(reads ~ bulk*parent, weights = value, family=binomial, data = testII))
+
+#find the z statistic for these
+resII$coefficients[,3]
+
+```
+## Trying parallelization because clearly this ain't working
+
+Cool markdown tutorial: https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html 
+
+```{r}
+#install.packages("doParallel")
+
+
+# Return a data frame
+foreach (i=unique(testII$POS), .combine=rbind) %dopar% {
+  c(sqrt(i), i*2)
+}
+
+#My actual data
+results <- foreach (i=unique(testII$POS), .combine=rbind) %dopar% {
+  res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = testII[testII$POS == i,])
+  res$coefficients
+}
+
+```
+
+### Running this with an entire chromosome instead of just... 32 lines
+
+```{r}
+
+logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% 
+  filter(CHROM == "II") -> CHRMII_logregP
+
+CHRMIIResults <- foreach (i=unique(CHRMII_logregP$POS), .combine=rbind) %dopar% {
+  res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = CHRMII_logregP[CHRMII_logregP$POS == i,])
+  c(i, res$coefficients)
+}
+
+head(as.data.frame(CHRMIIResults))
+```
+
+
+### How long does it take to run this on all of the chromosomes at once? A minute?
+
+This did not work, but it might be fine to do a for loop through the chromosomes...?
+
+```{r, eval = FALSE}
+
+for(k in unique(logregParental$CHROM)){
+  logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% filter(CHROM == k) -> CHRM_logregP
+
+  Results <- foreach (i=unique(CHRM_logregP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = CHRM_logregP[CHRM_logregP$POS == i,])
+    c(k, i, res$coefficients)
+  }
+  
+  Results <- as.data.frame(Results)
+
+  assign(value = Results, x = paste("Results_", k, sep = ""))
+}
+
+Res_AllChr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
+save(Res_AllChr, file = "GLM_Results_All.Rdata")
+```
+
+### Running the null model of Alt/Ref with those that are the same between oak and wine
+
+```{r}
+
+for(k in unique(ReadsParental$CHROM)){
+  ReadsParental %>% filter(Type == "Alt") %>% select(CHROM, POS, value, allele, parent, bulk) %>% filter(CHROM == k) -> logregAlt
+
+  Results <- foreach (i=unique(logregAlt$POS), .combine=rbind) %dopar% {
+    res <- glm(allele ~ bulk*parent, weights = value, family = binomial, data = logregAlt[logregAlt$POS == i,])
+    c(k, i, res$coefficients)
+    }
+  Results <- as.data.frame(Results)
+
+  assign(value = Results, x = paste("AltResults_", k, sep = ""))
+}
+
+AltResults <- rbind(AltResults_II, AltResults_III, AltResults_IV, AltResults_V, AltResults_VI, 
+                    AltResults_VII, AltResults_VIII, AltResults_IX, AltResults_X, AltResults_XI, 
+                    AltResults_XII, AltResults_XIII, AltResults_XIV, AltResults_XV, AltResults_XVI)
+
+AltResults$V2 <- as.numeric(AltResults$V2)
+AltResults$`(Intercept)` <- as.numeric(AltResults$`(Intercept)`)
+AltResults$bulkHIGH <- as.numeric(AltResults$bulkHIGH)
+AltResults$parentWine <- as.numeric(AltResults$parentWine)
+AltResults$`bulkHIGH:parentWine` <- as.numeric(AltResults$`bulkHIGH:parentWine`)
+
+
+ggplot(AltResults, aes(x = `bulkHIGH:parentWine`, color = V1)) + geom_density()
+
+ggplot(AltResults, aes(x = V2, y = `bulkHIGH:parentWine`)) + geom_point() + facet_grid(~V1) + ggtitle("Interactions in Alt Alleles")
+ggplot(AltResults, aes(x = V2, y = bulkHIGH)) + geom_point() + facet_grid(~V1) + ggtitle("Bulk Effect in Alt Alleles")
+ggplot(AltResults, aes(x = V2, y = parentWine)) + geom_point() + facet_grid(~V1) + ggtitle("Parent Effect in Alt Alleles")
+
+```
+
+### Plotting the actual results...
+
+```{r}
+load("GLM_Results_All.Rdata")
+
+Res_AllChr$V2 <- as.numeric(Res_AllChr$V2)
+Res_AllChr$`(Intercept)` <- as.numeric(Res_AllChr$`(Intercept)`)
+Res_AllChr$bulkHIGH <- as.numeric(Res_AllChr$bulkHIGH)
+Res_AllChr$parentWine <- as.numeric(Res_AllChr$parentWine)
+Res_AllChr$`bulkHIGH:parentWine` <- as.numeric(Res_AllChr$`bulkHIGH:parentWine`)
+
+
+ggplot(Res_AllChr, aes(x = `bulkHIGH:parentWine`, color = V1)) + geom_density()
+
+ggplot(Res_AllChr, aes(x = V2, y = `bulkHIGH:parentWine`)) + geom_point() + facet_grid(~V1) + ggtitle("Interactions")
+ggplot(Res_AllChr, aes(x = V2, y = bulkHIGH)) + geom_point() + facet_grid(~V1) + ggtitle("Bulk Effect")
+ggplot(Res_AllChr, aes(x = V2, y = parentWine)) + geom_point() + facet_grid(~V1) + ggtitle("Parent Effect")
+```
+
+## Running all of this to capture the z score
+
+This actually times out, so perhaps need to run with less in R memory or not as a for loop...?
+
+Use summary(glm(reads~bulk*parent, weights = value, family = binomial)) for each chromosome, then merge together and plot the Z scores from this summary.
+
+```{r, eval = FALSE}
+
+for(k in unique(logregParental$CHROM)){
+  logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% filter(CHROM == k) -> CHRM_logregP
+
+  Results <- foreach (i=unique(CHRM_logregP$POS), .combine=rbind) %dopar% {
+    res <- summary(glm(reads ~ bulk*parent, weights = value, family = binomial, data = CHRM_logregP[CHRM_logregP$POS == i,]))
+    c(k, i, res$coefficients[,3])
+  }
+  
+  Results <- as.data.frame(Results)
+
+  assign(value = Results, x = paste("Results_", k, sep = ""))
+}
+
+Res_Z_Chr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
+rm(Results, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
+Res_Z_Chr$V2 <- as.numeric(Res_Z_Chr$V2)
+Res_Z_Chr$`(Intercept)` <- as.numeric(Res_Z_Chr$`(Intercept)`)
+Res_Z_Chr$bulkHIGH <- as.numeric(Res_Z_Chr$bulkHIGH)
+Res_Z_Chr$parentWine <- as.numeric(Res_Z_Chr$parentWine)
+Res_Z_Chr$`bulkHIGH:parentWine` <- as.numeric(Res_Z_Chr$`bulkHIGH:parentWine`)
+
+save(Res_Z_Chr, file = "Res_Z_Chr.Rdata")
+```
+
+```{r}
+# Load in data produced above
+load("Res_Z_Chr.Rdata")
+head(Res_Z_Chr)
+
+ggplot(Res_Z_Chr, aes(x = `bulkHIGH:parentWine`, color = V1)) + geom_density()
+
+ggplot(Res_Z_Chr, aes(x = V2, y = `bulkHIGH:parentWine`, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(Res_Z_Chr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + scale_color_manual(values = CBchromPalette) +
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Interactions Z Score")
+
+ggplot(Res_Z_Chr, aes(x = V2, y = bulkHIGH, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(Res_Z_Chr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + 
+  scale_color_manual(values = CBchromPalette) +
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Bulk Effect Z Score")
+
+ggplot(Res_Z_Chr, aes(x = V2, y = parentWine, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(Res_Z_Chr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + 
+  scale_color_manual(values = CBchromPalette) + 
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Parent Effect Z Score")
+```
+
+#### Alt Alleles
+
+Some variants are called that do not differ between oak and wine parents, but do have reference and alternate alleles. Reference in this case means that the variant is de novo (unlikely) or that the sequence is misaligned. I figured that these variants could serve as a null for the chances of misalignment, since I would assume that this noise is equal between bulks and parental background.
+
+Because there are so few data points, and because this data is not actually right, this might be a bad idea, but I included it anyways:
+
+```{r}
+
+for(k in unique(ReadsParental$CHROM)){
+  ReadsParental %>% filter(Type == "Alt") %>% select(CHROM, POS, value, allele, parent, bulk) %>% filter(CHROM == k) -> logregAlt
+
+  Results <- foreach (i=unique(logregAlt$POS), .combine=rbind) %dopar% {
+    res <- summary(glm(allele ~ bulk*parent, weights = value, family = binomial, data = logregAlt[logregAlt$POS == i,]))
+    c(k, i, res$coefficients[,3])
+    }
+  Results <- as.data.frame(Results)
+
+  assign(value = Results, x = paste("AltZResults_", k, sep = ""))
+}
+
+AltZResults <- rbind(AltZResults_II, AltZResults_III, AltZResults_IV, AltZResults_V, AltZResults_VI, 
+                    AltZResults_VII, AltZResults_VIII, AltZResults_IX, AltZResults_X, AltZResults_XI, 
+                    AltZResults_XII, AltZResults_XIII, AltZResults_XIV, AltZResults_XV, AltZResults_XVI)
+
+rm(AltZResults_II, AltZResults_III, AltZResults_IV, AltZResults_V, AltZResults_VI, 
+                    AltZResults_VII, AltZResults_VIII, AltZResults_IX, AltZResults_X, AltZResults_XI, 
+                    AltZResults_XII, AltZResults_XIII, AltZResults_XIV, AltZResults_XV, AltZResults_XVI)
+
+AltZResults$V2 <- as.numeric(AltZResults$V2)
+AltZResults$`(Intercept)` <- as.numeric(AltZResults$`(Intercept)`)
+AltZResults$bulkHIGH <- as.numeric(AltZResults$bulkHIGH)
+AltZResults$parentWine <- as.numeric(AltZResults$parentWine)
+AltZResults$`bulkHIGH:parentWine` <- as.numeric(AltZResults$`bulkHIGH:parentWine`)
+
+
+ggplot(AltZResults, aes(x = `bulkHIGH:parentWine`, color = V1)) + geom_density() + ggtitle("Alt Interaction Distribution") + scale_color_manual(values = CBchromPalette) 
+
+ggplot(AltZResults, aes(x = V2, y = `bulkHIGH:parentWine`, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(AltZResults$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + scale_color_manual(values = CBchromPalette) +
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Alt Interactions Z Score")
+
+ggplot(AltZResults, aes(x = V2, y = bulkHIGH, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(AltZResults$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + 
+  scale_color_manual(values = CBchromPalette) +
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Alt Bulk Effect Z Score")
+
+ggplot(AltZResults, aes(x = V2, y = parentWine, color = V1)) + geom_point(alpha = 0.4) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(AltZResults$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + 
+  scale_color_manual(values = CBchromPalette) + 
+  facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Alt Parent Effect Z Score")
+
+```
+
