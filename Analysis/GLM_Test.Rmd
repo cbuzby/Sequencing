@@ -2,7 +2,10 @@
 title: "GLM for BSA Testing"
 author: "Cassandra Buzby"
 date: "5/8/2022"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -111,9 +114,6 @@ So the output of this is... a list of either oak or wine at every location, and 
 ```{r}
 AllSU <- inner_join(SCUC, SAUA, by = c("POS", "CHROM"), suffix = c(".Wine", ".Oak"))
 
-# head(AllSU)
-# str(AllSU)
-
 AllSU %>% select(CHROM, POS, 
                  AD_REF.LOW.Wine, AD_ALT.LOW.Wine, AD_REF.HIGH.Wine, AD_ALT.HIGH.Wine,
                  AD_REF.LOW.Oak, AD_ALT.LOW.Oak, AD_REF.HIGH.Oak, AD_ALT.HIGH.Oak) -> RefAltSU
@@ -133,73 +133,6 @@ RASU_Pivot$parent <- factor(RASU_Pivot$parent)
 head(RASU_Pivot)
 ```
 
-## Actually running glm with a table
-
-```{r}
-#Mark's code
-
-# log_reg_contingency_table <- glm(reads~bulk+parent+bulk:parent,
-#                                  weights=n,
-#                                  family=binomial,
-#                                  data=contingency_table)
-
-testRASU <- subset(RASU_Pivot, POS == 178)
-
-glm(allele~bulk+parent+bulk:parent,
-                                 weights=value,
-                                 family=binomial,
-                                 data=testRASU) %>% .$coefficients %>% combine() 
-
-#it worked for one locus!! now what do I save for each position?
-
-summary(glm(allele~bulk+parent+bulk:parent,
-                                 weights=value,
-                                 family=binomial,
-                                 data=testRASU))
-```
-
-```{r}
-myglm <- function(x){
-  glm(allele~bulk+parent+bulk:parent,
-                                 weights=value,
-                                 family=binomial,
-                                 data=x) %>% .$coefficients -> result
-  
-  return(result[1])
-
-}
-
-RASU_III <- subset(RASU_Pivot, CHROM == "III") 
-RASU_III[1:16,] %>% group_by(POS) %>% summarise(glm = myglm(.))
-```
-
-```{r}
-#It turns out this doesn't work
-
-subset(RASU_Pivot, CHROM == "III") %>% group_by(CHROM, POS) %>% 
-  summarise(glm = myglm(.), coefficient = c("intercept", "bulk", "parent", "interaction")) %>% 
-  pivot_wider(names_from = coefficient, values_from = glm) -> GLMResults_III
-```
-
-### Maybe using summarise for this?
-
-```{r, eval = FALSE}
-RASU_Pivot %>% group_by(CHROM, POS) %>% glm(allele~bulk+parent+bulk:parent,
-                                 weights=value,
-                                 family=binomial,data=.) %>% .$coefficients
-```
-
-## Testing this a different way
-
-```{r, eval = FALSE}
-RASU_Pivot %>% mutate(CHROM_POS = paste(CHROM, POS, sep = "_")) -> RP
-
-CP <- data.frame(CHROM_POS = unique(RP$CHROM_POS), glm_intercept = NA)
-for(i in unique(RP$CHROM_POS)){
-  res <- myglm(RP[RP$CHROM_POS == i])
-  CP$glm[CP$CHROM_POS == i] <- res
-}
-```
 # Adding in the parental loci
 
 ```{r}
@@ -286,7 +219,7 @@ resII$coefficients[,3]
 
 Cool markdown tutorial: https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html 
 
-```{r}
+```{r, eval = FALSE}
 #install.packages("doParallel")
 
 
@@ -341,6 +274,9 @@ for(k in unique(logregParental$CHROM)){
 Res_AllChr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
       Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
 
+rm(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
 save(Res_AllChr, file = "GLM_Results_All.Rdata")
 ```
 
@@ -361,6 +297,10 @@ for(k in unique(ReadsParental$CHROM)){
 }
 
 AltResults <- rbind(AltResults_II, AltResults_III, AltResults_IV, AltResults_V, AltResults_VI, 
+                    AltResults_VII, AltResults_VIII, AltResults_IX, AltResults_X, AltResults_XI, 
+                    AltResults_XII, AltResults_XIII, AltResults_XIV, AltResults_XV, AltResults_XVI)
+
+rm(Results,AltResults_II, AltResults_III, AltResults_IV, AltResults_V, AltResults_VI, 
                     AltResults_VII, AltResults_VIII, AltResults_IX, AltResults_X, AltResults_XI, 
                     AltResults_XII, AltResults_XIII, AltResults_XIV, AltResults_XV, AltResults_XVI)
 
@@ -393,9 +333,15 @@ Res_AllChr$`bulkHIGH:parentWine` <- as.numeric(Res_AllChr$`bulkHIGH:parentWine`)
 
 ggplot(Res_AllChr, aes(x = `bulkHIGH:parentWine`, color = V1)) + geom_density()
 
-ggplot(Res_AllChr, aes(x = V2, y = `bulkHIGH:parentWine`)) + geom_point() + facet_grid(~V1) + ggtitle("Interactions")
-ggplot(Res_AllChr, aes(x = V2, y = bulkHIGH)) + geom_point() + facet_grid(~V1) + ggtitle("Bulk Effect")
-ggplot(Res_AllChr, aes(x = V2, y = parentWine)) + geom_point() + facet_grid(~V1) + ggtitle("Parent Effect")
+ggplot(Res_AllChr, aes(x = V2, y = `bulkHIGH:parentWine`)) + geom_point() +scale_x_continuous(breaks = seq(from = 0, to = max(Res_AllChr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Interactions")
+ggplot(Res_AllChr, aes(x = V2, y = bulkHIGH)) + geom_point() +scale_x_continuous(breaks = seq(from = 0, to = max(Res_AllChr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Bulk Effect")
+ggplot(Res_AllChr, aes(x = V2, y = parentWine)) + geom_point() +scale_x_continuous(breaks = seq(from = 0, to = max(Res_AllChr$V2),
+                                  by = 1000),
+                    name = "Genomic Position") + facet_grid(~V1, scales = "free_x", space = "free_x") + ggtitle("Parent Effect")
 ```
 
 ## Running all of this to capture the z score
