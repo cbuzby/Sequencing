@@ -215,7 +215,8 @@ resII <- summary(glm(reads ~ bulk*parent, weights = value, family=binomial, data
 resII$coefficients[,3]
 
 ```
-## Trying parallelization because clearly this ain't working
+
+## Trying parallelization because clearly does not work
 
 Cool markdown tutorial: https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html 
 
