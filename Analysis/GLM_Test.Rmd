@@ -666,6 +666,76 @@ AllZStats %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = Int, color = St
 Since the last function amplified the correlations that were within that first window, next I'll just start at 1 windowlength in so that there's real data in every window; it would cut off the ends but that might actually be fine since they're not supposed to be contributing much...?
 
 ```{r}
+#First thing, looping over all points per chromosome is the way to do this, and using a function would also be best.
+load("Res_Z_Chr.Rdata")
+colnames(Res_Z_Chr) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+
+
+#Load function
+WindowCB_beta <- function(df = Res_Z_Chr[1:20,], windowsize = 5){
+  
+  df %>% arrange(CHROM, POS) -> df
+    
+  #FOR LOOP through chromosomes
+  
+  Result <- foreach (k=unique(df$CHROM), .combine=rbind) %dopar% {
+    
+        #add reorder by position
+        df[df$CHROM == k,] %>% arrange(-POS)  -> dfnew
+    
+        #FOR LOOP from original index 1 to original end index
+          foreach(i=windowsize+1:(length(dfnew$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- median(dfnew$Interaction[i-windowsize:i+windowsize])
+                res_bulk <- median(dfnew$bulkHigh[i-windowsize:i+windowsize])
+                res_parent <- median(dfnew$parentWine[i-windowsize:i+windowsize])
+                #print CHROM, index, POS, and median
+                c(k,i, dfnew$POS[i], res_bulk, res_parent, res_int)}
+  
+  }
+  #rename everything once it's done
+  
+  Result <- as.data.frame(Result)
+  colnames(Result) <- c("CHROM", "i", "POS", "Zprime_Bulk", "Zprime_Parent", "Zprime_Int")
+  Result$POS <- as.numeric(Result$POS)
+  Result$Zprime_Bulk <- as.numeric(Result$Zprime_Bulk)
+  Result$Zprime_Parent <- as.numeric(Result$Zprime_Parent)
+  Result$Zprime_Int <- as.numeric(Result$Zprime_Int)
+  
+  Result
+}
+
+#Test function with defaults
+betaresults <- WindowCB_beta(Res_Z_Chr, 30)
+
+#Plot to see
+betaresults %>% transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int, Stat = "ZPrime") -> Zprimes
+
+# Comparing specific chromosomes
+#colnames(Res_Z_Chr) <- c("V1", "V2", "Intercept", "bulkHigh", "parentWine", "Interaction", "CHROM")
+
+Res_Z_Chr %>% transmute(CHROM = CHROM, POS = POS, Bulk = bulkHigh, Parent = parentWine, Int = Interaction, Stat = "Z") -> Zs
+
+rbind(Zs, Zprimes) -> AllZStats
+
+AllZStats$CHROM <- factor(AllZStats$CHROM,
+                              levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+
+AllZStats %>%  ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+
+  facet_grid(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime")
+
+AllZStats %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
+  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+ ylim(-2,2)+
+  facet_wrap(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime | POS < 20kb") + 
+  theme_minimal() + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
 
 ```
 
