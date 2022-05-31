@@ -681,7 +681,7 @@ WindowCB_beta <- function(df = Res_Z_Chr[1:20,], windowsize = 5){
   Result <- foreach (k=unique(df$CHROM), .combine=rbind) %dopar% {
     
         #add reorder by position
-        df[df$CHROM == k,] %>% arrange(-POS)  -> dfnew
+        df[df$CHROM == k,] %>% arrange(POS)  -> dfnew
     
         #FOR LOOP from original index 1 to original end index
           foreach(i=windowsize+1:(length(dfnew$POS) - (2*windowsize)), .combine=rbind) %dopar% {
@@ -705,6 +705,8 @@ WindowCB_beta <- function(df = Res_Z_Chr[1:20,], windowsize = 5){
   Result
 }
 
+WindowCB_beta()
+
 #Test function with defaults
 betaresults <- WindowCB_beta(Res_Z_Chr, 30)
 
@@ -722,10 +724,39 @@ AllZStats$CHROM <- factor(AllZStats$CHROM,
                               levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
                                        "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
 
+save(AllZStats, file = "AllZStats.Rdata")
+
+```
+
+```{r}
+
+load("AllZStats.Rdata")
 
 AllZStats %>%  ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
   ylim(-10, 10) +  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+
   facet_grid(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime")
+
+AllZStats %>%  ggplot(., aes(x = POS, y = Bulk, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("violet", "black")) + geom_hline(yintercept = 0, color = "gray")+
+  facet_grid(~CHROM, scales = "free") + ggtitle("Bulk Effect Z vs Zprime")
+
+AllZStats %>%  ggplot(., aes(x = POS, y = Parent, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("darkorange", "black")) + geom_hline(yintercept = 0, color = "gray")+
+  facet_grid(~CHROM, scales = "free") + ggtitle("Parent Effect Z vs Zprime")
+
+#unique(AllZStats$Stat)
+
+AllZStats %>% filter(Stat == "ZPrime") %>% pivot_longer(c("Bulk", "Parent", "Int")) %>% 
+  ggplot(., aes(x = POS, y = value, color = name)) + geom_line(size = 1) + #geom_point(alpha = 0.1) + #
+  scale_color_manual(values = c("violet", "lightblue", "darkorange")) + geom_hline(yintercept = 0, color = "gray")+
+  facet_grid(~CHROM, scales = "free") + ggtitle("Comparison of Zprime per Factor")
+
+
+```
+
+### Looking closer at the beginnings of each
+
+```{r}
 
 AllZStats %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
   scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+ ylim(-2,2)+
@@ -734,9 +765,62 @@ AllZStats %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = Int, color = St
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank(),
         axis.title.y=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank())
+        )
+
+AllZStats %>% filter(POS < 30000, CHROM == "XV") %>% ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.5, size = 2) + #geom_line() + 
+  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+ ylim(-2,2)+
+  facet_wrap(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime | POS < 20kb") + 
+  theme_minimal() + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        )
+
+#shape = first 30
+
+AllZStats %>%  filter(POS < 30000, CHROM == "XV") %>% arrange(POS) -> TestXV
+
+TestXV$Stat[1:30] <- "Excluded"
+
+TestXV %>% ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.5, size = 2) + 
+  geom_point(data = TestXV, aes(x = TestXV$POS[30], y = mean(TestXV$Int[1:60])), size = 5, color = "blue", shape = 1) + #geom_line() + 
+  scale_color_manual(values = c("red", "lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+ ylim(-2,2)+
+  facet_wrap(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime | POS < 20kb") + 
+  theme_minimal() + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        )
+
+plot(sort(TestXV$Int[TestXV$Stat == "Z"]))
 
 ```
 
+## Is there actually a correlation between chromosomes with large effects and those with higher int scores?
+
+```{r}
+betaresults %>% group_by(CHROM) %>% summarise(maxBulk = max(abs(Zprime_Bulk)),
+                                              maxParent = max(abs(Zprime_Parent)),
+                                              maxInt = max(abs(Zprime_Int))) -> betamax
+
+
+plot(betamax$maxBulk, betamax$maxInt)
+plot(betamax$maxParent, betamax$maxInt)
+plot(betamax$maxBulk, betamax$maxParent)
+
+#alright, it doesn't look like there's any correlation here, so that at least is good
+
+```
+
+## Figuring out a good statistical cutoff
+
+Two options: FDR (empirical) or adjusted p-value. Since there's 97206 observations, the p-value by bonferroni correction would be 0.05^92k, which is probably a lot...?
+
+First, what's the z-score at a p-value of 0.05? Then what's the z-score at much lower than that?
+
+```{r}
+pnorm(q = c(-0.05, -0.5, -5))
+
+dnorm(x = c(-0.05, -0.5, -5))
+```
 
