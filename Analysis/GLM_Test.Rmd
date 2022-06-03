@@ -612,22 +612,27 @@ ggplot(windowresults, aes(x = POS, y = Zprime_Int, color = CHROM)) + geom_point(
 
 ```
 
-#Look at Chr XII Specifically 
+### Look at Chr XII Specifically 
 
-```{r}
+Code failed, try again later
+
+```{r, eval = FALSE}
 
 windowresults %>% filter(CHROM == "XII") %>% ggplot(., aes(x = POS, y = Zprime_Int, color = CHROM)) + geom_point(alpha = 0.4) + #geom_line() + 
   ylim(-10, 10) +  scale_color_manual(values = CBchromPalette[11]) + geom_hline(yintercept = 0, color = "gray")+
   facet_grid(~CHROM, scales = "free") + ggtitle("Interaction Zprime")
 
 windowresults %>% filter(CHROM == "XII") %>% 
-  transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int, Stat = "ZPrime") -> XIIZprime
+  transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int) -> XIIZprime
+
+XIIZprime$Stat <- "ZPrime"
 
 # Comparing specific chromosomes
-colnames(Res_Z_Chr) <- c("V1", "V2", "Intercept", "bulkHigh", "parentWine", "Interaction", "CHROM")
+#colnames(Res_Z_Chr) <- c("V1", "V2", "Intercept", "bulkHigh", "parentWine", "Interaction", "CHROM")
 
-Res_Z_Chr %>% filter(CHROM == "XII") %>% arrange(V2) %>% 
-   transmute(CHROM = CHROM, POS = V2, Bulk = bulkHigh, Parent = parentWine, Int = Interaction, Stat = "Z") -> XIIZ
+
+# Res_Z_Chr %>% filter(CHROM == "XII") %>% arrange(V2) %>% 
+#    transmute(CHROM = CHROM, POS = V2, Bulk = bulkHigh, Parent = parentWine, Int = Interaction, Stat = "Z") -> XIIZ
 
 rbind(XIIZ, XIIZprime) %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.4) + #geom_line() + 
   ylim(-10, 10) +  scale_color_manual(values = CBchromPalette) + geom_hline(yintercept = 0, color = "gray")+
@@ -639,11 +644,18 @@ rbind(XIIZ, XIIZprime) %>% filter(POS < 20000) %>% ggplot(., aes(x = POS, y = In
 windowresults %>% transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int, Stat = "ZPrime") -> Zprimes
 
 # Comparing specific chromosomes
-colnames(Res_Z_Chr) <- c("V1", "V2", "Intercept", "bulkHigh", "parentWine", "Interaction", "CHROM")
+#colnames(Res_Z_Chr) <- c("V1", "V2", "Intercept", "bulkHigh", "parentWine", "Interaction", "CHROM")
 
-Res_Z_Chr %>% transmute(CHROM = CHROM, POS = V2, Bulk = bulkHigh, Parent = parentWine, Int = Interaction, Stat = "Z") -> Zs
+#Get the original back to rename columns
+rm(Res_Z_Chr)
+load("Res_Z_Chr.Rdata")
+colnames(Res_Z_Chr) <- c("A", "B", "C", "D", "E", "F")
+Res_Z_Chr %>% transmute(CHROM = A, POS = B, Bulk = D, Parent = E, Int = F, Stat = "Z") -> Zs
 
+#Merge datasets
 rbind(Zs, Zprimes) -> AllZStats
+
+AllZStats$CHROM <- factor(AllZStats$CHROM, levels = ChromKey$chromosomes)
 
 AllZStats %>%  ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3) + #geom_line() + 
   ylim(-10, 10) +  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+
@@ -799,6 +811,12 @@ plot(sort(TestXV$Int[TestXV$Stat == "Z"]))
 ## Is there actually a correlation between chromosomes with large effects and those with higher int scores?
 
 ```{r}
+#Test function with defaults
+betaresults <- WindowCB_beta(Res_Z_Chr, 30)
+
+#Plot to see
+betaresults %>% transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int, Stat = "ZPrime") -> Zprimes
+
 betaresults %>% group_by(CHROM) %>% summarise(maxBulk = max(abs(Zprime_Bulk)),
                                               maxParent = max(abs(Zprime_Parent)),
                                               maxInt = max(abs(Zprime_Int))) -> betamax
