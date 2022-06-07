@@ -1,0 +1,321 @@
+---
+title: "GLM for BSA Statistics"
+author: "Cassandra Buzby"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+
+library(foreach)
+library(doParallel)
+
+#ggplot2::theme_set(theme_light())
+ggplot2::theme_set(theme_cowplot())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+#load("Selected_4-13-22.Rdata")
+#load("Unselected_4-13-22.Rdata")
+
+```
+
+## Testing Mark's GLM idea for stats on BSA
+
+
+```{r}
+load("RASU_Pivot.Rdata")
+```
+
+
+# Adding in the parental loci
+
+```{r}
+read.table("Wine_VCF.txt", header = TRUE) %>% mutate(parent = "Wine") -> WineTemp
+read.table("Oak_VCF.txt", header = TRUE) %>% mutate(parent = "Oak") -> OakTemp
+
+ParentalVCF <- rbind(WineTemp, OakTemp) %>% arrange(CHROM, POS) %>% select(CHROM, POS, REF, ALT, parent) %>% merge(ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes)
+
+ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+
+SNPids$Type <- NA
+SNPids$Type[is.na(SNPids$Wine) == TRUE] <- "Oak"
+SNPids$Type[is.na(SNPids$Oak) == TRUE] <- "Wine"
+SNPids$Type[SNPids$Wine == SNPids$Oak] <- "Alt"
+
+#SNPids[is.na(SNPids$Type),]
+
+ggplot(SNPids, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+```
+
+## Which parent is which in the glm?
+
+```{r, eval = FALSE}
+load("ReadsParental.Rdata")
+```
+
+### Picking out just the effects of the high bulks
+
+By dividing the alternate by the reference, the allele which is labeled as "Type" (ie the alternative) effect indicates which allele is the driving mutation.
+
+```{r}
+load("ReadsParental.Rdata")
+
+ReadsParental %>% filter(CHROM == "VIII") %>% select(-Wine, -Oak, -REF) %>% pivot_wider(names_from = allele, values_from = value) %>% 
+  ggplot(., aes(x = POS, y = ALT/REF, color = Type)) + 
+    scale_color_manual(values = c("black", "blue","firebrick", "gray")) + 
+  geom_point(alpha = 0.5)  + facet_grid(~bulk) + ggtitle("Chr VIII")
+
+ReadsParental %>% filter(CHROM == "VII") %>% select(-Wine, -Oak, -REF) %>% pivot_wider(names_from = allele, values_from = value) %>% 
+  ggplot(., aes(x = POS, y = ALT/REF, color = Type)) + 
+    scale_color_manual(values = c("black", "blue","firebrick", "gray")) + 
+  geom_point(alpha = 0.5)  + facet_grid(~bulk) + ggtitle("Chr VII")
+
+ReadsParental %>% filter(bulk == "HIGH") %>% select(-Wine, -Oak, -REF) %>% 
+  pivot_wider(names_from = allele, values_from = value) -> ReadsWider
+ 
+ggplot(ReadsWider, aes(x = POS, y = ALT/REF, color = Type)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(ReadsWider$POS), 
+                                  by = 10^(floor(log10(max(ReadsWider$POS))))), 
+                    name = "Genomic Position") +
+    scale_color_manual(values = c("black", "blue","firebrick", "gray")) + 
+    theme(axis.text.x = element_blank()) +
+  geom_point(alpha = 0.5)  + facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("High Bulk Allele Effects")
+```
+
+
+```{r, eval = FALSE}
+## Converting reference and alternate into oak and wine
+
+load("ReadsParental.Rdata")
+
+ReadsParental %>% filter(Type == "Oak" | Type == "Wine") -> logregParental
+
+logregParental$reads[logregParental$allele == "ALT"] <- logregParental$Type[logregParental$allele == "ALT"]
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Oak"] <- "Wine"
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Wine"] <- "Oak"
+
+logregParental$reads <- factor(logregParental$reads)
+head(logregParental)
+
+save(logregParental, file = "logregParental.Rdata")
+```
+
+
+## Running all of this to capture the z score
+
+This actually times out, so perhaps need to run with less in R memory or not as a for loop...?
+
+Use summary(glm(reads~bulk*parent, weights = value, family = binomial)) for each chromosome, then merge together and plot the Z scores from this summary.
+
+```{r, eval = FALSE}
+
+load("logregParental.Rdata")
+for(k in unique(logregParental$CHROM)){
+  logregParental %>% select(CHROM, POS, value, reads, parent, bulk) %>% filter(CHROM == k) -> CHRM_logregP
+
+  Results <- foreach (i=unique(CHRM_logregP$POS), .combine=rbind) %dopar% {
+    res <- summary(glm(reads ~ bulk*parent, weights = value, family = binomial, data = CHRM_logregP[CHRM_logregP$POS == i,]))
+    c(k, i, res$coefficients[,3])
+  }
+  
+  Results <- as.data.frame(Results)
+
+  assign(value = Results, x = paste("Results_", k, sep = ""))
+}
+
+Res_Z_Chr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
+rm(Results, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+      Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
+
+Res_Z_Chr$V2 <- as.numeric(Res_Z_Chr$V2)
+Res_Z_Chr$`(Intercept)` <- as.numeric(Res_Z_Chr$`(Intercept)`)
+Res_Z_Chr$bulkHIGH <- as.numeric(Res_Z_Chr$bulkHIGH)
+Res_Z_Chr$parentWine <- as.numeric(Res_Z_Chr$parentWine)
+Res_Z_Chr$`bulkHIGH:parentWine` <- as.numeric(Res_Z_Chr$`bulkHIGH:parentWine`)
+
+save(Res_Z_Chr, file = "Res_Z_Chr.Rdata")
+```
+
+
+
+### Using the weighted means function
+
+```{r, eval = FALSE}
+#First thing, looping over all points per chromosome is the way to do this, and using a function would also be best.
+load("Res_Z_Chr.Rdata")
+colnames(Res_Z_Chr) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+
+#Load function
+WindowCB_meanweighted <- function(df = Res_Z_Chr[1:20,], windowsize = 5){
+  
+  df %>% arrange(CHROM, POS) -> df
+  weightvector <- c(rep(1:(windowsize)),windowsize+1, rep((windowsize):1))
+
+  #FOR LOOP through chromosomes
+  
+  Result <- foreach (k=unique(df$CHROM), .combine=rbind) %dopar% {
+    
+        #add reorder by position
+        df[df$CHROM == k,] %>% arrange(POS)  -> dfnew
+    
+        #FOR LOOP from original index 1 to original end index
+          foreach(i=windowsize+1:(length(dfnew$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- weighted.mean(dfnew$Interaction[(i-windowsize):(i+windowsize)], weightvector)
+                res_bulk <- weighted.mean(dfnew$bulkHigh[(i-windowsize):(i+windowsize)], weightvector)
+                res_parent <- weighted.mean(dfnew$parentWine[(i-windowsize):(i+windowsize)], weightvector)
+                #print CHROM, index, POS, and mean
+                c(k,i, dfnew$POS[i], res_bulk, res_parent, res_int)}
+  
+  }
+  #rename everything once it's done
+  
+  Result <- as.data.frame(Result)
+  colnames(Result) <- c("CHROM", "i", "POS", "Zprime_Bulk", "Zprime_Parent", "Zprime_Int")
+  Result$POS <- as.numeric(Result$POS)
+  Result$Zprime_Bulk <- as.numeric(Result$Zprime_Bulk)
+  Result$Zprime_Parent <- as.numeric(Result$Zprime_Parent)
+  Result$Zprime_Int <- as.numeric(Result$Zprime_Int)
+  
+  Result
+}
+```
+
+
+## Figuring out a good statistical cutoff
+
+Two options: FDR (empirical) or adjusted p-value. Since there's 97206 observations, the p-value by bonferroni correction would be 0.05^92k, which is probably a lot...?
+
+First, z-score at p = 0.05 is 1.96; cutoffs drawn below:
+
+Function
+
+```{r}
+#Load function
+WindowCB_meanweighted <- function(df = Res_Z_Chr[1:20,], windowsize = 5){
+  
+  df %>% arrange(CHROM, POS) -> df
+  weightvector <- c(rep(1:(windowsize)),windowsize+1, rep((windowsize):1))
+
+  #FOR LOOP through chromosomes
+  
+  Result <- foreach (k=unique(df$CHROM), .combine=rbind) %dopar% {
+    
+        #add reorder by position
+        df[df$CHROM == k,] %>% arrange(POS)  -> dfnew
+    
+        #FOR LOOP from original index 1 to original end index
+          foreach(i=windowsize+1:(length(dfnew$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- weighted.mean(dfnew$Interaction[(i-windowsize):(i+windowsize)], weightvector)
+                res_bulk <- weighted.mean(dfnew$bulkHigh[(i-windowsize):(i+windowsize)], weightvector)
+                res_parent <- weighted.mean(dfnew$parentWine[(i-windowsize):(i+windowsize)], weightvector)
+                #print CHROM, index, POS, and mean
+                c(k,i, dfnew$POS[i], res_bulk, res_parent, res_int)}
+  
+  }
+  #rename everything once it's done
+  
+  Result <- as.data.frame(Result)
+  colnames(Result) <- c("CHROM", "i", "POS", "Zprime_Bulk", "Zprime_Parent", "Zprime_Int")
+  Result$POS <- as.numeric(Result$POS)
+  Result$Zprime_Bulk <- as.numeric(Result$Zprime_Bulk)
+  Result$Zprime_Parent <- as.numeric(Result$Zprime_Parent)
+  Result$Zprime_Int <- as.numeric(Result$Zprime_Int)
+  
+  Result
+}
+```
+
+
+
+```{r, eval = FALSE}
+load("Res_Z_Chr.Rdata")
+colnames(Res_Z_Chr) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+
+results.mean.weighted.100 <- WindowCB_meanweighted(Res_Z_Chr, 100)
+
+#Plot to see
+results.mean.weighted.100 %>% transmute(CHROM = CHROM, POS = POS, Bulk = Zprime_Bulk, Parent = Zprime_Parent, Int = Zprime_Int, Stat = "ZPrime") -> Zprimes
+load("Zs.Rdata")
+rbind(Zs, Zprimes) -> WeightedMeanZStats.100
+
+WeightedMeanZStats.100$CHROM <- factor(WeightedMeanZStats.100$CHROM,
+                              levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+save(WeightedMeanZStats.100, file = "WeightedMeanZStats.100.Rdata")
+```
+
+```{r}
+load("WeightedMeanZStats.100.Rdata")
+
+WeightedMeanZStats.100 %>%  ggplot(., aes(x = POS, y = Int, color = Stat)) + geom_point(alpha = 0.3, size = 0.05) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("lightblue", "black")) + geom_hline(yintercept = 0, color = "gray")+
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = c(1.96, -1.96), color = "black", linetype = "dashed") +
+  theme(axis.text.x = element_blank()) +
+  facet_grid(~CHROM, scales = "free") + ggtitle("Interaction Z vs Zprime | Weighted Means W = 100")
+
+WeightedMeanZStats.100 %>%  ggplot(., aes(x = POS, y = Bulk, color = Stat)) + geom_point(alpha = 0.3, size = 0.05) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("violet", "black")) + geom_hline(yintercept = 0, color = "gray")+ 
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = c(1.96, -1.96), color = "black", linetype = "dashed") +
+  theme(axis.text.x = element_blank()) +
+  facet_grid(~CHROM, scales = "free") + ggtitle("Bulk Effect Z vs Zprime | Weighted Means W = 100")
+
+WeightedMeanZStats.100 %>%  ggplot(., aes(x = POS, y = Parent, color = Stat)) + geom_point(alpha = 0.3, size = 0.05) + #geom_line() + 
+  ylim(-10, 10) +  scale_color_manual(values = c("darkorange", "black")) + geom_hline(yintercept = 0, color = "gray")+ 
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = c(1.96, -1.96), color = "black", linetype = "dashed") +
+  theme(axis.text.x = element_blank()) +
+  facet_grid(~CHROM, scales = "free") + ggtitle("Parent Effect Z vs Zprime | Weighted Means W = 100")
+
+WeightedMeanZStats.100 %>% filter(Stat == "ZPrime") %>% pivot_longer(c("Bulk", "Parent", "Int")) %>% 
+  ggplot(., aes(x = POS, y = value, color = name)) + geom_line(size = 1) + #geom_point(alpha = 0.1) + #+ 
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = c(1.96, -1.96), color = "black", linetype = "dashed") +
+  theme(axis.text.x = element_blank()) +
+  scale_color_manual(values = c("violet", "lightblue", "darkorange"))+
+  facet_grid(~CHROM, scales = "free") + ggtitle("Comparison of Zprime per Factor | Weighted Means W = 100")
+```
+
+
+## Using Permutations to Estimate FDR
+
+What is the null distribution of the effect? It should be the variation that is seen in sequencing without the QTL. This is not the same as reshuffling the z-scores, though that would give the FDR within different window sizes (ie if the order didn't matter).
+
+```{r}
+# No idea what to do here
+```
+
