@@ -359,7 +359,7 @@ PR_Window %>% pivot_longer(c("Zprime_Bulk", "Zprime_Parent", "Zprime_Int")) %>%
   scale_color_manual(values = c("violet", "lightblue", "darkorange"))+
   facet_grid(~name) + ggtitle("Comparison of Permuted Zprime per Factor | Weighted Means W = 30")
 
-ggplot(subset(PR_Window, POS < 10000), aes(x = POS, y = Zprime_Bulk)) + geom_point(size = 0.1, alpha = 0.2, color = "violet") + 
+ggplot(subset(PR_Window, POS < 50000), aes(x = POS, y = Zprime_Bulk)) + geom_point(size = 0.1, alpha = 0.2, color = "violet") + 
   geom_hline(yintercept = 0, color = "gray") +
   geom_hline(yintercept = quantile(PR_Window$Zprime_Bulk, c(0.025, 0.975)), color = "black", linetype = "dashed") +
   theme(axis.text.x = element_blank()) +  ylab("Oak <- Effect -> Wine")
@@ -371,6 +371,9 @@ ggplot(subset(PR_Window, POS < 10000), aes(x = POS, y = Zprime_Bulk)) + geom_poi
 The range of data in the smoothed vs unsmoothed glm is variable and therefore the range that should be used for the z scores should be different from the z' scores. How exactly to do this is not clear, but let's try reshuffling the z scores to see how that changes the means.
 
 ```{r}
+
+load("Res_Z_Chr.Rdata")
+
 quantile(Res_Z_Chr$bulkHIGH, c(0.025, 0.975))
 quantile(Res_Z_Chr$parentWine, c(0.025, 0.975))
 quantile(Res_Z_Chr$`bulkHIGH:parentWine`, c(0.025, 0.975))
@@ -407,6 +410,8 @@ Reshuffle100.1 %>% pivot_longer(c("Zprime_Bulk", "Zprime_Parent", "Zprime_Int"))
 ```
 
 ### Looping through to make a set of quantiles
+
+This does not run correctly 
 
 ```{r, eval = FALSE}
 Res_Z_Reshuffle <- Res_Z_Chr %>% mutate(CHROM = V1, POS = V2, Interaction = `bulkHIGH:parentWine`)
@@ -462,4 +467,72 @@ ResSummary %>% pivot_longer(-Intercept) %>%
   scale_color_manual(values = c("violet", "lightblue", "darkorange"))+ ggtitle("Mean Z score from Reshuffled Positions")
 
 ```
+
+## What are my null assumptions?
+
+1. There is no effect of bulk on allele frequency differences (shuffling reads across bulks)
+2. There is no effect of position on smoothed significance (shuffling positions)
+
+_This took 7 hours to run for 30k samples_
+
+```{r, eval = FALSE}
+load("logregParental.Rdata")
+
+start.loop <- Sys.time()
+ResSummary <- data.frame(Intercept = 0, Bulk = 0, Parent = 0, Interaction = 0)
+for(i in 1:30000){
+  
+  logregParental$value <- sample(logregParental$value)
+  
+  chosenpos <- sample(unique(logregParental$POS), 100)
+  logreg100 <- subset(logregParental, POS %in% chosenpos)
+  
+  logreg100 %>% select(CHROM, POS, value, reads, parent, bulk) -> CHRM_logregP
+
+  Results <- foreach (i=unique(CHRM_logregP$POS), .combine=rbind) %dopar% {
+    res <- summary(glm(reads ~ bulk*parent, weights = value, family = binomial, data = CHRM_logregP[CHRM_logregP$POS == i,]))
+    c(res$coefficients[,3]) 
+  }
+  
+  Results <- as.data.frame(Results) 
+  ResSummary[i,] <- apply(Results, 2, mean)
+}
+
+Sys.time() - start.loop
+
+
+ResSummary %>%  pivot_longer(-Intercept) %>% 
+  ggplot(., aes(x = name, y = value, color = name)) + geom_boxplot(size = 1) + 
+  geom_point(alpha = 0.2, size = 2, position  = position_jitterdodge()) +  
+  scale_color_manual(values = c("violet", "lightblue", "darkorange"))+ ggtitle("Mean Z score from Reshuffled Values")
+
+save(ResSummary, file = "ResSummary_ShuffledPOS_30000x.Rdata")
+
+```
+
+```{r}
+load("ResSummary_ShuffledPOS_30000x.Rdata")
+
+quantile(ResSummary$Bulk, c(0.025, 0.975))
+quantile(ResSummary$Parent, c(0.025, 0.975))
+quantile(ResSummary$Interaction, c(0.025, 0.975))
+
+#If each of these was independent, it would be 90k samples instead of 30k samples, but 30k is the length of the entire dataset and then each is a score from a window of 100, so really it's the summary of each 100-position set
+
+ResSummary %>%  pivot_longer(-Intercept) %>% 
+  ggplot(., aes(x = name, y = value, color = name)) +
+  geom_point(alpha = 0.1, size = 0.5, position  = position_jitterdodge()) +  
+  geom_hline(yintercept = quantile(ResSummary$Bulk, c(0.025, 0.975)), linetype = "dashed") +
+  geom_violin(size = 2, alpha = 0.1) + 
+  ylim(c(-5,5)) + 
+  scale_color_manual(values = c("violet", "lightblue", "darkorange"))+ ggtitle("Mean Z score from Reshuffled Values")
+
+```
+
+## More stats
+
+So the fact that these are weighted means ensures that the sliding window will be skewed by each; so really if we see peaks that is not actually indicative of it being real, but that it's averaged.
+
+So perhaps the slope of the peaks is what should be the null as well...?
+
 
