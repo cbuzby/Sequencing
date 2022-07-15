@@ -1,0 +1,159 @@
+---
+title: "GLM for BSA Testing"
+author: "Cassandra Buzby"
+date: "5/8/2022"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+
+library(foreach)
+library(doParallel)
+
+#ggplot2::theme_set(theme_light())
+ggplot2::theme_set(theme_cowplot())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+#load("SAUA_4-13-22.Rdata")
+#load("SCUC_4-13-22.Rdata")
+#load("Selected_4-13-22.Rdata")
+#load("Unselected_4-13-22.Rdata")
+
+```
+
+
+
+# Adding in the parental loci
+
+```{r}
+read.table("Wine_VCF.txt", header = TRUE) %>% mutate(parent = "Wine") -> WineTemp
+read.table("Oak_VCF.txt", header = TRUE) %>% mutate(parent = "Oak") -> OakTemp
+
+ParentalVCF <- rbind(WineTemp, OakTemp) %>% arrange(CHROM, POS) %>% select(CHROM, POS, REF, ALT, parent) %>% merge(ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes)
+
+ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+
+SNPids$Type <- NA
+SNPids$Type[is.na(SNPids$Wine) == TRUE] <- "Oak"
+SNPids$Type[is.na(SNPids$Oak) == TRUE] <- "Wine"
+SNPids$Type[SNPids$Wine == SNPids$Oak] <- "Alt"
+
+SNPids[is.na(SNPids$Type),]
+
+ggplot(SNPids, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+```
+```{r, eval = FALSE}
+RASU_Pivot %>% merge(SNPids) -> ReadsParental
+
+save(ReadsParental, file = "ReadsParental.Rdata")
+```
+
+```{r}
+load("ReadsParental.Rdata")
+
+#Look at the difference between Alt and Oak/Wine in this plot vs above
+ggplot(ReadsParental, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+```
+
+This is interesting because the number of positions that were called in each bulk amplifies the oak and wine alleles but not the alt alleles, which is good for keeping the most data of quality. 
+
+```{r}
+ReadsParental %>% filter(Type == "Alt") %>% ggplot(., aes(x = value, fill = allele)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt vs Ref where Oak/Wine are Equivalent")
+
+ReadsParental %>% filter(Type != "Alt") %>% ggplot(., aes(x = value, fill = allele)) + geom_density(alpha = 0.5, size = 1) + ggtitle("Alt vs Ref where Oak/Wine are not Equivalent")
+```
+
+
+## Converting reference and alternate into oak and wine
+
+```{r}
+
+load("ReadsParental.Rdata")
+
+ReadsParental %>% filter(Type == "Oak" | Type == "Wine") -> logregParental
+
+logregParental$reads[logregParental$allele == "ALT"] <- logregParental$Type[logregParental$allele == "ALT"]
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Oak"] <- "Wine"
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Wine"] <- "Oak"
+
+logregParental$reads <- factor(logregParental$reads)
+head(logregParental)
+```
+
+## Where are the most differences between Oak and Wine by chromosome?
+
+Conclusions: design primers in the 149.5k-150.5k and 375-380k positions 
+
+```{r}
+#head(ReadsParental)
+
+ReadsParental %>% filter(CHROM == "VIII") %>% ggplot(., aes(x = POS, fill = Type)) + geom_histogram(color = "black") + ggtitle("Chr VIII SNPs")
+
+ReadsParental %>% filter(CHROM == "VIII", Type == "Oak" | Type == "Wine") %>% ggplot(., aes(x = POS, fill = Type)) + geom_density(color = "black", alpha = 0.5) + ggtitle("Chr VIII SNPs")
+
+ReadsParental %>% filter(CHROM == "VIII", Type == "Oak" | Type == "Wine") %>% ggplot(., aes(x = POS)) + geom_density(color = "black", alpha = 0.5) + ggtitle("Chr VIII SNPs") + geom_vline(xintercept = c(140000, 160000), color = "firebrick", linetype = "dashed") + geom_vline(xintercept = c(360000, 380000), color = "darkblue", linetype = "dashed")
+
+ReadsParental %>% filter(CHROM == "VIII", POS < 150500, POS > 149000) %>% ggplot(., aes(x = POS, fill = Type)) + 
+  geom_histogram(color = "black", binwidth = 10) + ggtitle("Chr VIII SNPs")
+
+ReadsParental %>% filter(CHROM == "VIII", POS < 378500, POS > 377750) %>% ggplot(., aes(x = POS, fill = Type)) + 
+  geom_histogram(color = "black", binwidth = 10) + ggtitle("Chr VIII SNPs")
+
+```
+```{r}
+ReadsParental %>% filter(CHROM == "VIII", POS < 150500, POS > 149000) %>% select(CHROM, POS, Type) %>% distinct()
+ReadsParental %>% filter(CHROM == "VIII", POS < 378500, POS > 377750) %>% select(CHROM, POS, Type) %>% distinct()
+  
+```
+
+## For Running an Experiment
+
+Number of cells vs amount of media vs doubling rate
+
+```{r}
+cells <- 52500000
+media.mL <- 25
+
+multiplier <- 10*6 #1 mL/this number = how much a 1 mL suspension should be diluted by per bulk
+
+
+# start <- cells/media.mL
+start <- (cells/media.mL)/multiplier
+
+time.hours <- 24
+doubling.time <- 1.5
+
+# cells.per.mL <- start*2^(time.hours/doubling.time)
+
+test <- data.frame(hours = 1:24, cellspermL = (start/10)*2^(1:24/doubling.time))
+
+ggplot(test, aes(x = hours, y = cellspermL)) + geom_line() + geom_hline(yintercept = c(1.5*10^6,80*10^6), linetype = "dashed") + geom_vline(xintercept = 24, color = "red", linetype = "dashed") + ggtitle(paste("uL Cells Per Bulk = ", 1000/multiplier, sep = "")
+)
+```
+
