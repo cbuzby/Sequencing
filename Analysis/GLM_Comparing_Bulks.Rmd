@@ -1,0 +1,697 @@
+---
+title: "GLM_ComparingBulks"
+author: "Cassandra Buzby"
+date: "7/19/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+
+#ggplot2::theme_set(theme_light())
+ggplot2::theme_set(theme_cowplot())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+CBchromPalette_ext <- c("#F26430", "#0B0B45", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#1E64AA", "#32936F", "#FEC601","#8DAA9D", "#7B0828","#0F0E0E", "#522B47")
+                  
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+
+
+#################################################################################################
+#################################################################################################
+
+perChromWindow_binom_redone <- function(lrP, chr = "II", windowsize = 100, coverage = 15634092/2, seedt = Sys.time()){
+  lrP <- lrP[lrP$CHROM == chr,]
+  
+  set.seed(seedt)
+  
+  for(i in 1:length(lrP$CHROM)){
+    lrP$subs[i] <- rbinom(1, coverage, prob = lrP$perc[i]) + 1
+  }
+  
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = subs, family = binomial, data = lrP[lrP$POS == i,])
+    c(chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  Results[,5] <- as.numeric(Results[,5])
+  Results[,6] <- as.numeric(Results[,6])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+}
+
+#################################################################################################
+#################################################################################################
+
+
+pois_binom_sample <- function(lrP, chr = "II", windowsize = 100, coverage_div_factor = 2, seedt = 0){
+  lrP <- lrP[lrP$CHROM == chr,]
+  
+  set.seed(seedt + Sys.time())
+  
+  #calculate reads by Poisson
+   reads <- rpois(n = length(unique(lrP$id)), lambda = mean(lrP$value)/coverage_div_factor)
+   readsdf <- data.frame(id = unique(lrP$id), numreads = reads)
+   lrP %>% left_join(readsdf, by = "id") -> lrP
+  
+  #calculate binom for number of reads at position
+  for(i in 1:length(lrP$CHROM)){
+    lrP$subs[i] <- rbinom(1, lrP$numreads[i], prob = lrP$perc[i]) + 1
+  }
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = subs, family = binomial, data = lrP[lrP$POS == i,])
+    c(chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  Results[,5] <- as.numeric(Results[,5])
+  Results[,6] <- as.numeric(Results[,6])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+}
+
+#################################################################################################
+#################################################################################################
+
+MakeStackedPlots <- function(pb = pb_VIII_df, chrom = "VII", bar = 100000){
+  
+  maxChrVII <- data.frame(Index = unique(pb$Index),
+                       max_bulk_zprime = NA,
+                       max_parent_zprime = NA,
+                       max_int_zprime = NA)
+
+for(i in 1:length(unique(pb$Index))){
+  isubset <- subset(pb, Index == as.character(i))
+  maxChrVII$max_bulk_zprime[i] <- isubset$POS[abs(isubset$bulk_Zprime) == max(abs(isubset$bulk_Zprime))]
+  maxChrVII$max_parent_zprime[i] <- isubset$POS[abs(isubset$parent_Zprime) == max(abs(isubset$parent_Zprime))]
+  maxChrVII$max_int_zprime[i] <- isubset$POS[abs(isubset$Interaction_Zprime) == max(abs(isubset$Interaction_Zprime))]
+  rm(isubset)
+}
+
+#sd(maxChrVII$max_bulk_zprime)
+
+ggplot(maxChrVII, aes(x = max_bulk_zprime)) + geom_density(size = 1) + 
+  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Bulk Effect"))-> p1
+ggplot(maxChrVII, aes(x = max_bulk_zprime, y = "Bulk    .")) + geom_boxplot(size = 1, color = "violet") + geom_jitter(alpha = 0.4, size = 3)  + ggtitle(paste("SD = ", round(sd(maxChrVII$max_bulk_zprime), 2))) -> p2
+a1 <- plot_grid(p1, p2, nrow = 2)
+
+ggplot(maxChrVII, aes(x = max_bulk_zprime)) + geom_density(size = 1) + 
+  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Bulk Effect")) -> p1
+  p1 + annotate("segment", x = min(maxChrVII$max_bulk_zprime), 
+           xend = min(maxChrVII$max_bulk_zprime) + bar, 
+           y = layer_scales(p1)$y$range$range[1] + (layer_scales(p1)$y$range$range[2] - layer_scales(p1)$y$range$range[1])/10, 
+           yend = layer_scales(p1)$y$range$range[1] + (layer_scales(p1)$y$range$range[2] - layer_scales(p1)$y$range$range[1])/10,  
+           colour = "red", size = 2, alpha = 0.5) -> p1
+ggplot(maxChrVII, aes(x = max_bulk_zprime, y = "Bulk    .")) + geom_boxplot(size = 1, color = "violet") + geom_jitter(alpha = 0.4, size = 3)+xlim(layer_scales(p1)$x$range$range) + ggtitle(paste("SD = ", round(sd(maxChrVII$max_bulk_zprime), 2))) -> p2
+a2 <- plot_grid(p1, p2, nrow = 2)
+
+ggplot(maxChrVII, aes(x = max_parent_zprime)) + geom_density(size = 1) + 
+  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Parent Effect"))-> p3
+  p3 + annotate("segment", x = min(maxChrVII$max_parent_zprime), 
+           xend = min(maxChrVII$max_parent_zprime) + bar, 
+           y = layer_scales(p3)$y$range$range[1] + (layer_scales(p3)$y$range$range[2] - layer_scales(p3)$y$range$range[1])/10, 
+           yend = layer_scales(p3)$y$range$range[1] + (layer_scales(p3)$y$range$range[2] - layer_scales(p3)$y$range$range[1])/10,  
+           colour = "red", size = 2, alpha = 0.5) -> p3
+ggplot(maxChrVII, aes(x = max_parent_zprime, y = "Parent .")) + geom_boxplot(size = 1, color = "darkorange") + geom_jitter(alpha = 0.4, size = 3) + ggtitle(paste("SD = ", round(sd(maxChrVII$max_parent_zprime), 2)))  -> p4
+a3 <- plot_grid(p3, p4, nrow = 2)
+
+ggplot(maxChrVII, aes(x = max_int_zprime)) + geom_density(size = 1) + ggtitle(paste("Maximum Z' value for Chr ",chrom, " Interaction Effect"))-> p5
+  p5 + annotate("segment", x = min(maxChrVII$max_int_zprime), 
+           xend = min(maxChrVII$max_int_zprime) + bar, 
+           y = layer_scales(p5)$y$range$range[1] + (layer_scales(p5)$y$range$range[2] - layer_scales(p5)$y$range$range[1])/10, 
+           yend = layer_scales(p5)$y$range$range[1] + (layer_scales(p5)$y$range$range[2] - layer_scales(p5)$y$range$range[1])/10,  
+           colour = "red", size = 2, alpha = 0.5) -> p5
+  
+ggplot(maxChrVII, aes(x = max_int_zprime, y = "Max Int Z'")) + geom_boxplot(size = 1, color = "lightblue") + geom_jitter(alpha = 0.4, size = 3) +ylab("") + ggtitle(paste("SD = ", round(sd(maxChrVII$max_int_zprime), 2)))  -> p6
+a4 <- plot_grid(p5, p6, nrow = 2)
+
+return(list(a1, a2, a3, a4))
+
+}
+
+#################################################################################################
+#################################################################################################
+
+MakeZePlots <- function(pb_II_df = pb_VIII_df){
+  maxChrVI <- data.frame(Index = unique(pb_II_df$Index),
+                       max_bulk_zprime = NA,
+                       max_parent_zprime = NA,
+                       max_int_zprime = NA)
+
+for(i in 1:length(unique(pb_II_df$Index))){
+  isubset <- subset(pb_II_df, Index == as.character(i))
+  maxChrVI$max_bulk_zprime[i] <- isubset$POS[abs(isubset$bulk_Zprime) == max(abs(isubset$bulk_Zprime))]
+  maxChrVI$max_parent_zprime[i] <- isubset$POS[abs(isubset$parent_Zprime) == max(abs(isubset$parent_Zprime))]
+  maxChrVI$max_int_zprime[i] <- isubset$POS[abs(isubset$Interaction_Zprime) == max(abs(isubset$Interaction_Zprime))]
+  rm(isubset)
+}
+
+
+pb_II_df %>% ggplot(., aes(x = POS, y = bulk_Zprime, color = Index)) + 
+  geom_line(alpha = 0.2) + theme(legend.position = "none") -> pbulkz
+
+
+pb_II_df %>% ggplot(., aes(x = POS, y = parent_Zprime, color = Index)) + 
+  geom_line(alpha = 0.2) + theme(legend.position = "none") -> pparentz
+
+pb_II_df %>% ggplot(., aes(x = POS, y = Interaction_Zprime, color = Index)) + 
+  geom_line(alpha = 0.2) + theme(legend.position = "none") -> pintz
+
+ggplot(maxChrVI, aes(x = max_bulk_zprime, y = 1)) + geom_boxplot() + geom_jitter(alpha = 0.5) + theme(legend.position = "none") + ylab("") + xlab("Position") + xlim(min(pb_II_df$POS), max(pb_II_df$POS)) -> pbulkmax
+
+ggplot(maxChrVI, aes(x = max_parent_zprime, y = 1)) + geom_boxplot() + geom_jitter(alpha = 0.5) + theme(legend.position = "none") + ylab("") + xlab("Position") + xlim(min(pb_II_df$POS), max(pb_II_df$POS)) -> pparentmax
+
+ggplot(maxChrVI, aes(x = max_int_zprime, y = 1)) + geom_boxplot() + geom_jitter(alpha = 0.5) + theme(legend.position = "none") + ylab("") + xlab("Position") + xlim(min(pb_II_df$POS), max(pb_II_df$POS)) -> pintmax
+
+a <- plot_grid(pbulkz, pbulkmax, nrow = 2)
+b <- plot_grid(pparentz, pparentmax, nrow = 2)
+c <- plot_grid(pintz, pintmax, nrow = 2)
+
+ return(list(plotA = a, plotB = b, plotC = c))
+}
+
+#################################################################################################
+#################################################################################################
+
+getmaxvalues <- function(pb = pb_VIII_df200, idstring = NA){
+  #change this for each dataset
+  
+  #make the df to save
+  maxChrVII <- data.frame(Index = unique(pb$Index),
+                         max_bulk_zprime = NA,
+                         max_parent_zprime = NA,
+                         max_int_zprime = NA,
+                         max_bulk_zprime_pos = NA,
+                         max_parent_zprime_pos = NA,
+                         max_int_zprime_pos = NA)
+  
+  for(i in 1:length(unique(pb$Index))){
+    isubset <- subset(pb, Index == as.character(i))
+    maxChrVII$max_bulk_zprime_pos[i] <- isubset$POS[abs(isubset$bulk_Zprime) == max(abs(isubset$bulk_Zprime))]
+    maxChrVII$max_parent_zprime_pos[i] <- isubset$POS[abs(isubset$parent_Zprime) == max(abs(isubset$parent_Zprime))]
+    maxChrVII$max_int_zprime_pos[i] <- isubset$POS[abs(isubset$Interaction_Zprime) == max(abs(isubset$Interaction_Zprime))]
+    maxChrVII$max_bulk_zprime[i] <- max(abs(isubset$bulk_Zprime))
+    maxChrVII$max_parent_zprime[i] <- max(abs(isubset$parent_Zprime))
+    maxChrVII$max_int_zprime[i] <- max(abs(isubset$Interaction_Zprime))
+    rm(isubset)
+  }
+  
+  plot_int <- maxChrVII %>% ggplot(aes(x = max_int_zprime_pos, y = max_int_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Interaction Z primes by Position")
+  plot_parent <- maxChrVII %>% ggplot(aes(x = max_parent_zprime_pos, y = max_parent_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Parent Z primes by Position")
+  plot_bulk <- maxChrVII %>% ggplot(aes(x = max_bulk_zprime_pos, y = max_bulk_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Bulk Z primes by Position")
+  
+  maxChrVII$Chr <- idstring
+  maxdf <- maxChrVII
+  
+  maxstats <- data.frame(parentz_mean = mean(maxdf$max_parent_zprime),
+                         parentz_sd = sd(maxdf$max_parent_zprime),
+                         parentpos_mean = mean(maxdf$max_parent_zprime_pos),
+                         parentpos_sd = sd(maxdf$max_parent_zprime_pos),
+                         intz_mean = mean(maxdf$max_int_zprime),
+                         intz_sd = sd(maxdf$max_int_zprime),
+                         intpos_mean = mean(maxdf$max_int_zprime_pos),
+                         intpos_sd = sd(maxdf$max_int_zprime_pos),
+                         bulkz_mean = mean(maxdf$max_bulk_zprime),
+                         bulkz_sd = sd(maxdf$max_bulk_zprime),
+                         bulkpos_mean = mean(maxdf$max_bulk_zprime_pos),
+                         bulkpos_sd = sd(maxdf$max_bulk_zprime_pos),
+                         Chr = idstring
+                         )
+  
+  return(list(maxChrVII, maxstats, plot_bulk,plot_parent, plot_int))
+}
+
+#################################################################################################
+#################################################################################################
+
+
+GLM_Bulk_Only <- function(startLRP, windowsize = 100, Chr = "II"){
+  if(Chr == "All"){
+    appendWResult <- data.frame(CHROM = NA, Index = NA, POS = NA, bulk_Z = NA, bulk_Zprime = NA)
+    for(Chrall in unique(startLRP$CHROM)){
+      lrP <- subset(startLRP, CHROM == Chrall)
+      #Run the glm on that chromosome
+      Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+        res <- glm(reads ~ bulk, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+        c(Chrall, i, res$coefficients)
+      }
+      
+      #Format the results for the next function
+      Results <- as.data.frame(Results)
+      colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh")
+      Results[,2] <- as.numeric(Results[,2])
+      Results[,3] <- as.numeric(Results[,3])
+      Results[,4] <- as.numeric(Results[,4])
+      
+      
+      Results %>% arrange(POS) %>% select(-Intercept) -> Results
+    
+      
+      #Run the windows on that chromosome
+      WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+                    res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                    #print CHROM, index, POS, and median
+                    c(Chrall, i, Results$POS[i], Results$bulkHigh[i],res_bulk)}
+      
+      WResult <- as.data.frame(WResult)
+      colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "bulk_Zprime")
+      WResult[,2] <- as.numeric(WResult[,2])
+      WResult[,3] <- as.numeric(WResult[,3])
+      WResult[,4] <- as.numeric(WResult[,4])
+      WResult[,5] <- as.numeric(WResult[,5])
+      
+      appendWResult <- rbind(appendWResult,WResult)
+    }
+    return(appendWResult)
+  }else{
+  lrP <- subset(lrP, CHROM == Chr)
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+    c(Chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(Chr, i, Results$POS[i], Results$bulkHigh[i],res_bulk)}
+  
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "bulk_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  return(WResult)
+  }
+  
+}
+
+```
+
+## Post 7/19/22 Meeting
+
+Notes:
+* changing the window size would help with the jaggedness of peaks, and have the max values align more with peak locations
+* clustering on the location of the max
+* it's only a problem when they're nearly equal
+* k-means clustering should be done on that one vector
+* distance function - make sure it's not trying to do correlation as distance; euclidian works, should be fine in any dimension
+* silhouette width gives the right number of clusters apparently - try that
+* the goal is to see if there's two clusters, then what's the sd in each cluster
+
+
+### Bulk Correlations
+
+* correlation between the two bulks
+* there's going to be some slope to the z scores through each
+* at low values it might be noisier, since that should just be noise
+* look at that for where to trust the values
+
+### Run this for all chromosomes now
+
+```{r}
+# load("logregParental.Rdata")
+# 
+# logregParental %>% filter(parent == "Wine") -> WineParents
+# logregParental %>% filter(parent == "Oak") -> OakParents
+
+# WineP_Results <- GLM_Bulk_Only(WineParents, Chr = "All")
+# OakP_Results <- GLM_Bulk_Only(OakParents, Chr = "All")
+# 
+# WineP_Results$Parent <- "Wine"
+# OakP_Results$Parent <- "Oak"
+# 
+# rbind(WineP_Results, OakP_Results) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider
+# rbind(WineP_Results, OakP_Results) -> PResults
+# save(PResults, file = "PResults.Rdata")
+# save(PResults_Wider, file = "PResults_Wider.Rdata")
+
+load("PResults.Rdata")
+load("PResults_Wider.Rdata")
+
+
+PResults %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects") + facet_grid(~CHROM, scales = "free_x") + ylim(-2,5)
+
+PResults %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects")
+
+PResults %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects")
+
+PResults_Wider %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Zprime Correlation") + ylim(-1,1) + xlim(-1,1)
+
+PResults_Wider %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.1, size = 2) + ggtitle("Z Correlation") + ylim(-5,5) + xlim(-5,5)
+```
+
+
+```{r}
+load("logregParental.Rdata")
+
+logregParental %>% filter(parent == "Wine") -> WineParents
+logregParental %>% filter(parent == "Oak") -> OakParents
+
+WineP_Results_VIII <- GLM_Bulk_Only(WineParents, Chr = "VIII")
+OakP_Results_VIII <- GLM_Bulk_Only(OakParents, Chr = "VIII")
+
+WineP_Results_VIII$Parent <- "Wine"
+OakP_Results_VIII$Parent <- "Oak"
+
+rbind(WineP_Results_VIII, OakP_Results_VIII) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_VIII
+rbind(WineP_Results_VIII, OakP_Results_VIII) -> PResults_VIII
+save(PResults_VIII, file = "PResults_VIII.Rdata")
+save(PResults_Wider_VIII, file = "PResults_Wider_VIII.Rdata")
+
+load("PResults_VIII.Rdata")
+load("PResults_Wider_VIII.Rdata")
+
+
+PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr VIII")
+
+PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr VIII")
+
+PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr VIII")
+
+PResults_Wider_VIII %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VIII Zprime Correlation")
+
+PResults_Wider_VIII %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VIII Z Correlation")
+
+```
+### Do this for chromosome VII
+
+```{r}
+# load("logregParental.Rdata")
+# 
+# logregParental %>% filter(parent == "Wine") -> WineParents
+# logregParental %>% filter(parent == "Oak") -> OakParents
+
+WineP_Results_VII <- GLM_Bulk_Only(WineParents, Chr = "VII")
+OakP_Results_VII <- GLM_Bulk_Only(OakParents, Chr = "VII")
+
+WineP_Results_VII$Parent <- "Wine"
+OakP_Results_VII$Parent <- "Oak"
+
+rbind(WineP_Results_VII, OakP_Results_VII) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_VII
+rbind(WineP_Results_VII, OakP_Results_VII) -> PResults_VII
+save(PResults_VII, file = "PResults_VII.Rdata")
+save(PResults_Wider_VII, file = "PResults_Wider_VII.Rdata")
+
+load("PResults_VII.Rdata")
+load("PResults_Wider_VII.Rdata")
+
+
+PResults_VII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr VII")
+
+PResults_VII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr VII")
+
+PResults_VII %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr VII")
+
+PResults_Wider_VII %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VII Zprime Correlation")
+
+PResults_Wider_VII %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VII Z Correlation")
+```
+
+### Do this for chromosome X
+
+```{r}
+# load("logregParental.Rdata")
+# 
+# logregParental %>% filter(parent == "Wine") -> WineParents
+# logregParental %>% filter(parent == "Oak") -> OakParents
+
+WineP_Results_XI <- GLM_Bulk_Only(WineParents, Chr = "XI")
+OakP_Results_XI <- GLM_Bulk_Only(OakParents, Chr = "XI")
+
+WineP_Results_XI$Parent <- "Wine"
+OakP_Results_XI$Parent <- "Oak"
+
+rbind(WineP_Results_XI, OakP_Results_XI) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_XI
+rbind(WineP_Results_XI, OakP_Results_XI) -> PResults_XI
+save(PResults_XI, file = "PResults_XI.Rdata")
+save(PResults_Wider_XI, file = "PResults_Wider_XI.Rdata")
+
+load("PResults_XI.Rdata")
+load("PResults_Wider_XI.Rdata")
+
+
+PResults_XI %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr XI")
+
+PResults_XI %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr X")
+
+PResults_XI %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr X")
+
+PResults_Wider_XI %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome XI Zprime Correlation")
+
+PResults_Wider_XI %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome XI Z Correlation")
+
+```
+
+## Find Parent and Interaction Effects from Randomized Parent
+
+```{r}
+load("logregParental.Rdata")
+parentscramble <- logregParental %>% select(-Type, -Oak, -Wine) %>% pivot_wider(names_from = c(parent), values_from = value)
+
+# swap <- sample(1:length(parentscramble$Oak), size = (length(parentscramble$Oak)/2), replace = FALSE)
+# 
+# parentscramble$newOak <- parentscramble$Oak
+# parentscramble$newWine <- parentscramble$Wine
+# parentscramble$newOak[swap] <- parentscramble$Wine[swap]
+# parentscramble$newWine[swap] <- parentscramble$Oak[swap]
+# 
+# #Test this
+# length(which(parentscramble$Oak == parentscramble$newOak))
+# length(which(parentscramble$Oak == parentscramble$newWine))
+
+```
+
+```{r}
+GLM__RandParent <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = Sys.time()){
+  
+  
+  parentscramble <- subset(lrPinit, CHROM == Chr) 
+  
+  #Add in parent swap
+  set.seed(seedstart)
+  swap <- sample(1:length(parentscramble$Oak), size = (length(parentscramble$Oak)/2), replace = FALSE)
+
+  parentscramble$newOak <- parentscramble$Oak
+  parentscramble$newWine <- parentscramble$Wine
+  parentscramble$newOak[swap] <- parentscramble$Wine[swap]
+  parentscramble$newWine[swap] <- parentscramble$Oak[swap]
+  
+  lrP <- parentscramble %>% pivot_longer(c(newOak, newWine), names_to = "parent")
+
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+    c(Chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  Results[,5] <- as.numeric(Results[,5])
+  Results[,6] <- as.numeric(Results[,6])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(Chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  WResult$seed <- seedstart
+  
+  return(WResult)
+}
+
+```
+
+```{r}
+GLM__RandParent(parentscramble, Chr = "III")
+
+randparentlist <- list()
+for(i in ChromKey$chromosomes[2:16]){
+  randparentlist[[i]] <- GLM__RandParent(parentscramble, Chr = i)
+}
+
+save(randparentlist, file = "randparentlist.Rdata")
+
+
+```
+
+```{r}
+randpdf <- bind_rows(randparentlist, .id = "CHROM")
+
+randpdf %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_line() + geom_line(aes(x = POS, y = parent_Zprime), color = "gray") +
+   geom_line(aes(x = POS, y =Interaction_Zprime), color = "purple") +
+  facet_grid(~CHROM, scales = "free", space = "free")
+```
+
+### Chromosome X
+
+Looks like there is no effect, so wanted to run this with random parent effects. 
+
+```{r}
+# randparent_X <- list()
+# for(i in 1:100){
+#    randparent_X[[i]] <- GLM__RandParent(parentscramble, Chr = "X", seedstart = (100+i))
+# }
+# 
+# randpdf_X <- bind_rows(randparent_X, .id = "seed")
+# 
+# save(randpdf_X, file = "randpdf_X.Rdata")
+
+load("randparent_X.Rdata")
+
+ggplot(randpdf_X, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random Parent, Chr X")
+
+ggplot(randpdf_X, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Parental Effects, Chr X")
+
+ggplot(randpdf_X, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Interaction Effects, Chr X")
+
+```
+
+### Chromosome VIII
+
+This looked weird when running it with the bulk effect on its own, but running with random parental effects might help?
+
+```{r}
+# randparent_VIII <- list()
+# for(i in 1:100){
+#    randparent_VIII[[i]] <- GLM__RandParent(parentscramble, Chr = "VIII", seedstart = (100+i))
+# }
+# 
+# randpdf_VIII <- bind_rows(randparent_VIII, .id = "seed")
+# 
+# save(randpdf_VIII, file = "randpdf_VIII.Rdata")
+
+load("randparent_VIII.Rdata")
+
+ggplot(randpdf_VIII, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random Parent, Chr VIII")
+
+ggplot(randpdf_VIII, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Parental Effects, Chr VIII")
+
+ggplot(randpdf_VIII, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Interaction Effects, Chr VIII")
+```
+

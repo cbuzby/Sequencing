@@ -1,11 +1,16 @@
 ---
 title: "GLM_BinomDownSampling"
 author: "Cassandra Buzby"
-date: "7/6/2022"
-output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
 ---
 
-```{r setup, include=FALSE}
+## All Functions
+
+```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 #Load packages
@@ -14,7 +19,7 @@ library(tidyr)
 #library(tidyverse)
 library(reshape2)
 library(cowplot)
-
+library(dplyr)
 library(foreach)
 library(doParallel)
 
@@ -37,8 +42,8 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
-load("SAUA_4-13-22.Rdata")
-load("SCUC_4-13-22.Rdata")
+# load("SAUA_4-13-22.Rdata")
+# load("SCUC_4-13-22.Rdata")
 
 
 #################################################################################################
@@ -312,70 +317,6 @@ getmaxvalues <- function(pb = pb_VIII_df200, idstring = NA){
 
 I need to use rbinom for sampling the reads, not the size of the reads... And it should be the same sample size for all of the bulks, so reducing them down to a coverage of the same number.
 
-
-```{r}
-load("logregParental.Rdata")
-
-logregParental %>% group_by(bulk, parent) %>% summarize(sum = sum(value)) %>% ungroup -> bulksums
-logregParental %>% left_join(bulksums, by = c("bulk", "parent")) -> lrPbulksums
-lrPbulksums$perc <- lrPbulksums$value/lrPbulksums$sum
-
-#LOAD THIS EACH TIME
-perChromWindow_binom_redone <- function(lrP, chr = "II", windowsize = 100, coverage = 15634092/2, seedt = Sys.time()){
-  lrP <- lrP[lrP$CHROM == chr,]
-  
-  set.seed(seedt)
-  
-  for(i in 1:length(lrP$CHROM)){
-    lrP$subs[i] <- rbinom(1, coverage, prob = lrP$perc[i]) + 1
-  }
-  
-  #Run the glm on that chromosome
-  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
-    res <- glm(reads ~ bulk*parent, weights = subs, family = binomial, data = lrP[lrP$POS == i,])
-    c(chr, i, res$coefficients)
-  }
-  
-  #Format the results for the next function
-  Results <- as.data.frame(Results)
-  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
-  Results[,2] <- as.numeric(Results[,2])
-  Results[,3] <- as.numeric(Results[,3])
-  Results[,4] <- as.numeric(Results[,4])
-  Results[,5] <- as.numeric(Results[,5])
-  Results[,6] <- as.numeric(Results[,6])
-  
-  Results %>% arrange(POS) %>% select(-Intercept) -> Results
-
-  
-  #Run the windows on that chromosome
-  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
-            #save the median value from original index 1 to original end index
-                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
-                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
-                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
-                #print CHROM, index, POS, and median
-                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
-                  res_bulk, res_parent, res_int)}
-  WResult <- as.data.frame(WResult)
-  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
-                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
-  WResult[,2] <- as.numeric(WResult[,2])
-  WResult[,3] <- as.numeric(WResult[,3])
-  WResult[,4] <- as.numeric(WResult[,4])
-  WResult[,5] <- as.numeric(WResult[,5])
-  WResult[,6] <- as.numeric(WResult[,6])
-  WResult[,7] <- as.numeric(WResult[,7])
-  WResult[,8] <- as.numeric(WResult[,8])
-  WResult[,9] <- as.numeric(WResult[,9])
-  
-  return(WResult)
-}
-
-#ChrII <- perChromWindow_binom_redone(lrP = lrPbulksums)
-#ggplot(ChrII, aes(x = POS, y = bulk_Zprime)) + geom_line()
-```
-
 ```{r, eval = FALSE}
 #Chromosome Seven to check - 50% of data
 ChrVII_List_50_redone <- list()
@@ -562,11 +503,12 @@ plot_grid(pparentz, pparentmax, nrow = 2)
 plot_grid(pintz, pintmax, nrow = 2)
 
 ```
+
 ## Mark's Suggestions
 
 * sample with a Poisson distribution for the number of reads, then sample for the ratio between them
 
-```{r}
+```{r, eval = FALSE}
 
 load("logregParental.Rdata")
 
@@ -643,7 +585,7 @@ c <- plot_grid(pintz, pintmax, nrow = 2)
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 pb_II <- list()
 for(i in 1:100){
   pb_II[[i]] <- pois_binom_sample(lrPbulksums_p, chr = "II", seedt = i) 
@@ -651,7 +593,9 @@ for(i in 1:100){
 
 pb_II_df <- bind_rows(pb_II, .id = "Index")
 #save(pb_II_df, file = "pb_II_df.Rdata")
+```
 
+```{r}
 load("pb_II_df.Rdata")
 
 #Load function in the chunk above to run this
@@ -660,7 +604,8 @@ MakeZePlots(pb_II_df)
 ```
 
 Run pipeline for a different chromosome: VII
-```{r}
+
+```{r, eval = FALSE}
 pb_VII <- list()
 for(i in 1:100){
   pb_VII[[i]] <- pois_binom_sample(lrPbulksums_p, chr = "VII", seedt = i) 
@@ -668,8 +613,10 @@ for(i in 1:100){
 
 pb_VII_df <- bind_rows(pb_VII, .id = "Index")
 save(pb_VII_df, file = "pb_VII_df.Rdata")
+```
 
-#load("pb_VII_df.Rdata")
+```{r}
+load("pb_VII_df.Rdata")
 
 #Load function in the chunk above to run this
 MakeZePlots(pb_VII_df)
@@ -724,72 +671,17 @@ plot_grid(p5, p6, nrow = 2)
 
 ```
 
-Making a function of this plot because it's pretty
+Making a function of this plot because it's pretty - also in the first chunk
 
 ```{r}
 load("pb_VII_df.Rdata")
 
-MakeStackedPlots <- function(pb_VII_df = pb_VII_df, chrom = "VII"){
-  
-  maxChrVII <- data.frame(Index = unique(pb_VII_df$Index),
-                       max_bulk_zprime = NA,
-                       max_parent_zprime = NA,
-                       max_int_zprime = NA)
-
-for(i in 1:100){
-  isubset <- subset(pb_VII_df, Index == as.character(i))
-  maxChrVII$max_bulk_zprime[i] <- isubset$POS[abs(isubset$bulk_Zprime) == max(abs(isubset$bulk_Zprime))]
-  maxChrVII$max_parent_zprime[i] <- isubset$POS[abs(isubset$parent_Zprime) == max(abs(isubset$parent_Zprime))]
-  maxChrVII$max_int_zprime[i] <- isubset$POS[abs(isubset$Interaction_Zprime) == max(abs(isubset$Interaction_Zprime))]
-  rm(isubset)
-}
-
-#sd(maxChrVII$max_bulk_zprime)
-
-ggplot(maxChrVII, aes(x = max_bulk_zprime)) + geom_density(size = 1) + 
-  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Bulk Effect"))-> p1
-ggplot(maxChrVII, aes(x = max_bulk_zprime, y = "Bulk    .")) + geom_boxplot(size = 1, color = "violet") + geom_jitter(alpha = 0.4, size = 3)  + ggtitle(paste("SD = ", round(sd(maxChrVII$max_bulk_zprime), 2))) -> p2
-a1 <- plot_grid(p1, p2, nrow = 2)
-
-ggplot(maxChrVII, aes(x = max_bulk_zprime)) + geom_density(size = 1) + 
-  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Bulk Effect")) -> p1
-  p1 + annotate("segment", x = min(maxChrVII$max_bulk_zprime), 
-           xend = min(maxChrVII$max_bulk_zprime) + 100000, 
-           y = layer_scales(p1)$y$range$range[1] + (layer_scales(p1)$y$range$range[2] - layer_scales(p1)$y$range$range[1])/10, 
-           yend = layer_scales(p1)$y$range$range[1] + (layer_scales(p1)$y$range$range[2] - layer_scales(p1)$y$range$range[1])/10,  
-           colour = "red", size = 2, alpha = 0.5) -> p1
-ggplot(maxChrVII, aes(x = max_bulk_zprime, y = "Bulk    .")) + geom_boxplot(size = 1, color = "violet") + geom_jitter(alpha = 0.4, size = 3)+xlim(layer_scales(p1)$x$range$range) + ggtitle(paste("SD = ", round(sd(maxChrVII$max_bulk_zprime), 2))) -> p2
-a2 <- plot_grid(p1, p2, nrow = 2)
-
-ggplot(maxChrVII, aes(x = max_parent_zprime)) + geom_density(size = 1) + 
-  ggtitle(paste("Maximum Z' value for Chr ",chrom, " Parent Effect"))-> p3
-  p3 + annotate("segment", x = min(maxChrVII$max_parent_zprime), 
-           xend = min(maxChrVII$max_parent_zprime) + 100000, 
-           y = layer_scales(p3)$y$range$range[1] + (layer_scales(p3)$y$range$range[2] - layer_scales(p3)$y$range$range[1])/10, 
-           yend = layer_scales(p3)$y$range$range[1] + (layer_scales(p3)$y$range$range[2] - layer_scales(p3)$y$range$range[1])/10,  
-           colour = "red", size = 2, alpha = 0.5) -> p3
-ggplot(maxChrVII, aes(x = max_parent_zprime, y = "Parent .")) + geom_boxplot(size = 1, color = "darkorange") + geom_jitter(alpha = 0.4, size = 3) + ggtitle(paste("SD = ", round(sd(maxChrVII$max_parent_zprime), 2)))  -> p4
-a3 <- plot_grid(p3, p4, nrow = 2)
-
-ggplot(maxChrVII, aes(x = max_int_zprime)) + geom_density(size = 1) + ggtitle(paste("Maximum Z' value for Chr ",chrom, " Interaction Effect"))-> p5
-  p5 + annotate("segment", x = min(maxChrVII$max_int_zprime), 
-           xend = min(maxChrVII$max_int_zprime) + 100000, 
-           y = layer_scales(p5)$y$range$range[1] + (layer_scales(p5)$y$range$range[2] - layer_scales(p5)$y$range$range[1])/10, 
-           yend = layer_scales(p5)$y$range$range[1] + (layer_scales(p5)$y$range$range[2] - layer_scales(p5)$y$range$range[1])/10,  
-           colour = "red", size = 2, alpha = 0.5) -> p5
-ggplot(maxChrVII, aes(x = max_int_zprime, y = "Max Int Z'")) + geom_boxplot(size = 1, color = "lightblue") + geom_jitter(alpha = 0.4, size = 3) +ylab("") + ggtitle(paste("SD = ", round(sd(maxChrVII$max_int_zprime), 2)))  -> p6
-a4 <- plot_grid(p5, p6, nrow = 2)
-
-return(list(a1, a2, a3, a4))
-
-}
-
-MakeStackedPlots(pb_VII_df = pb_II_df, chrom = "II")
+MakeStackedPlots(pb = pb_II_df, chrom = "II")
 ```
 
-## Turning this into a bash pipeline
+### Turning this into a bash pipeline
 
-```{r}
+```{r, eval = FALSE}
 #As long as all of the scripts are in functions already...
 
 load("lrPbulksums_p.Rdata")
@@ -824,57 +716,7 @@ VIII_distribution_plots
 Finding correlation between the max position and the score, and clustering for what SD is for each related to the score? Ie, how likely is it that the peak is in a specific place based on the effect size.
 
 ```{r}
-
-getmaxvalues <- function(pb = pb_VIII_df200, idstring = NA){
-  #change this for each dataset
-  
-  #make the df to save
-  maxChrVII <- data.frame(Index = unique(pb$Index),
-                         max_bulk_zprime = NA,
-                         max_parent_zprime = NA,
-                         max_int_zprime = NA,
-                         max_bulk_zprime_pos = NA,
-                         max_parent_zprime_pos = NA,
-                         max_int_zprime_pos = NA)
-  
-  for(i in 1:length(unique(pb$Index))){
-    isubset <- subset(pb, Index == as.character(i))
-    maxChrVII$max_bulk_zprime_pos[i] <- isubset$POS[abs(isubset$bulk_Zprime) == max(abs(isubset$bulk_Zprime))]
-    maxChrVII$max_parent_zprime_pos[i] <- isubset$POS[abs(isubset$parent_Zprime) == max(abs(isubset$parent_Zprime))]
-    maxChrVII$max_int_zprime_pos[i] <- isubset$POS[abs(isubset$Interaction_Zprime) == max(abs(isubset$Interaction_Zprime))]
-    maxChrVII$max_bulk_zprime[i] <- max(abs(isubset$bulk_Zprime))
-    maxChrVII$max_parent_zprime[i] <- max(abs(isubset$parent_Zprime))
-    maxChrVII$max_int_zprime[i] <- max(abs(isubset$Interaction_Zprime))
-    rm(isubset)
-  }
-  
-  plot_int <- maxChrVII %>% ggplot(aes(x = max_int_zprime_pos, y = max_int_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Interaction Z primes by Position")
-  plot_parent <- maxChrVII %>% ggplot(aes(x = max_parent_zprime_pos, y = max_parent_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Parent Z primes by Position")
-  plot_bulk <- maxChrVII %>% ggplot(aes(x = max_bulk_zprime_pos, y = max_bulk_zprime)) + geom_point(size = 2, alpha = 0.4) + ggtitle("Max Bulk Z primes by Position")
-  
-  maxChrVII$Chr <- idstring
-  maxdf <- maxChrVII
-  
-  maxstats <- data.frame(parentz_mean = mean(maxdf$max_parent_zprime),
-                         parentz_sd = sd(maxdf$max_parent_zprime),
-                         parentpos_mean = mean(maxdf$max_parent_zprime_pos),
-                         parentpos_sd = sd(maxdf$max_parent_zprime_pos),
-                         intz_mean = mean(maxdf$max_int_zprime),
-                         intz_sd = sd(maxdf$max_int_zprime),
-                         intpos_mean = mean(maxdf$max_int_zprime_pos),
-                         intpos_sd = sd(maxdf$max_int_zprime_pos),
-                         bulkz_mean = mean(maxdf$max_bulk_zprime),
-                         bulkz_sd = sd(maxdf$max_bulk_zprime),
-                         bulkpos_mean = mean(maxdf$max_bulk_zprime_pos),
-                         bulkpos_sd = sd(maxdf$max_bulk_zprime_pos),
-                         Chr = idstring
-                         )
-  
-  return(list(maxChrVII, maxstats, plot_bulk,plot_parent, plot_int))
-}
-
-VIII200max <- getmaxvalues(pb_VIII_df200, idstring = "VIII_200")
-VIII200max[2][[1]]
+#made the function for getting max scores and summaries of these scores
 
 ```
 

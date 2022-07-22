@@ -40,8 +40,12 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
-load("SAUA_4-13-22.Rdata")
-load("SCUC_4-13-22.Rdata")
+#load("SAUA_4-13-22.Rdata")
+#load("SCUC_4-13-22.Rdata")
+
+load("SAUAwithChrI.Rdata")
+load("SCUCwithChrI.Rdata")
+
 #load("Selected_4-13-22.Rdata")
 #load("Unselected_4-13-22.Rdata")
 
@@ -130,7 +134,7 @@ RASU_Pivot$parent <- factor(RASU_Pivot$parent)
 
 head(RASU_Pivot)
 
-save(RASU_Pivot, file = "RASU_Pivot.Rdata")
+save(RASU_Pivot, file = "RASU_Pivot_plusChrI.Rdata")
 ```
 
 ```{r}
@@ -160,14 +164,14 @@ ggplot(SNPids, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Var
 ```{r, eval = FALSE}
 RASU_Pivot %>% merge(SNPids) -> ReadsParental
 
-save(ReadsParental, file = "ReadsParental.Rdata")
+save(ReadsParental, file = "ReadsParental_plusChrI.Rdata")
 ```
 
 
 ## Which parent is which in the glm?
 
 ```{r, eval = FALSE}
-load("ReadsParental.Rdata")
+load("ReadsParental_plusChrI.Rdata")
 
 ReadsParental %>% filter(CHROM == "VIII") %>% ggplot(., aes(x = POS, y = value, color = Type)) + 
     scale_color_manual(values = c("black", "blue","firebrick", "gray")) + 
@@ -185,7 +189,7 @@ ReadsParental %>% filter(CHROM == "VII") %>% ggplot(., aes(x = POS, y = value, c
 By dividing the alternate by the reference, the allele which is labeled as "Type" (ie the alternative) effect indicates which allele is the driving mutation.
 
 ```{r}
-load("ReadsParental.Rdata")
+load("ReadsParental_plusChrI.Rdata")
 
 # RASU_Pivot %>% filter(CHROM == "VIII", bulk == "HIGH") %>% pivot_wider(names_from = allele) %>% 
 #   ggplot(., aes(x = REF, y = ALT, color = parent)) + 
@@ -233,7 +237,7 @@ ggplot(ReadsWider, aes(x = POS, y = ALT/REF, color = Type)) +
 
 
 ```{r}
-load("ReadsParental.Rdata")
+load("ReadsParental_plusChrI.Rdata")
 
 #Look at the difference between Alt and Oak/Wine in this plot vs above
 ggplot(ReadsParental, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
@@ -252,7 +256,7 @@ ReadsParental %>% filter(Type != "Alt") %>% ggplot(., aes(x = value, fill = alle
 ```{r}
 ## Converting reference and alternate into oak and wine
 
-load("ReadsParental.Rdata")
+load("ReadsParental_plusChrI.Rdata")
 
 ReadsParental %>% filter(Type == "Oak" | Type == "Wine") -> logregParental
 
@@ -345,13 +349,13 @@ for(k in unique(logregParental$CHROM)){
   assign(value = Results, x = paste("Results_", k, sep = ""))
 }
 
-Res_AllChr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+Res_AllChr <- rbind(Results_I, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
       Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
 
-rm(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+rm(Results_I, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
       Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
 
-save(Res_AllChr, file = "GLM_Results_All.Rdata")
+save(Res_AllChr, file = "GLM_Results_All_plusChrI.Rdata")
 ```
 
 ## Running the null model of Alt/Ref with those that are the same between oak and wine
@@ -398,7 +402,7 @@ ggplot(AltResults, aes(x = V2, y = parentWine)) + geom_point() + facet_grid(~V1)
 Not included because later plots are more enlightening
 
 ```{r, eval = FALSE}
-load("GLM_Results_All.Rdata")
+load("GLM_Results_All_plusChrI.Rdata")
 
 Res_AllChr$V2 <- as.numeric(Res_AllChr$V2)
 Res_AllChr$`(Intercept)` <- as.numeric(Res_AllChr$`(Intercept)`)
@@ -441,10 +445,10 @@ for(k in unique(logregParental$CHROM)){
   assign(value = Results, x = paste("Results_", k, sep = ""))
 }
 
-Res_Z_Chr <- rbind(Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+Res_Z_Chr <- rbind(Results_I, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
       Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
 
-rm(Results, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
+rm(Results, Results_I, Results_II, Results_III, Results_IV, Results_V, Results_VI, Results_VII, Results_VIII, Results_IX, Results_X, Results_XI, 
       Results_XII, Results_XIII, Results_XIV, Results_XV, Results_XVI)
 
 Res_Z_Chr$V2 <- as.numeric(Res_Z_Chr$V2)
@@ -453,13 +457,13 @@ Res_Z_Chr$bulkHIGH <- as.numeric(Res_Z_Chr$bulkHIGH)
 Res_Z_Chr$parentWine <- as.numeric(Res_Z_Chr$parentWine)
 Res_Z_Chr$`bulkHIGH:parentWine` <- as.numeric(Res_Z_Chr$`bulkHIGH:parentWine`)
 
-save(Res_Z_Chr, file = "Res_Z_Chr.Rdata")
+save(Res_Z_Chr, file = "Res_Z_Chr_plusChrI.Rdata")
 ```
 
 ```{r}
 # Load in data produced above
-load("Res_Z_Chr.Rdata")
-head(Res_Z_Chr)
+load("Res_Z_Chr_plusChrI.Rdata")
+#rm(Res_Z_Chr)
 
 Res_Z_Chr$CHROM <- factor(Res_Z_Chr$V1, levels = ChromKey$chromosomes)
 
