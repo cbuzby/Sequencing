@@ -1,0 +1,487 @@
+
+// Define modules here
+BWA = 'bwa/intel/0.7.17'
+PICARD = 'picard/2.17.11'
+GATK = 'gatk/4.1.9.0'
+R = 'r/intel/4.0.3'
+SAMTOOLS = 'samtools/intel/1.11'
+SNPEFF = 'snpeff/4.3t'
+DEEPTOOLS = 'deeptools/3.5.0'
+PYPAIRIX = 'pypairix/0.3.7'
+HTSLIB = 'htslib/intel/1.11.0'
+JVARKIT = 'jvarkit/base'
+QUALIMAP = 'qualimap/2.2.1'
+BCFTOOLS = 'bcftools/intel/1.11'
+MULTIQC = 'multiqc/1.9'
+TRIMMOMATIC = 'trimmomatic/0.36'
+
+// Print some stuff here
+println "reads: $params.reads"
+println "ref: $params.ref"
+println "output: $params.out"
+println "gatk temp dir: $params.tmpdir"
+println "snpeff db: $params.snpeff_db"
+println "snpeff data: $params.snpeff_data"
+
+##############################################################################################
+
+process ApplyBQSR.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+gatk ApplyBQSR \
+   -R $REF \
+   -I $1 \
+   --bqsr-recal-file $2 \
+   -O ${1}_bqsr.bam
+}
+##############################################################################################
+
+process CB_1.0_trim.align.sort.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+cd /scratch/cb4097/Sequencing/HNGLVDRXY/
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+#java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
+#       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+#bwa mem $REF HNGLVDRXY_n01_CuSO4_CSSI_$1.fastq > g.$1.aln-se.sam
+#bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+#       $REF HNGLVDRXY_n01_CuSO4_CSSI_$1.fastq > gR2.$1.aln-se.sam
+
+bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+       $REF $1.trimmed.fq.gz > gR3.$1.aln-se.sam
+
+java -jar $PICARD_JAR SortSam \
+          INPUT=gR3.$1.aln-se.sam \
+          OUTPUT=gR3.$1.aln-se.bam \
+          SORT_ORDER=coordinate
+}
+
+##############################################################################################
+
+process CB_1.1_trim.align.sort_all.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+#Trim data; input is file, then name
+java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
+        $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+#Align to reference genome
+bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+       $REF $1.trimmed.fq.gz > $1.aln-se.sam
+
+#Sort files
+java -jar $PICARD_JAR SortSam \
+          INPUT=$1.aln-se.sam \
+          OUTPUT=$1.aln-se.bam \
+          SORT_ORDER=coordinate
+}
+
+##############################################################################################
+process CB_1.2_trim.align.sort_all.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+#Trim data; input is file, then name
+#java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
+#       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+#Align to reference genome
+bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+       $REF ../HNGLVDRXY/$1.trimmed.fq.gz > $1.aln-se.sam
+
+#Sort files
+java -jar $PICARD_JAR SortSam \
+          INPUT=$1.aln-se.sam \
+          OUTPUT=$1.aln-se.bam \
+          SORT_ORDER=coordinate
+
+#2/8/21 Update: want to include the BGsomething filter for quality
+#also want to not have to re-trim every time, and want to just use the names of those
+#also also want to go to a different folder from where the trimmed data is?
+
+}
+
+##############################################################################################
+
+process CB_1.3_trim.align.sort_all_BQSR.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+#Trim data; input is file, then name
+#java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
+#       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+#Align to reference genome
+bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+       $REF ../HNGLVDRXY/$1.trimmed.fq.gz > $1.aln-se.sam
+
+#Sort files
+java -jar $PICARD_JAR SortSam \
+          INPUT=$1.aln-se.sam \
+          OUTPUT=$1.aln-se.bam \
+          SORT_ORDER=coordinate
+
+#2/8/21 Update: want to include the BGsomething filter for quality
+#also want to not have to re-trim every time, and want to just use the names of those
+#also also want to go to a different folder from where the trimmed data is?
+gatk BQSR $1.aln-se.bam
+
+}
+
+##############################################################################################
+
+process ApplyBQSR.q{
+#!/bin/bash
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+echo $REF
+
+gatk ApplyBQSR \
+   -R $REF \
+   -I ${1}.bam \
+   --bqsr-recal-file ${2}recalibration.table \
+   -O ${1}.bqsr.output.bam
+}
+##############################################################################################
+process CB_2.0_merge.split.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+module load bamtools/intel/2.5.1
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+echo $REF
+
+echo $2 $3 $4 $5
+echo $1 "is the new merged file name"
+
+#samtools merge HNGLVDRXY_gR_merged.bam gR*.bam
+#samtools merge HNGLVDRXY_${1}_merged.bam $2
+
+samtools merge $1 $2 $3 $4 $5
+samtools index $1
+
+#split the files
+bamtools split -in $1 -reference
+
+#Don't run this; do it in parallel because of timing:
+#gatk HaplotypeCaller -I $2 -R $REF -ploidy 1 -O HNGLVDRXY_${1}_merged.vcf
+}
+##############################################################################################
+process CB_2.1_.split.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+module load bamtools/intel/2.5.1
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+#split the files
+bamtools split -in $1 -reference
+}
+
+##############################################################################################
+
+process CB_3.0_Index.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_EP_mergebackvcfs
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+cd /scratch/cb4097/Sequencing/HNGLVDRXY_Feb/
+
+samtools index $1
+
+}
+
+##############################################################################################
+
+process CB_4.0_CallVariants.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+echo $REF
+echo $1
+
+gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -O ${1}.vcf
+
+}
+
+##############################################################################################
+
+process CB_4.0_CallVariants_T.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+echo $REF
+echo $1
+
+gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -XL excludedregions_NC.bed -O ${1}_T.vcf
+}
+
+
+##############################################################################################
+
+process CB_4.1_CallVariantsGVCF.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+REF=/scratch/cb4097/Sequencing/Reference/*fna
+
+#$1 is a bam to be called
+
+echo $REF
+echo $1
+
+#gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -O ${1}.g.vcf.gz -ERC GVCF
+
+gatk --java-options "-Xmx4g" HaplotypeCaller  \
+   -R $REF \
+   -I $1 \
+   -O ${1}.g.vcf.gz \
+   -ERC GVCF
+
+#gatk --java-options "-Xmx4g" GenotypeGVCFs \
+#   -R  $REF \
+#   -V ${1}.g.vcf.gz \
+#   -O ${1}.GVCF_output.vcf.gz
+}
+
+##############################################################################################
+
+process CB_4.2_GenotypeGVCF.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_merge_edit
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14/
+
+REF=/scratch/cb4097/Sequencing/Reference/*fna
+
+#$1 is a bam to be called
+
+echo $REF
+echo $1
+
+#gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -O ${1}.g.vcf.gz -ERC GVCF
+
+#gatk --java-options "-Xmx4g" HaplotypeCaller  \
+#   -R $REF \
+#   -I $1 \
+#   -O ${1}.g.vcf.gz \
+#   -ERC GVCF
+
+gatk --java-options "-Xmx4g" GenotypeGVCFs \
+   -R  $REF \
+   -V ${1}.g.vcf.gz \
+   -O ${1}.GVCF_output.vcf.gz
+}
+
+
+##############################################################################################
+
+process CB_5.0_zip.concat.sort.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=couldrun
+
+
+module purge
+module load bcftools/intel/1.14
+module load gatk/4.2.0.0
+
+#Zip all of the vcfs (works)
+for i in ${1}*vcf; do bgzip -c $i > ${i}.gz; done
+
+#makes an index file for each vcf.gz (xargs separates them all by spaces)
+#-p, --preset STR
+#Input format for indexing. Valid values are: gff, bed, sam, vcf
+
+echo ${1}*vcf.gz |  xargs -n1 tabix -p vcf
+
+#concatenate all that have vcf.gz and name them unsortedcat.vcf (works)
+bcftools concat -o ${1}unsortedcat.vcf -a -D ${1}*vcf.gz
+
+#sort unsortedcat.vcf (works fine)
+bcftools sort -Oz -o ${1}.SortedCat.vcf ${1}unsortedcat.vcf
+#bcftools sort -Oz -o TEST2_MergedBQSR.SortedCat.vcf TEST2_unsortedcat.vcf
+
+myfile=${1}.SortedCat.vcf
+
+gatk VariantsToTable \
+     -V ${myfile} \
+     -F CHROM -F POS -F REF -F ALT \
+     -GF AD -GF DP -GF GQ -GF PL \
+     -O ${myfile}.output.table
+
+
+#How I actually got it to work:
+
+#gatk VariantsToTable \
+#     -V TEST2_MergedBQSR.SortedCat.vcf \
+#     -F CHROM -F POS -F REF -F ALT \
+#     -GF AD -GF DP -GF GQ -GF PL \
+#     -O TEST2_MergedBQSR.output.table
+}
+
+##############################################################################################
+
+process MakeBQSRTable.q{
+#!/bin/bash
+
+#SBATCH --time=100:00:00
+#SBATCH --mem=10GB
+#SBATCH --job-name=gatk_Pipeline
+
+module purge
+
+module load gatk/4.2.0.0
+module load picard/2.23.8
+module load bwa/intel/0.7.17
+
+REF=/scratch/cb4097/Sequencing/Reference/*.fna
+
+gatk BaseRecalibrator -R $REF -I $1 --known-sites $2 -O ${1}_recal_data.table
+
+##Old Version
+#java -jar $GATK_JAR -T BaseRecalibrator -R GCF_000001405.33_GRCh38.p7_chr20_genomic.fna -I dedup_reads.bam -knownSites 1000G_omni2.5.hg38.vcf.gz -o recal_data.table
+}
