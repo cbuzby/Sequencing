@@ -1,3 +1,14 @@
+/*  GATK4 Variant Calling Pipeline
+ *  Usage: nextflow run /path/to/main.nf
+ *
+ *  Author: Mohammed Khalfan < mkhalfan@nyu.edu > adapted by Cassandra Buzby
+ *  NYU Center for Genetics and System Biology 2020
+ */
+
+// Setting some defaults here,
+// can be overridden in config or via command line
+params.out = "${params.outdir}/out"
+params.tmpdir = "${params.outdir}/gatk_temp"
 
 // Define modules here
 BWA = 'bwa/intel/0.7.17'
@@ -6,12 +17,6 @@ GATK = 'gatk/4.1.9.0'
 R = 'r/intel/4.0.3'
 SAMTOOLS = 'samtools/intel/1.14/'
 BAMTOOLS = 'bamtools/intel/2.5.1'
-SNPEFF = 'snpeff/4.3t'
-DEEPTOOLS = 'deeptools/3.5.0'
-PYPAIRIX = 'pypairix/0.3.7'
-HTSLIB = 'htslib/intel/1.11.0'
-JVARKIT = 'jvarkit/base'
-QUALIMAP = 'qualimap/2.2.1'
 BCFTOOLS = 'bcftools/intel/1.14'
 MULTIQC = 'multiqc/1.9'
 TRIMMOMATIC = 'trimmomatic/0.36'
@@ -27,42 +32,106 @@ println "reads: $params.reads"
 println "ref: $params.ref"
 println "output: $params.out"
 println "gatk temp dir: $params.tmpdir"
-println "snpeff db: $params.snpeff_db"
-println "snpeff data: $params.snpeff_data"
+
+##############################################################################################
+Channel
+    .fromFilePairs( params.reads, size: -1)
+    { file -> file.getBaseName() - ~/${params.fcid}_/ - ~/n0[12]_/ - ~/.fastq/ }
+    .ifEmpty { error "Cannot find any reads matching: ${params.reads}"  }
+    .tap { read_pairs_ch }
+    .subscribe({ num_samples += 1 })
+
+##############################################################################################
+Channel
+    .fromFilePairs( params.reads, size: -1)
+    { file -> file.getBaseName() - ~/${params.fcid}_/ - ~/n0[1]_/ - ~/.fastq/ }
+    .ifEmpty { error "Cannot find any reads matching: ${params.reads}"  }
+    .tap { read_pairs_ch }
+    .subscribe({ num_samples += 1 })
 
 ##############################################################################################
 
+##############################################################################################
+process trim {
+	// comments 
+	publishDir "${params.out}/trimmed", mode:'copy'
 
-process CB_1.0_trim.align.sort.q{
-// comments 
+	input:
+	$1
+	tuple pair_id,
+        	file(reads) from read_pairs_ch
 
-input:
+	output:
+	$2.trimmed.fq.gz
+    	tuple val(pair_id),
+        	file(trimmed_file)
+        	into trimmed_ch
 
-output:
-
-script:
-
-"""
-module load $GATK
-module load $BWA
-module load $PICARD
-
-#java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
-#       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
-
-#bwa mem $REF HNGLVDRXY_n01_CuSO4_CSSI_$1.fastq > g.$1.aln-se.sam
-#bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
-#       $REF HNGLVDRXY_n01_CuSO4_CSSI_$1.fastq > gR2.$1.aln-se.sam
-
-bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
-       $REF $1.trimmed.fq.gz > gR3.$1.aln-se.sam
-
-java -jar $PICARD_JAR SortSam \
-          INPUT=gR3.$1.aln-se.sam \
-          OUTPUT=gR3.$1.aln-se.bam \
-          SORT_ORDER=coordinate
-"""
+	script:
+	trimmed_file = "${pair_id}_trimmed.fq.gz"
+	"""
+	module load $GATK
+	module load $BWA
+	module load $PICARD
+	
+	java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
+	       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+	
+	"""
 }
+
+process align {
+    publishDir "${params.out}/aligned_reads", mode:'copy'
+
+    input:
+    set pair_id,
+        file(read_1) from trimmed_ch
+
+    output:
+    set val(pair_id), file("${pair_id}.aln-se.sam") \
+        into aligned_reads_ch
+
+    script:
+    readGroup = \
+        "@RG\\tID:${pair_id}\\tLB:${pair_id}\\tPL:ILLUMINA\\tPM:NOVASEQ\\tSM:${pair_id}"
+    """
+    module load $BWA
+    #bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
+	#       $REF $1.trimmed.fq.gz > gR3.$1.aln-se.sam
+
+    bwa mem -Y -K 100000000 -R \"${readGroup}\" \
+	       $REF $read_1 > ${pair_id}.aln-se.sam
+    """
+}
+
+process sort {
+	// comments 
+	publishDir "${params.out}/sorted", mode:'copy'
+
+	input:
+	set pair_id,
+	    file(read_1) from aligned_reads_ch
+	
+	output:
+	set val(pair_id), file("${pair_id}.aln-se.bam") \
+        	into sorted_ch
+
+	script:
+	
+	"""
+	module load $GATK
+	module load $BWA
+	module load $PICARD
+	
+	java -jar $PICARD_JAR SortSam \
+	          INPUT=$read_1 \
+	          OUTPUT=${pair_id}.aln-se.bam \
+	          SORT_ORDER=coordinate
+	"""
+}
+
+##############################################################################################
+##############################################################################################
 
 ##############################################################################################
 
@@ -98,73 +167,39 @@ java -jar $PICARD_JAR SortSam \
 }
 
 
-
-##############################################################################################
-
-process CB_1.3_trim.align.sort_all_BQSR.q{
-// comments 
-
-input:
-
-output:
-
-script:
-"""
-
-module load $GATK
-module load $BWA
-module load $PICARD
-
-#Trim data; input is file, then name
-#java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
-#       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
-
-#Align to reference genome
-bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
-       $REF ../HNGLVDRXY/$1.trimmed.fq.gz > $1.aln-se.sam
-
-#Sort files
-java -jar $PICARD_JAR SortSam \
-          INPUT=$1.aln-se.sam \
-          OUTPUT=$1.aln-se.bam \
-          SORT_ORDER=coordinate
-
-#2/8/21 Update: want to include the BGsomething filter for quality
-#also want to not have to re-trim every time, and want to just use the names of those
-#also also want to go to a different folder from where the trimmed data is?
-gatk BQSR $1.aln-se.bam
-
-}
-
 ##############################################################################################
 
 process MakeBQSRTable.q{
-// comments 
+	// comments 	
+	
+	input:
+	$1 $2	
 
-input:
+	output:
+	${1}_recal_data.table
 
-output:
-
-script:
-"""
-
-mmodule load $GATK
-module load $BWA
-module load $PICARD
-
-gatk BaseRecalibrator -R $REF -I $1 --known-sites $2 -O ${1}_recal_data.table
-
-##Old Version
-#java -jar $GATK_JAR -T BaseRecalibrator -R GCF_000001405.33_GRCh38.p7_chr20_genomic.fna -I dedup_reads.bam -knownSites 1000G_omni2.5.hg38.vcf.gz -o recal_data.table
+	script:
+	"""
+	
+	mmodule load $GATK
+	module load $BWA
+	module load $PICARD
+	
+	gatk BaseRecalibrator -R $REF -I $1 --known-sites $2 -O ${1}_recal_data.table
+	
+	"""
 }
+
 ##############################################################################################
 
 process ApplyBQSR.q{
 // comments 
 
 input:
+${1}.bam ${2}recalibration.table
 
 output:
+${1}.bqsr.output.bam
 
 script:
 """
@@ -180,6 +215,7 @@ gatk ApplyBQSR \
    -I ${1}.bam \
    --bqsr-recal-file ${2}recalibration.table \
    -O ${1}.bqsr.output.bam
+"""
 }
 
 ##############################################################################################
@@ -211,10 +247,11 @@ samtools index $1
 #split the files
 bamtools split -in $1 -reference
 
-#Don't run this; do it in parallel because of timing:
-#gatk HaplotypeCaller -I $2 -R $REF -ploidy 1 -O HNGLVDRXY_${1}_merged.vcf
+
+"""
 }
 ##############################################################################################
+
 process CB_2.1_.split.q{
 // comments 
 
@@ -234,6 +271,7 @@ REF=/scratch/cb4097/Sequencing/Reference/*.fna
 
 #split the files
 bamtools split -in $1 -reference
+"""
 }
 
 ##############################################################################################
@@ -257,34 +295,9 @@ cd /scratch/cb4097/Sequencing/HNGLVDRXY_Feb/
 
 samtools index $1
 
-}
-
-##############################################################################################
-
-process CB_4.0_CallVariants.q{
-// comments 
-
-input:
-
-output:
-
-script:
 """
-
-module load $GATK
-module load $PICARD
-module load $BWA
-module load $SAMTOOLS 
-module load $BAMTOOLS 
-
-REF=/scratch/cb4097/Sequencing/Reference/*.fna
-
-echo $REF
-echo $1
-
-gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -O ${1}.vcf
-
 }
+
 
 ##############################################################################################
 
@@ -304,6 +317,10 @@ module load $SAMTOOLS
 module load $BAMTOOLS 
 
 gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -XL excludedregions_NC.bed -O ${1}_T.vcf
+
+#Extra script:
+#gatk HaplotypeCaller -I $1 -R $REF -ploidy 1 -O ${1}.vcf
+"""
 }
 
 
@@ -319,7 +336,6 @@ output:
 script:
 """
 
-module purge
 module load $BCFTOOLS 
 module load $GATK
 
@@ -355,7 +371,5 @@ gatk VariantsToTable \
 #     -F CHROM -F POS -F REF -F ALT \
 #     -GF AD -GF DP -GF GQ -GF PL \
 #     -O TEST2_MergedBQSR.output.table
+"""
 }
-
-##############################################################################################
-
