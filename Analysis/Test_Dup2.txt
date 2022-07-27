@@ -26,7 +26,8 @@ PICARD_JAR = '/share/apps/picard/2.17.11/picard.jar'
 
 // Define Reference Here
 REF = '/scratch/cb4097/Sequencing/Reference/GCF_000146045.2_R64_genomic.fna'
-KNOWN_SITES = '/scratch/cb4097/Sequencing/excludedregions.txt'
+KNOWN_SITES = '/scratch/cb4097/Sequencing/ParentSequences/OakWine_variants.vcf.gz'
+
 
 // Alternative to setup the reference file
 ref = file(params.ref)
