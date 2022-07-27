@@ -34,6 +34,21 @@ println "output: $params.out"
 println "gatk temp dir: $params.tmpdir"
 
 ##############################################################################################
+num_samples = 0
+
+#Eugene's Script
+Channel
+    .fromFilePairs( params.reads_aug20, size: -1)
+    { file -> (file.getBaseName() =~ /.*msh3_MA_strain_(.*)\.fastq.*/)[0][1] }
+    .set { read_pairs_ch_aug20 }
+
+##############################################################################################
+Channel
+    .fromList( ['UnselectedC', 'UnselectedA', 'SelectedC', 'SelectedA'] )( params.reads )
+    { file -> (file.getBaseName() =~ /.*CuSO4_CSSI_(.*)\.fastq*/) }
+    .set { reads }
+
+##############################################################################################
 Channel
     .fromFilePairs( params.reads, size: -1)
     { file -> file.getBaseName() - ~/${params.fcid}_/ - ~/n0[12]_/ - ~/.fastq/ }
@@ -43,13 +58,16 @@ Channel
 
 ##############################################################################################
 Channel
-    .fromFilePairs( params.reads, size: -1)
-    { file -> file.getBaseName() - ~/${params.fcid}_/ - ~/n0[1]_/ - ~/.fastq/ }
+    .fromList( ['UnselectedC', 'UnselectedA', 'SelectedC', 'SelectedA'] )( params.reads )
+    { file -> file.getBaseName() - ~/${params.fcid}_/ - ~/n01_CuSO4_CSSI_*_/ - ~/.fastq/ }
     .ifEmpty { error "Cannot find any reads matching: ${params.reads}"  }
     .tap { read_pairs_ch }
     .subscribe({ num_samples += 1 })
 
 ##############################################################################################
+files = Channel.fromPath( '${params.fcid}**.fastq' )
+Channel
+	{ file -> file.getBaseName() =~ /.*${params.fcid}_(.*)\.fastq.*/) } 
 
 ##############################################################################################
 process trim {
@@ -57,25 +75,23 @@ process trim {
 	publishDir "${params.out}/trimmed", mode:'copy'
 
 	input:
-	$1
 	tuple pair_id,
         	file(reads) from read_pairs_ch
 
 	output:
-	$2.trimmed.fq.gz
     	tuple val(pair_id),
         	file(trimmed_file)
         	into trimmed_ch
 
 	script:
-	trimmed_file = "${pair_id}_trimmed.fq.gz"
+	trimmed_file = "${pair_id}.trimmed.fq.gz"
 	"""
 	module load $GATK
 	module load $BWA
 	module load $PICARD
 	
 	java -jar /share/apps/trimmomatic/0.36/trimmomatic-0.36.jar SE -phred33 \
-	       $1 $2.trimmed.fq.gz ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+	       $reads $trimmed_file ILLUMINACLIP:TruSeq3-SE:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
 	
 	"""
 }
@@ -96,9 +112,6 @@ process align {
         "@RG\\tID:${pair_id}\\tLB:${pair_id}\\tPL:ILLUMINA\\tPM:NOVASEQ\\tSM:${pair_id}"
     """
     module load $BWA
-    #bwa mem -Y -K 100000000 -R "@RG\tID:$1\tLB:$1\tPL:ILLUMINA\tPM:NOVASEQ\tSM:$1" \
-	#       $REF $1.trimmed.fq.gz > gR3.$1.aln-se.sam
-
     bwa mem -Y -K 100000000 -R \"${readGroup}\" \
 	       $REF $read_1 > ${pair_id}.aln-se.sam
     """

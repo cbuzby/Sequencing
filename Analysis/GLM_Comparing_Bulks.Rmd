@@ -2,7 +2,10 @@
 title: "GLM_ComparingBulks"
 author: "Cassandra Buzby"
 date: "7/19/2022"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -47,7 +50,57 @@ load("SCUC_4-13-22.Rdata")
 
 #################################################################################################
 #################################################################################################
+BSA_GLM <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, res$coefficients)
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+    
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+  }
 
+################################################################################
 perChromWindow_binom_redone <- function(lrP, chr = "II", windowsize = 100, coverage = 15634092/2, seedt = Sys.time()){
   lrP <- lrP[lrP$CHROM == chr,]
   
@@ -388,6 +441,7 @@ GLM_Bulk_Only <- function(startLRP, windowsize = 100, Chr = "II"){
   
 }
 
+load("logregParental.Rdata")
 ```
 
 ## Post 7/19/22 Meeting
@@ -444,106 +498,6 @@ PResults_Wider %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alp
 ```
 
 
-```{r}
-load("logregParental.Rdata")
-
-logregParental %>% filter(parent == "Wine") -> WineParents
-logregParental %>% filter(parent == "Oak") -> OakParents
-
-WineP_Results_VIII <- GLM_Bulk_Only(WineParents, Chr = "VIII")
-OakP_Results_VIII <- GLM_Bulk_Only(OakParents, Chr = "VIII")
-
-WineP_Results_VIII$Parent <- "Wine"
-OakP_Results_VIII$Parent <- "Oak"
-
-rbind(WineP_Results_VIII, OakP_Results_VIII) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_VIII
-rbind(WineP_Results_VIII, OakP_Results_VIII) -> PResults_VIII
-save(PResults_VIII, file = "PResults_VIII.Rdata")
-save(PResults_Wider_VIII, file = "PResults_Wider_VIII.Rdata")
-
-load("PResults_VIII.Rdata")
-load("PResults_Wider_VIII.Rdata")
-
-
-PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr VIII")
-
-PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr VIII")
-
-PResults_VIII %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr VIII")
-
-PResults_Wider_VIII %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VIII Zprime Correlation")
-
-PResults_Wider_VIII %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VIII Z Correlation")
-
-```
-### Do this for chromosome VII
-
-```{r}
-# load("logregParental.Rdata")
-# 
-# logregParental %>% filter(parent == "Wine") -> WineParents
-# logregParental %>% filter(parent == "Oak") -> OakParents
-
-WineP_Results_VII <- GLM_Bulk_Only(WineParents, Chr = "VII")
-OakP_Results_VII <- GLM_Bulk_Only(OakParents, Chr = "VII")
-
-WineP_Results_VII$Parent <- "Wine"
-OakP_Results_VII$Parent <- "Oak"
-
-rbind(WineP_Results_VII, OakP_Results_VII) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_VII
-rbind(WineP_Results_VII, OakP_Results_VII) -> PResults_VII
-save(PResults_VII, file = "PResults_VII.Rdata")
-save(PResults_Wider_VII, file = "PResults_Wider_VII.Rdata")
-
-load("PResults_VII.Rdata")
-load("PResults_Wider_VII.Rdata")
-
-
-PResults_VII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr VII")
-
-PResults_VII %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr VII")
-
-PResults_VII %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr VII")
-
-PResults_Wider_VII %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VII Zprime Correlation")
-
-PResults_Wider_VII %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome VII Z Correlation")
-```
-
-### Do this for chromosome X
-
-```{r}
-# load("logregParental.Rdata")
-# 
-# logregParental %>% filter(parent == "Wine") -> WineParents
-# logregParental %>% filter(parent == "Oak") -> OakParents
-
-WineP_Results_XI <- GLM_Bulk_Only(WineParents, Chr = "XI")
-OakP_Results_XI <- GLM_Bulk_Only(OakParents, Chr = "XI")
-
-WineP_Results_XI$Parent <- "Wine"
-OakP_Results_XI$Parent <- "Oak"
-
-rbind(WineP_Results_XI, OakP_Results_XI) %>% pivot_wider(names_from = Parent, values_from = c(bulk_Z, bulk_Zprime)) -> PResults_Wider_XI
-rbind(WineP_Results_XI, OakP_Results_XI) -> PResults_XI
-save(PResults_XI, file = "PResults_XI.Rdata")
-save(PResults_Wider_XI, file = "PResults_Wider_XI.Rdata")
-
-load("PResults_XI.Rdata")
-load("PResults_Wider_XI.Rdata")
-
-
-PResults_XI %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects Chr XI")
-
-PResults_XI %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_line() + ggtitle("Bulk Effects Chr X")
-
-PResults_XI %>% ggplot(aes(x = POS, y = bulk_Z, color = Parent)) + geom_line() + ggtitle("Raw Bulk Effects Chr X")
-
-PResults_Wider_XI %>% ggplot(aes(x = bulk_Zprime_Wine, y = bulk_Zprime_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome XI Zprime Correlation")
-
-PResults_Wider_XI %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alpha = 0.05, size = 1) + ggtitle("Chromosome XI Z Correlation")
-
-```
 
 ## Find Parent and Interaction Effects from Randomized Parent
 
@@ -627,7 +581,7 @@ GLM__RandParent <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = 
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 GLM__RandParent(parentscramble, Chr = "III")
 
 randparentlist <- list()
@@ -637,10 +591,10 @@ for(i in ChromKey$chromosomes[2:16]){
 
 save(randparentlist, file = "randparentlist.Rdata")
 
-
 ```
 
 ```{r}
+load("randparentlist.Rdata")
 randpdf <- bind_rows(randparentlist, .id = "CHROM")
 
 randpdf %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_line() + geom_line(aes(x = POS, y = parent_Zprime), color = "gray") +
@@ -652,17 +606,17 @@ randpdf %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_line() + geom_line(aes(
 
 Looks like there is no effect, so wanted to run this with random parent effects. 
 
-```{r}
-# randparent_X <- list()
-# for(i in 1:100){
-#    randparent_X[[i]] <- GLM__RandParent(parentscramble, Chr = "X", seedstart = (100+i))
-# }
-# 
-# randpdf_X <- bind_rows(randparent_X, .id = "seed")
-# 
-# save(randpdf_X, file = "randpdf_X.Rdata")
+```{r, eval = FALSE}
+randparent_X <- list()
+for(i in 1:100){
+   randparent_X[[i]] <- GLM__RandParent(parentscramble, Chr = "X", seedstart = (100+i))
+}
 
-load("randparent_X.Rdata")
+randpdf_X <- bind_rows(randparent_X, .id = "seed")
+
+save(randpdf_X, file = "randpdf_X.Rdata")
+
+load("randpdf_X.Rdata")
 
 ggplot(randpdf_X, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random Parent, Chr X")
 
@@ -672,26 +626,60 @@ ggplot(randpdf_X, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_lin
 
 ```
 
+```{r}
+load("randpdf_X.Rdata")
+load("logregParental.Rdata")
+
+VXResults <- BSA_GLM(lrP = logregParental, chr = "X")
+
+VXResults %>% mutate(Zprime_Original = bulk_Zprime) %>% select(POS, Zprime_Original) %>% left_join(select(randpdf_X, c(POS, bulk_Zprime, seed))) %>% ggplot(aes(x = Zprime_Original, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.01)
+
+```
+
 ### Chromosome VIII
 
 This looked weird when running it with the bulk effect on its own, but running with random parental effects might help?
 
+```{r, eval = FALSE}
+randparent_VIII <- list()
+for(i in 1:100){
+   randparent_VIII[[i]] <- GLM__RandParent(parentscramble, Chr = "VIII", seedstart = (100+i))
+}
+
+randpdf_VIII <- bind_rows(randparent_VIII, .id = "seed")
+
+save(randpdf_VIII, file = "randpdf_VIII.Rdata")
+
+```
+
+Running Chr VIII again for real
+
 ```{r}
-# randparent_VIII <- list()
-# for(i in 1:100){
-#    randparent_VIII[[i]] <- GLM__RandParent(parentscramble, Chr = "VIII", seedstart = (100+i))
-# }
-# 
-# randpdf_VIII <- bind_rows(randparent_VIII, .id = "seed")
-# 
-# save(randpdf_VIII, file = "randpdf_VIII.Rdata")
+load("logregParental.Rdata")
 
-load("randparent_VIII.Rdata")
+VIIIResults <- BSA_GLM(lrP = logregParental, chr = "VIII")
 
-ggplot(randpdf_VIII, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random Parent, Chr VIII")
+
+```
+
+```{r}
+load("randpdf_VIII.Rdata")
+
+load("WindowComparison.Rdata")
+
+unique(WindowComp$Window)
+
+# ggplot() + geom_point(data = subset(WindowComp, CHROM == "VIII" & Stat == "ZPrime"& Window == "WeightedMean.100"), aes(x = POS, y = Bulk))
+
+ggplot(randpdf_VIII, aes(x = POS, y = bulk_Zprime)) + geom_line(aes(group = seed), alpha = 0.1) + 
+  geom_line(data = VIIIResults, aes(x = POS, y = bulk_Zprime), color = "red") +
+  ggtitle("Bulk Effects with Random Parent, Chr VIII")
 
 ggplot(randpdf_VIII, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Parental Effects, Chr VIII")
 
 ggplot(randpdf_VIII, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Interaction Effects, Chr VIII")
+
+VIIIResults %>% mutate(Zprime_Original = bulk_Zprime) %>% select(POS, Zprime_Original) %>% left_join(select(randpdf_VIII, c(POS, bulk_Zprime, seed))) %>% ggplot(aes(x = Zprime_Original, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.01)
+
 ```
 
