@@ -515,6 +515,17 @@ parentscramble <- logregParental %>% select(-Type, -Oak, -Wine) %>% pivot_wider(
 # #Test this
 # length(which(parentscramble$Oak == parentscramble$newOak))
 # length(which(parentscramble$Oak == parentscramble$newWine))
+bulkscramble <- logregParental %>% select(-Type, -Oak, -Wine) %>% pivot_wider(names_from = c(bulk), values_from = value)
+swap <- sample(1:length(bulkscramble$Oak), size = (length(bulkscramble$Oak)/2), replace = FALSE)
+
+bulkscramble$newLOW <- bulkscramble$LOW
+bulkscramble$newHIGH <- bulkscramble$HIGH
+bulkscramble$newLOW[swap] <- bulkscramble$HIGH[swap]
+bulkscramble$newHIGH[swap] <- bulkscramble$LOW[swap]
+
+#Test this
+length(which(bulkscramble$Oak == bulkscramble$newOak))
+length(which(bulkscramble$Oak == bulkscramble$newWine))
 
 ```
 
@@ -580,6 +591,7 @@ GLM__RandParent <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = 
 }
 
 ```
+
 
 ```{r, eval = FALSE}
 GLM__RandParent(parentscramble, Chr = "III")
@@ -648,8 +660,9 @@ for(i in 1:100){
 
 randpdf_VIII <- bind_rows(randparent_VIII, .id = "seed")
 
-save(randpdf_VIII, file = "randpdf_VIII.Rdata")
 
+save(randpdf_VIII, file = "randpdf_VIII.Rdata")
+load("randpdf_VIII.Rdata")
 ```
 
 Running Chr VIII again for real
@@ -681,5 +694,543 @@ ggplot(randpdf_VIII, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_
 
 VIIIResults %>% mutate(Zprime_Original = bulk_Zprime) %>% select(POS, Zprime_Original) %>% left_join(select(randpdf_VIII, c(POS, bulk_Zprime, seed))) %>% ggplot(aes(x = Zprime_Original, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.01)
 
+```
+
+```{r}
+GLM_RandBulk <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = Sys.time()){
+  
+  #lrPinit <- logregParental
+  #Chr <- "VII"
+  
+  bulkscramble <- subset(lrPinit, CHROM == Chr)  %>% select(-Type, -Oak, -Wine) %>% pivot_wider(names_from = c(bulk), values_from = value)
+  
+  #Add in parent swap
+  set.seed(seedstart)
+  swap <- sample(1:length(bulkscramble$POS), size = (length(bulkscramble$POS)/2), replace = FALSE)
+  
+  bulkscramble$newLOW <- bulkscramble$LOW
+  bulkscramble$newHIGH <- bulkscramble$HIGH
+  bulkscramble$newLOW[swap] <- bulkscramble$HIGH[swap]
+  bulkscramble$newHIGH[swap] <- bulkscramble$LOW[swap]
+
+  
+  lrP <- bulkscramble %>% pivot_longer(c(newLOW, newHIGH), names_to = "bulk")
+
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+    c(Chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  Results[,5] <- as.numeric(Results[,5])
+  Results[,6] <- as.numeric(Results[,6])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(Chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  WResult$seed <- seedstart
+  
+  return(WResult)
+}
+```
+
+```{r, eval = FALSE}
+
+#RUN FUNCTINO ABOVE THIS TO START
+
+load("logregParental.Rdata")
+
+randbulk_VII <- list()
+for(i in 1:100){
+   randbulk_VII[[i]] <- GLM_RandBulk(logregParental, Chr = "VII", seedstart = (100+i))
+}
+
+randbdf_VII <- bind_rows(randbulk_VII, .id = "Index")
+
+#randbdf_VII <- do.call("rbind", randbulk_VII)
+
+save(randbdf_VII, file = "randbdf_VII.Rdata")
+
+```
+
+```{r}
+load("randbdf_VII.Rdata")
+
+#length(unique(randbdf_VII$seed))
+
+ggplot(randbdf_VII, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random bulk, Chr VII")
+
+ggplot(randbdf_VII, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Parental Effects, Chr VII")
+
+ggplot(randbdf_VII, aes(x = POS, y = Interaction_Zprime, group = as.factor(seed))) + geom_line(alpha = 0.1) + ggtitle("Random Interaction Effects, Chr VII") + theme(legend.position = "none")
+
+```
+
+```{r}
+max(abs(randbdf_VII$bulk_Zprime))
+max(abs(randbdf_VII$parent_Zprime))
+max(abs(randbdf_VII$Interaction_Zprime))
+
+```
+
+### Running this on Chr VIII
+
+```{r, eval = FALSE}
+
+#RUN FUNCTINO ABOVE THIS TO START
+
+load("logregParental.Rdata")
+
+randbulk_VIII <- list()
+for(i in 1:100){
+   randbulk_VIII[[i]] <- GLM_RandBulk(logregParental, Chr = "VIII", seedstart = (100+i))
+}
+
+randbdf_VIII <- bind_rows(randbulk_VIII, .id = "Index")
+
+#randbdf_VIII <- do.call("rbind", randbulk_VIII)
+
+save(randbdf_VIII, file = "randbdf_VIII.Rdata")
+
+```
+
+```{r}
+load("randbdf_VIII.Rdata")
+
+#length(unique(randbdf_VIII$seed))
+
+ggplot(randbdf_VIII, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random bulk, Chr VIII")
+
+ggplot(randbdf_VIII, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Random Parental Effects, Chr VIII")
+
+ggplot(randbdf_VIII, aes(x = POS, y = Interaction_Zprime, group = as.factor(seed))) + geom_line(alpha = 0.1) + ggtitle("Random Interaction Effects, Chr VIII") + theme(legend.position = "none")
+
+```
+
+### Stats on Chr VIII
+
+```{r}
+quantile(randbdf_VIII$bulk_Zprime, c(0.01, 0.99))
+quantile(randbdf_VIII$parent_Zprime, c(0.01, 0.99))
+quantile(randbdf_VIII$Interaction_Zprime, c(0.01, 0.99))
+
+max(abs(randbdf_VIII$bulk_Zprime))
+max(abs(randbdf_VIII$parent_Zprime))
+max(abs(randbdf_VIII$Interaction_Zprime))
+
+```
+
+## Running function for entire genome to average
+
+```{r, eval = FALSE}
+load("logregParental.Rdata")
+
+randbulk_II <- list()
+for(i in 1:100){
+   randbulk_II[[i]] <- GLM_RandBulk(logregParental, Chr = "II", seedstart = (100+i))
+}
+
+randbdf_II <- bind_rows(randbulk_II, .id = "Index")
+save(randbdf_II, file = "randbdf_II.Rdata")
+
+###################################
+randbulk_III <- list()
+for(i in 1:100){
+   randbulk_III[[i]] <- GLM_RandBulk(logregParental, Chr = "III", seedstart = (100+i))
+}
+
+randbdf_III <- bind_rows(randbulk_III, .id = "Index")
+save(randbdf_III, file = "randbdf_III.Rdata")
+
+###################################
+randbulk_IV <- list()
+for(i in 1:100){
+   randbulk_IV[[i]] <- GLM_RandBulk(logregParental, Chr = "IV", seedstart = (100+i))
+}
+
+randbdf_IV <- bind_rows(randbulk_IV, .id = "Index")
+save(randbdf_IV, file = "randbdf_IV.Rdata")
+
+###################################
+randbulk_V <- list()
+for(i in 1:100){
+   randbulk_V[[i]] <- GLM_RandBulk(logregParental, Chr = "V", seedstart = (100+i))
+}
+
+randbdf_V <- bind_rows(randbulk_V, .id = "Index")
+save(randbdf_V, file = "randbdf_V.Rdata")
+
+###################################
+randbulk_VI <- list()
+for(i in 1:100){
+   randbulk_VI[[i]] <- GLM_RandBulk(logregParental, Chr = "VI", seedstart = (100+i))
+}
+
+randbdf_VI <- bind_rows(randbulk_VI, .id = "Index")
+save(randbdf_VI, file = "randbdf_VI.Rdata")
+
+###################################
+randbulk_IX <- list()
+for(i in 1:100){
+   randbulk_IX[[i]] <- GLM_RandBulk(logregParental, Chr = "IX", seedstart = (100+i))
+}
+
+randbdf_IX <- bind_rows(randbulk_IX, .id = "Index")
+save(randbdf_IX, file = "randbdf_IX.Rdata")
+
+###################################
+randbulk_X <- list()
+for(i in 1:100){
+   randbulk_X[[i]] <- GLM_RandBulk(logregParental, Chr = "X", seedstart = (100+i))
+}
+
+randbdf_X <- bind_rows(randbulk_X, .id = "Index")
+save(randbdf_X, file = "randbdf_X.Rdata")
+
+###################################
+randbulk_XI <- list()
+for(i in 1:100){
+   randbulk_XI[[i]] <- GLM_RandBulk(logregParental, Chr = "XI", seedstart = (100+i))
+}
+
+randbdf_XI <- bind_rows(randbulk_XI, .id = "Index")
+save(randbdf_XI, file = "randbdf_XI.Rdata")
+
+###################################
+randbulk_XII <- list()
+for(i in 1:100){
+   randbulk_XII[[i]] <- GLM_RandBulk(logregParental, Chr = "XII", seedstart = (100+i))
+}
+
+randbdf_XII <- bind_rows(randbulk_XII, .id = "Index")
+save(randbdf_XII, file = "randbdf_XII.Rdata")
+
+###################################
+randbulk_XIII <- list()
+for(i in 1:100){
+   randbulk_XIII[[i]] <- GLM_RandBulk(logregParental, Chr = "XIII", seedstart = (100+i))
+}
+
+randbdf_XIII <- bind_rows(randbulk_XIII, .id = "Index")
+save(randbdf_XIII, file = "randbdf_XIII.Rdata")
+
+###################################
+randbulk_XIV <- list()
+for(i in 1:100){
+   randbulk_XIV[[i]] <- GLM_RandBulk(logregParental, Chr = "XIV", seedstart = (100+i))
+}
+
+randbdf_XIV <- bind_rows(randbulk_XIV, .id = "Index")
+save(randbdf_XIV, file = "randbdf_XIV.Rdata")
+
+###################################
+randbulk_XV <- list()
+for(i in 1:100){
+   randbulk_XV[[i]] <- GLM_RandBulk(logregParental, Chr = "XV", seedstart = (100+i))
+}
+
+randbdf_XV <- bind_rows(randbulk_XV, .id = "Index")
+save(randbdf_XV, file = "randbdf_XV.Rdata")
+
+###################################
+randbulk_XVI <- list()
+for(i in 1:100){
+   randbulk_XVI[[i]] <- GLM_RandBulk(logregParental, Chr = "XVI", seedstart = (100+i))
+}
+
+randbdf_XVI <- bind_rows(randbulk_XVI, .id = "Index")
+save(randbdf_XVI, file = "randbdf_XVI.Rdata")
+
+AllChromRandBulk <- rbind(randbdf_II,randbdf_III,randbdf_IV,randbdf_V,randbdf_VI,randbdf_VII,randbdf_VIII,randbdf_IX,
+      randbdf_X,randbdf_XI,randbdf_XII,randbdf_XIII,randbdf_XIV,randbdf_XV, randbdf_XVI)
+
+save(AllChromRandBulk, file = "AllChromRandBulk_100rep.Rdata")
+```
+
+```{r, eval=FALSE}
+load("AllChromRandBulk_100rep.Rdata")
+
+ggplot(AllChromRandBulk, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random bulk") + facet_grid(~CHROM, scales = "free", space = "free_x")
+
+ggplot(AllChromRandBulk, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Parent Effects with Random bulk") + facet_grid(~CHROM, scales = "free", space = "free_x")
+
+ggplot(AllChromRandBulk, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Interaction Effects with Random bulk") + facet_grid(~CHROM, scales = "free", space = "free_x")
+
+
+```
+
+Stats on this
+
+```{r}
+
+load("AllChromRandBulk_100rep.Rdata")
+
+quantile(AllChromRandBulk$bulk_Zprime, c(0.025, 0.975))
+quantile(AllChromRandBulk$parent_Zprime, c(0.025, 0.975))
+quantile(AllChromRandBulk$Interaction_Zprime, c(0.025, 0.975))
+```
+What if I were to look at the max of each trial and then find the 95% cutoffs of those?
+
+```{r}
+load("AllChromRandBulk_100rep.Rdata")
+
+AllChromRandBulk %>% group_by(seed) %>% summarise(max_bulk = max(abs(bulk_Zprime)),
+                                                  max_parent = max(abs(parent_Zprime)),
+                                                  max_int = max(abs(Interaction_Zprime))) -> Max_Zprimes
+
+save(Max_Zprimes, file = "Max_Zprimes.Rdata")
+
+quantile(Max_Zprimes$max_bulk, 0.95)
+quantile(Max_Zprimes$max_parent, 0.95)
+quantile(Max_Zprimes$max_int, 0.95)
+
+```
+
+Remove Chr VIII from this
+
+```{r}
+
+load("AllChromRandBulk_100rep.Rdata")
+AllChromRandBulk %>% filter(CHROM != "VIII") %>% group_by(seed) %>% summarise(max_bulk = max(abs(bulk_Zprime)),
+                                                  max_parent = max(abs(parent_Zprime)),
+                                                  max_int = max(abs(Interaction_Zprime))) -> Max_Zprimes_minus8
+
+#save(Max_Zprimes_minus8, file = "Max_Zprimes_minus8.Rdata")
+
+quantile(Max_Zprimes_minus8$max_bulk, 0.95)
+quantile(Max_Zprimes_minus8$max_parent, 0.95)
+quantile(Max_Zprimes_minus8$max_int, 0.95)
+
+Max_Zprimes %>% pivot_longer(-seed, names_to = "scoretype", values_to = "Zprime")-> MaxZ_pivot
+Max_Zprimes_minus8 %>% pivot_longer(-seed, names_to = "scoretype", values_to = "Zprime") -> MaxZ_pivot_minus8
+
+MaxZ_pivot %>% ggplot(aes(x = Zprime, fill = scoretype)) + geom_density(alpha = 0.3, size = 1, color = "gray") + ggtitle("Distribution of abs(max(zprime))") + xlim(0,0.8)+ ylim(0,25) + geom_vline(xintercept = quantile(MaxZ_pivot$Zprime, 0.95), linetype = "dashed", size = 1, color = "gray") + geom_vline(xintercept = quantile(MaxZ_pivot_minus8$Zprime, 0.95), linetype = "dashed", size = 1, color = "black")
+
+MaxZ_pivot_minus8 %>% ggplot(aes(x = Zprime, fill = scoretype)) + geom_density(alpha = 0.3, size = 1, color = "black") + ggtitle("Distribution of abs(max(zprime)) without Chr VIII")+ xlim(0,0.8) + ylim(0,25) + geom_vline(xintercept = quantile(MaxZ_pivot_minus8$Zprime, 0.95), linetype = "dashed", size = 1, color = "black")+ geom_vline(xintercept = quantile(MaxZ_pivot$Zprime, 0.95), linetype = "dashed", size = 1, color = "gray")
+
+```
+
+
+Looking at this cutoff on the plot
+
+```{r}
+load("bsa_glm_results.Rdata")
+
+bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + #ylim(-2, 5) +
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") + 
+  geom_hline(yintercept = c(-quantile(MaxZ_pivot$Zprime, 0.95), quantile(MaxZ_pivot$Zprime, 0.95)), color = "gray", linetype = "dashed") +
+  geom_hline(yintercept = c(-quantile(MaxZ_pivot_minus8$Zprime, 0.95), quantile(MaxZ_pivot_minus8$Zprime, 0.95)), color = "black", linetype = "dashed")
+
+```
+
+Plot the original lines on each
+
+```{r}
+load("AllChromRandBulk_100rep.Rdata")
+load("bsa_glm_results.Rdata")
+
+
+ggplot(AllChromRandBulk, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + 
+  ggtitle("Bulk Effects with Random bulk") + 
+  geom_line(data = bsa_glm_results.plot, aes(x = POS, y = bulk_Zprime, group = NULL), color = "#345F6F") + 
+  geom_hline(yintercept = c(-quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$bulk_Zprime)), 0.95),
+                            quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$bulk_Zprime)), 0.95)), 
+             color = "red", linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free_x") + 
+  theme_minimal() + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+
+ggplot(AllChromRandBulk, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Parent Effects with Random bulk") + geom_line(data = bsa_glm_results.plot, aes(x = POS, y = parent_Zprime, group = NULL), color = "#FFB05C") + 
+  geom_hline(yintercept = c(-quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$parent_Zprime)), 0.95),
+                            quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$parent_Zprime)), 0.95)), 
+             color = "red", linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free_x")+ theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggplot(AllChromRandBulk, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + geom_line(data = bsa_glm_results.plot, aes(x = POS, y = Interaction_Zprime, group = NULL), color = "#D7335C") + ggtitle("Interaction Effects with Random bulk") + 
+  geom_hline(yintercept = c(-quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$Interaction_Zprime)), 0.95),
+                            quantile(max(abs(subset(AllChromRandBulk, CHROM != "VIII")$Interaction_Zprime)), 0.95)), 
+             color = "red", linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free_x")+ theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+```
+
+What if we scrambled both parent and bulks? Then what is the max value by chance across the genome?
+
+```{r}
+GLM_RandBulkandParent <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = Sys.time()){
+  
+  # lrPinit <- logregParental
+  # Chr <- "VII"
+  
+  bulkscramble <- subset(lrPinit, CHROM == Chr) %>% select(-Type, -Oak, -Wine) %>% pivot_wider(names_from = c(bulk), values_from = value)
+  
+  #Add in parent swap
+  set.seed(seedstart)
+  bswap <- sample(1:length(bulkscramble$POS), size = (length(bulkscramble$POS)/2), replace = FALSE)
+  
+  bulkscramble$newLOW <- bulkscramble$LOW
+  bulkscramble$newHIGH <- bulkscramble$HIGH
+  bulkscramble$newLOW[bswap] <- bulkscramble$HIGH[bswap]
+  bulkscramble$newHIGH[bswap] <- bulkscramble$LOW[bswap]
+
+  
+  parentscramble <- bulkscramble %>% pivot_longer(c(newLOW, newHIGH), names_to = "bulk") %>% select(-HIGH, -LOW) %>%  
+    pivot_wider(names_from = c(parent), values_from = value)
+
+  #Add in parent swap
+  set.seed(seedstart)
+  pswap <- sample(1:length(parentscramble$POS), size = (length(parentscramble$POS)/2), replace = FALSE)
+
+  parentscramble$newOak <- parentscramble$Oak
+  parentscramble$newWine <- parentscramble$Wine
+  parentscramble$newOak[pswap] <- parentscramble$Wine[pswap]
+  parentscramble$newWine[pswap] <- parentscramble$Oak[pswap]
+  
+  lrP <- parentscramble %>% pivot_longer(c(newOak, newWine), names_to = "parent") %>% select(-Oak, -Wine)
+
+  
+  #Run the glm on that chromosome
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+    c(Chr, i, res$coefficients)
+  }
+  
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,3] <- as.numeric(Results[,3])
+  Results[,4] <- as.numeric(Results[,4])
+  Results[,5] <- as.numeric(Results[,5])
+  Results[,6] <- as.numeric(Results[,6])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(Chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  WResult$seed <- seedstart
+  
+  return(WResult)
+}
+```
+
+```{r}
+load("logregParental.Rdata")
+
+#rand_bp_VIII <- GLM_RandBulkandParent(logregParental, Chr = "VIII")
+
+rand_bp_VIII <- list()
+for(i in 1:100){
+   rand_bp_VIII[[i]] <- GLM_RandBulkandParent(logregParental, Chr = "VIII", seedstart = (100+i))
+}
+
+rand_bp_df_VIII <- bind_rows(rand_bp_VIII, .id = "Index")
+save(rand_bp_df_VIII, file = "rand_bp_df_VIII.Rdata")
+
+```
+
+```{r}
+load("rand_bp_df_VIII.Rdata")
+load("AllChromRandBulk_100rep.Rdata")
+load("bsa_glm_results.Rdata")
+
+# length(unique(rand_bp_df_VIII$CHROM))
+# max(rand_bp_df_VIII$POS)
+# max(AllChromRandBulk$POS)
+
+ggplot(rand_bp_df_VIII, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + 
+  ggtitle("Bulk Effects with Random bulk and parent") + 
+  geom_line(data = subset(bsa_glm_results.plot, CHROM == "VIII"), aes(x = POS, y = bulk_Zprime, group = NULL), color = "#345F6F") + 
+  geom_hline(yintercept = c(-quantile(max(abs(rand_bp_df_VIII$bulk_Zprime)), 0.95),
+                            quantile(max(abs(rand_bp_df_VIII$bulk_Zprime)), 0.95)),
+             color = "red", linetype = "dashed") +
+  #facet_grid(~CHROM, scales = "free", space = "free_x") + 
+  theme_minimal() + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggplot(rand_bp_df_VIII, aes(x = POS, y = parent_Zprime, group = seed)) + geom_line(alpha = 0.1) + 
+  ggtitle("Parent Effects with Random bulk and parent") + 
+  geom_line(data = subset(bsa_glm_results.plot, CHROM == "VIII"), aes(x = POS, y = parent_Zprime, group = NULL), color = "#FFB05C") + 
+  geom_hline(yintercept = c(-quantile(max(abs(rand_bp_df_VIII$parent_Zprime)), 0.95),
+                            quantile(max(abs(rand_bp_df_VIII$parent_Zprime)), 0.95)),
+             color = "red", linetype = "dashed") +
+  #facet_grid(~CHROM, scales = "free", space = "free_x") + 
+  theme_minimal() + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+ggplot(rand_bp_df_VIII, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_line(alpha = 0.1) + 
+  ggtitle("Interaction Effects with Random bulk and parent") + 
+  geom_line(data = subset(bsa_glm_results.plot, CHROM == "VIII"), aes(x = POS, y = Interaction_Zprime, group = NULL), color = "#D7335C") + 
+  geom_hline(yintercept = c(-quantile(max(abs(rand_bp_df_VIII$Interaction_Zprime)), 0.95),
+                            quantile(max(abs(rand_bp_df_VIII$Interaction_Zprime)), 0.95)),
+             color = "red", linetype = "dashed") +
+  #facet_grid(~CHROM, scales = "free", space = "free_x") + 
+  theme_minimal() + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+```{r}
+head(logregParental)
 ```
 

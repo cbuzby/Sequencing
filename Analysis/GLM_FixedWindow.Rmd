@@ -486,11 +486,11 @@ BSA_GLM_fixed <-  function(lrP, chr = "II", windowsize = 100, a = 0){
   
  
   #Run the windows on that chromosome
-  WResult <- foreach(i = seq(from = (windowsize+a), to = length(Results$POS), by = windowsize), .combine=rbind) %dopar% {
+  WResult <- foreach(i = seq(from = (windowsize+1+a), to = (length(Results$POS) - (2*windowsize)),by = windowsize),   .combine=rbind) %dopar% {
             #save the median value from original index 1 to original end index
-                res_int <- mean(Results$Interaction[(i):(i+windowsize)])
-                res_bulk <- mean(Results$bulkHigh[(i):(i+windowsize)])
-                res_parent <- mean(Results$parentWine[(i):(i+windowsize)])
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
                 #print CHROM, index, POS, and median
                 
                 c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
@@ -527,10 +527,10 @@ dim(VIIIResults)/100
 
 ## Loop through different start points
 
-```{r}
+```{r, eval = FALSE}
 saveaddition <- list()
-for(addition in 1:200){
-  saveaddition[[addition]] <- BSA_GLM_fixed(logregParental, chr = "VIII", a = addition, windowsize = 200)
+for(addition in 1:100){
+  saveaddition[[addition]] <- BSA_GLM_fixed(logregParental, chr = "VIII", a = addition, windowsize = 100)
 }
 
 # length(saveaddition[[1]]$CHROM)
@@ -539,6 +539,81 @@ multrows <- bind_rows(saveaddition)
 # length(unique(multrows$Index))
 
 multrows %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_point() +  geom_point(data = VIIIResults, aes(x = POS, y = bulk_Zprime), alpha = 0.1, color = "violet") 
+
+```
+
+## Using the spaced data
+
+Since there are now positions/windowsize elements in the dataset, would these averages now be the number of hypotheses tested? 
+
+Clearly this still actually doesn't help since the correction is too severe. Unfortunate.
+
+```{r}
+bonfcor <- 0.05/(length(unique(VIII_Fixed$POS)))
+zscore_bc <- qnorm(bonfcor/2)
+
+ggplot(VIII_Fixed, aes(x = POS, y = bulk_Zprime)) + geom_point(size = 3) + geom_line() + geom_hline(yintercept = c(zscore_bc, -zscore_bc), linetype = "dashed") + ggtitle("Chr VIII Bonferroni Correction")
+
+```
+
+## Recombination Rate and Window Size
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5554000/#:~:text=on%20the%20chromosome.-,S.,6%20COs%2FMb%20for%20L.
+
+According to the internet, there are 6 crossovers/Mb in S cerevisiae. This means that there is 1 crossover per 0.167 Mb, or 167k bases. So we would expect the chances of 1/100 recombinations to be 167k/100, or 1.67k.
+
+Magwene advised a window size of 20 cM, so that would be 1.67*20, or 33.4k bases. This is PER individual, and then must be multiplied by the number of starting population potentially, which was 1/2 million (if FuDR killed the alphas). However, this does not seem to make sense.
+
+Calculate the distances between unique positions here:
+
+```{r}
+
+positions <- data.frame(POS = unique(VIIIResults$POS))
+
+positions$Diff <- NA
+for(i in 1:(length(positions$POS)-1)){
+  positions$Diff[i] <- positions$POS[i+1] - positions$POS[i]
+}
+
+positions %>% filter(Diff < 500) %>% ggplot(aes(x = Diff)) + geom_density(alpha = 0.5)
+
+positions %>% filter(Diff < 500) %>% ggplot(aes(x = Diff, y = "POS")) + geom_boxplot(size = 2, color = "violet") + geom_jitter(alpha = 0.5) + ggtitle("")
+
+positions %>% ggplot(aes(x = Diff, y = "POS")) + geom_boxplot(size = 1, color = "violet") + geom_jitter(alpha = 0.1)
+
+meanposdiff <- mean(positions$Diff, na.rm = T)
+medposdiff <- median(positions$Diff, na.rm = T)
+
+33400/meanposdiff
+
+33400/medposdiff
+
+length(positions$POS)
+#I think I did the math on this wrong, since my window size should be 2826 elements...?
+```
+
+What does 33.4k bp actually look like?
+
+```{r}
+
+positions[which(is.na(positions$Diff)),]
+
+positions <- positions %>% na.omit()
+
+gap_VIII <- positions$POS[which(positions$Diff == max(positions$Diff))]
+
+VIIIResults %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_point() + geom_vline(xintercept = seq(from = 1, to = max(VIIIResults$POS), by = 33400), linetype = "dashed", color = "firebrick") 
+```
+So at 6 crossovers/Mb, that's 1Mb/6 = 0.166 Mb, or 166 Kb
+
+```{r}
+1000*1/6
+```
+
+What does every 166 Kb look like? Multiply by 20 since resolution isn't high enough, and this might(???) be 20 cM since the chance is for 1 recombination to happen in that space...????
+
+```{r}
+VIIIResults %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_point() + geom_vline(xintercept = seq(from = 1, to = max(VIIIResults$POS), by = 166*100), linetype = "dashed", color = "firebrick") 
 
 ```
 

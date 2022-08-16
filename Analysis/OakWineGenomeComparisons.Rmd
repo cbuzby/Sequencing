@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 #Load packages
 library(ggplot2)
 library(tidyr)
-library(tidyverse)
+#library(tidyverse)
 library(reshape2)
 library(cowplot)
 
@@ -79,6 +79,19 @@ load("ReadsParental.Rdata")
 
 #Look at the difference between Alt and Oak/Wine in this plot vs above
 ggplot(ReadsParental, aes(x = Type, fill = Type)) + geom_bar() + ggtitle("Number of Variant Alleles")
+
+
+ReadsParental %>% select(CHROM, POS, Type) %>% distinct() %>% filter(Type != "Alt") %>% na.omit() %>% count()
+
+#Number of bases in between SNPs on average
+12500000/49192
+
+#Number of SNPs per 1000 bp
+1000*49192/12500000
+
+1000/5 #5 per 1000 is 1 per 200
+500/1 #1 per 500
+
 ```
 
 This is interesting because the number of positions that were called in each bulk amplifies the oak and wine alleles but not the alt alleles, which is good for keeping the most data of quality. 
@@ -155,5 +168,76 @@ test <- data.frame(hours = 1:24, cellspermL = (start/10)*2^(1:24/doubling.time))
 
 ggplot(test, aes(x = hours, y = cellspermL)) + geom_line() + geom_hline(yintercept = c(1.5*10^6,80*10^6), linetype = "dashed") + geom_vline(xintercept = 24, color = "red", linetype = "dashed") + ggtitle(paste("uL Cells Per Bulk = ", 1000/multiplier, sep = "")
 )
+```
+## Checking how many diploids are actually in this using the MAT locus
+
+We would expect that the MATa locus would be 100% of the alleles, while the MATalpha locus would not have any (which is the oak strain). Thus, the number of oak vs wine reads should be imbalanced equally in that region compared to the rest (based on coverage). I can use the Types and the counts for each of these on Chr III to estimate compared to Chr I and the others.
+
+
+```{r}
+load("ReadsParental_plusChrI.Rdata")
+
+ReadsParental %>% transmute(CHROM = CHROM, POS = POS, value = value, bulk = bulk, parent = parent, 
+                            allele = paste(Type, allele, sep = "_")) -> ReadsType
+
+unique(ReadsType$allele)
+
+ReadsType %>% filter(CHROM == "III" | CHROM == "II" | CHROM == "I", allele != "Alt_REF", allele != "Alt_ALT") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point() + facet_grid(~CHROM)
+
+ReadsType %>% group_by(CHROM, allele) %>% summarise(totalcounts = sum(value)) -> TypeCounts
+
+ggplot(TypeCounts, aes(x = CHROM, y = totalcounts, color = allele)) + geom_point(size = 2, alpha = 0.4)
+
+TypeCounts$pallele <- NA
+TypeCounts$pallele[TypeCounts$allele == "Oak_ALT"] <- "Wine"
+TypeCounts$pallele[TypeCounts$allele == "Oak_REF"] <- "Oak"
+
+TypeCounts$pallele[TypeCounts$allele == "Wine_ALT"] <- "Oak"
+TypeCounts$pallele[TypeCounts$allele == "Wine_REF"] <- "Wine"
+
+ggplot(TypeCounts, aes(x = CHROM, y = totalcounts, color = pallele)) + geom_point(size = 2, alpha = 0.4)
+
+TypeCounts %>% filter(pallele == "Wine" | pallele == "Oak") %>% group_by(CHROM, pallele) %>% summarise(psum = sum(totalcounts)) %>% pivot_wider(names_from = pallele, values_from = psum) %>% mutate(total = sum(Oak, Wine)) %>% mutate(Wineperc = Wine/total, Oakperc = Oak/total) %>% ggplot(aes(x = CHROM, y = Wineperc)) + geom_point(color = "firebrick", size = 3) + geom_point(aes(x = CHROM, y = Oakperc), color = "lightblue", size = 3) + ggtitle("Reads Per SNP Type Per Chromosome")
+
+```
+
+So I really need to see within that exact region though which is which...
+
+```{r}
+ReadsType %>% filter(CHROM == "VIII", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free") + scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr VIII")
+
+ReadsType %>% filter(CHROM == "III", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr III")
+
+ReadsType %>% filter(CHROM == "I", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr I")
+
+ReadsType %>% filter(CHROM == "V", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr V")
+
+ReadsType %>% filter(CHROM == "IV", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr IV")
+
+ReadsType %>% filter(CHROM == "VI", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr VI")
+
+ReadsType %>% filter(CHROM == "VII", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr VII")
+
+ReadsType %>% filter(CHROM == "IX", allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free")+ scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle("Chr IX")
+```
+
+Doing this a better way
+
+```{r}
+for(i in unique(ReadsType$CHROM)){
+  ReadsType %>% filter(CHROM == i, allele != "Alt_REF", allele != "Alt_ALT", allele != "NA_ALT", allele != "NA_REF") %>%
+  ggplot(aes(x = POS, y = value, color = allele)) + geom_point(alpha = 0.2) + facet_grid(rows = vars(parent), cols = vars(bulk), space = "free_x", scale = "free") + scale_color_manual(values = c("blue", "red", "firebrick", "navyblue")) + ggtitle(paste("Chr ", i)) -> plot
+  
+  print(plot)
+}
 ```
 

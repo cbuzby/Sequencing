@@ -1,0 +1,569 @@
+---
+title: "PosterScripts_Yeast2022"
+author: "Cassandra Buzby"
+date: "8/15/2022"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+
+library(foreach)
+library(doParallel)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+load("bsa_glm_results.Rdata")
+
+
+```
+
+## Load Data
+
+```{r}
+load("ReadsParental.Rdata")
+
+```
+
+## Plot 2
+
+Function to analyze:
+
+```{r}
+#################################################
+#Change this to analyze all differently
+#################################################
+
+mindepth = 50
+maxdepth = 1500
+minsampledepth = 50
+mingq = 0.98
+
+PipelineFunc <- function(HighBulk, LowBulk, rawData,
+                         mindepth = mindepth,
+                         maxdepth = maxdepth,
+                         minsampledepth = minsampledepth,
+                         mingq = mingq,
+                         windowSize = 2e4, #5e4 works
+                         Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4"),
+                         BulkSize = 1000
+                         ){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms #"NC_001133.9" #
+        )
+
+df %>% merge(.,ChromKey) %>% 
+  as.data.frame() %>% na.omit() -> df
+
+colnames(df)[1] <- "NC_Chrom"
+colnames(df)[which(colnames(df) == "chromosomes")] <- "CHROM"
+
+df$CHROM <- factor(df$CHROM, levels = c("I", "II", "III", "IV", 
+                                        "V", "VI", "VII", "VIII", 
+                                        "IX", "X", "XI", "XII", 
+                                        "XIII", "XIV", "XV", "XVI", "M"))
+#################################
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = mindepth, #100
+        maxTotalDepth = maxdepth, #400
+        minSampleDepth = minsampledepth, #40
+        minGQ = mingq #99
+    )
+
+  #df %>% merge(.,ChromKey)
+  #df_filt <- df
+  
+  #Run G' analysis
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize,
+      popStruc = "F2",
+      bulkSize = 1000, #c(25, 25)
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+    
+  return(as.data.frame(df_filt))
+}
+```
+
+Initial QTLseqR results; plot both including Chr I and not
+
+```{r, eval = FALSE}
+#Initial Data Processing
+rawData = "Data\\TEST2_MergedBQSR.output.table"
+
+#Exclude Chr I
+ChromKey %>% filter(CHROM != "NC_001224.1") -> HNGc
+
+#Run QTLSeqR
+SAUA.plot <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "UnselectedA", rawData = rawData, BulkSize = c(2.1e9, 1.26e10), Chroms = unique(HNGc$CHROM))
+
+save(SAUA.plot, file = "SAUA.plot.Rdata")
+
+SCUC.plot <- PipelineFunc(HighBulk = "SelectedC", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.8e9, 1.3e10), Chroms = unique(HNGc$CHROM))
+save(SCUC.plot, file = "SCUC.plot.Rdata")
+
+Selected.plot <- PipelineFunc(HighBulk = "SelectedA", LowBulk = "SelectedC", rawData = rawData, BulkSize = c(2.1e9, 1.8e9), Chroms = unique(HNGc$CHROM))
+save(Selected.plot, file = "Selected.plot.Rdata")
+
+Unselected.plot <- PipelineFunc(HighBulk = "UnselectedA", LowBulk = "UnselectedC", rawData = rawData, BulkSize = c(1.3e10), Chroms = unique(HNGc$CHROM))
+save(Unselected.plot, file = "Unselected.plot.Rdata")
+
+
+```
+
+Checking the Unselected and Selected Plots to confirm chromosome substitution
+
+```{r}
+load("SAUA.plot.Rdata")
+load("SCUC.plot.Rdata")
+load("Selected.plot.Rdata")
+load("Unselected.plot.Rdata")
+
+Selected.plot %>% ggplot(aes(x = POS, y = Gprime)) + geom_line(size = 0.8)  + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(Selected.plot$POS), 
+                                  by = 10^(floor(log10(max(Selected.plot$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  #geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + #ylim(c(0, 50)) +
+    scale_colour_manual(values=c("#0740A3", "#CE273D")) + ggtitle("Selected vs Selected") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x")
+
+Unselected.plot %>% ggplot(aes(x = POS, y = Gprime)) + geom_line(size = 0.8)  + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(Unselected.plot$POS), 
+                                  by = 10^(floor(log10(max(Unselected.plot$POS))))), 
+                    # labels = format_genomic(), 
+                    name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  #geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  guides(colour = "none")  + #ylim(c(0, 50)) +
+    scale_colour_manual(values=c("#0740A3", "#CE273D")) + ggtitle("Unselected vs Unselected") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x")
+```
+
+
+```{r}
+load("SAUA_4-13-22.Rdata")
+load("SCUC_4-13-22.Rdata")
+
+
+FDR_Unselected <- Unselected.plot %>% arrange(Gprime) %>% summarise(quantile(Gprime, c(0.99)))
+
+SAUA.plot %>% mutate(dataset = "Oak") %>% select(POS, CHROM, Gprime, dataset) -> WineTemp
+SCUC.plot %>% mutate(dataset = "Wine") %>% select(POS, CHROM, Gprime, dataset) %>% rbind(WineTemp) -> CombinedWineOak
+
+ggplot(CombinedWineOak, aes(x = POS, y = Gprime, color = dataset)) + geom_line(size = 0.8, alpha = 0.8) + 
+    scale_x_continuous(breaks = seq(from = 0, to = max(CombinedWineOak$POS), by = 1e5), name = "Genomic Position") +
+  theme(plot.margin = margin(b = 10, l = 20, r = 20, unit = "pt")) + 
+  geom_hline(yintercept = as.numeric(FDR_Unselected), color = "black", alpha = 0.4, size = 1) +
+  #guides(colour = "none")  + 
+  ylim(c(0, 500)) +
+    scale_colour_manual(values=c("#5391C4", "#A51722")) +
+  theme_minimal() + 
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank(), legend.position = "bottom")+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ggtitle("Oak and Wine QTL with Unselected-Based FDR")  -> Fig2A
+
+ggsave(Fig2A, filename = "Fig2A.png", width = 10, height = 6)
+
+Fig2A
+```
+
+## Plot 3
+
+Data Processing: function for running glm and windows
+
+```{r}
+BSA_GLM <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, res$coefficients)
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+  }
+```
+
+Load in the data
+
+```{r, eval = FALSE}
+load("ReadsParental.Rdata")
+
+ReadsParental %>% filter(Type == "Oak" | Type == "Wine") -> logregParental
+
+logregParental$reads[logregParental$allele == "ALT"] <- logregParental$Type[logregParental$allele == "ALT"]
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Oak"] <- "Wine"
+logregParental$reads[logregParental$allele == "REF" & logregParental$Type == "Wine"] <- "Oak"
+
+logregParental$reads <- factor(logregParental$reads)
+head(logregParental)
+
+save(logregParental, file = "logregParental.Rdata")
+```
+
+
+Make each chromosome's window
+
+```{r, eval = FALSE}
+load("logregParental.Rdata")
+
+#bsaI <- BSA_GLM(lrP = logregParental, chr = "I")
+bsaII <- BSA_GLM(lrP = logregParental, chr = "II")
+bsaIII <- BSA_GLM(lrP = logregParental, chr = "III")
+bsaIV <- BSA_GLM(lrP = logregParental, chr = "IV")
+bsaV <- BSA_GLM(lrP = logregParental, chr = "V")
+bsaVI <- BSA_GLM(lrP = logregParental, chr = "VI")
+bsaVII <- BSA_GLM(lrP = logregParental, chr = "VII")
+bsaVIII <- BSA_GLM(lrP = logregParental, chr = "VIII")
+bsaIX <- BSA_GLM(lrP = logregParental, chr = "IX")
+bsaX <- BSA_GLM(lrP = logregParental, chr = "X")
+bsaXI <- BSA_GLM(lrP = logregParental, chr = "XI")
+bsaXII <- BSA_GLM(lrP = logregParental, chr = "XII")
+bsaXIII <- BSA_GLM(lrP = logregParental, chr = "XIII")
+bsaXIV <- BSA_GLM(lrP = logregParental, chr = "XIV")
+bsaXV <- BSA_GLM(lrP = logregParental, chr = "XV")
+bsaXVI <- BSA_GLM(lrP = logregParental, chr = "XVI")
+
+```
+
+Combine them together and save:
+
+```{r, eval = FALSE}
+bsa_glm_results.plot <- rbind(bsaII, bsaIII, bsaIV, bsaV, bsaVI, bsaVII, bsaVIII, 
+                              bsaIX, bsaX, bsaXI, bsaXII, bsaXIII, bsaXIV, bsaXV, bsaXVI)
+
+bsa_glm_results.plot$CHROM <- factor(bsa_glm_results.plot$CHROM, levels = ChromKey$chromosomes)
+save(bsa_glm_results.plot, file = "bsa_glm_results.Rdata")
+```
+
+Plot
+
+```{r}
+load("bsa_glm_results.Rdata")
+
+Fig3_bulk <- bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(aes(x = POS, y = bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
+  scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +  
+  ggtitle("CuSO4 Selection Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ylim(-2, 5) + xlab("Genomic Position") + ylab("Oak  <--   Coefficient  -->  Wine")
+
+
+Fig3_int <- bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime)) + 
+  geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+    scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  ggtitle("Selection x Background Interaction Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ylim(-2, 5) + xlab("Genomic Position") + ylab("Oak  <--    Coefficient  -->  Wine")
+
+Fig3_parent <- bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = parent_Zprime)) + 
+  geom_point(aes(x = POS, y = parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  ggtitle("Parental Background Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ylim(-2, 5) + xlab("Genomic Position") + ylab("Oak  <--    Coefficient  -->  Wine")
+
+
+Fig3_overlay <- bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("Comparison of Smoothed Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-2, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--   Coefficient  -->  Wine") + 
+  geom_hline(yintercept = c(-0.38, 0.38), color = "black")
+
+# ggsave(Fig3_bulk, file = "Fig3_bulk.png", width = 5, height = 4)
+# ggsave(Fig3_int, file = "Fig3_int.png", width = 5, height = 4)
+# ggsave(Fig3_parent, file = "Fig3_parent.png", width = 5, height = 4)
+# ggsave(Fig3_overlay, file = "Fig3_overlay.png", width = 5, height = 4)
+
+Fig3_bulk
+Fig3_int
+Fig3_parent
+Fig3_overlay
+
+```
+
+Testing different thresholds (not used as plot in poster)
+
+```{r}
+
+load("bsa_glm_results.Rdata")
+
+bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(bsa_glm_results.plot$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("Comparison of Smoothed Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + #ylim(-2, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--   Effect  -->  Wine") + 
+  #geom_hline(yintercept = c(-0.38, 0.38), color = "black")
+  geom_hline(yintercept = c(-0.2, 0.2), color = "gray")
+```
+
+What would it look like if I looked at the effect of each instead of the z score?
+
+```{r}
+#TESTING
+# lrP <- logregParental
+# i <- 100153
+#chr <- "II"
+
+#FUNCTION
+BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[10:12])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "bulkHigh", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    
+    Results %>% arrange(POS) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+  }
+```
+
+```{r, eval = FALSE}
+
+ggplot(WResult, aes(x = POS, y = bulk_Zprime)) + geom_point(aes(x = POS, y = bulk_Z), color = "gray") + geom_point()
+
+```
+
+
+Running this because I'm fucking stupid
+
+```{r}
+
+load("logregParental.Rdata")
+VIII_zscore <- BSA_GLM_z(logregParental, "VIII")
+
+ggplot(VIII_zscore, aes(x = POS, y = bulk_Zprime)) + geom_point(aes(x = POS, y = bulk_Z), color = "gray") + geom_point()
+
+```
+
+Alright, doing this for all of them
+
+```{r, eval = FALSE}
+zscore_2 <- BSA_GLM_z(logregParental, "II")
+zscore_3 <- BSA_GLM_z(logregParental, "III")
+zscore_4 <- BSA_GLM_z(logregParental, "IV")
+zscore_5 <- BSA_GLM_z(logregParental, "V")
+zscore_6 <- BSA_GLM_z(logregParental, "VI")
+zscore_7 <- BSA_GLM_z(logregParental, "VII")
+zscore_8 <- BSA_GLM_z(logregParental, "VIII")
+zscore_9 <- BSA_GLM_z(logregParental, "IX")
+zscore_10 <- BSA_GLM_z(logregParental, "X")
+zscore_11 <- BSA_GLM_z(logregParental, "XI")
+zscore_12 <- BSA_GLM_z(logregParental, "XII")
+zscore_13 <- BSA_GLM_z(logregParental, "XIII")
+zscore_14 <- BSA_GLM_z(logregParental, "XIV")
+zscore_15 <- BSA_GLM_z(logregParental, "XV")
+zscore_16 <- BSA_GLM_z(logregParental, "XVI")
+
+ZScores_GLM <- rbind(zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+save(ZScores_GLM, file = "ZScores_GLM.Rdata")
+```
+
+```{r}
+
+load("ZScores_GLM.Rdata")
+
+ZScores_GLM$CHROM <- factor(ZScores_GLM$CHROM, levels = ChromKey$chromosomes)
+
+Z_FIg_bulk <- ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(aes(x = POS, y = bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
+  scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +  
+  ggtitle("CuSO4 Selection Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
+
+
+Z_FIg_int <- ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime)) + 
+  geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+    scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  ggtitle("Selection x Background Interaction Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")+ ylim(-12,12)
+
+Z_FIg_parent <- ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = parent_Zprime)) + 
+  geom_point(aes(x = POS, y = parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  ggtitle("Parental Background Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")+ ylim(-12,12)
+
+
+Z_FIg_overlay <- ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  #ylim(-5, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") + ylim(-12,12)
+  #geom_hline(yintercept = c(-1.96, 1.96), color = "black")+ ylim(-12,12)
+
+ ggsave(Z_FIg_bulk, file = "Z_FIg_bulk.png", width = 5, height = 4)
+ ggsave(Z_FIg_int, file = "Z_FIg_int.png", width = 5, height = 4)
+ ggsave(Z_FIg_parent, file = "Z_FIg_parent.png", width = 5, height = 4)
+ ggsave(Z_FIg_overlay, file = "Z_FIg_overlay.png", width = 5, height = 4)
+
+Z_FIg_bulk
+Z_FIg_int
+Z_FIg_parent
+Z_FIg_overlay
+```
+
