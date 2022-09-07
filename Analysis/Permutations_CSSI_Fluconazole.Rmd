@@ -1,0 +1,74 @@
+---
+title: "Permutations for CSSI Fluconazole"
+author: "Cassandra Buzby"
+date: "9/7/2022"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+
+library(foreach)
+library(doParallel)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+# load("SAUA_4-13-22.Rdata")
+# load("SCUC_4-13-22.Rdata")
+# load("bsa_glm_results.Rdata")
+
+#rawData = "HGV.SortedCat.vcf.output.table"
+rawData = "HGVMVDRX2.SortedCat.vcf.output.table"
+
+load("CSSI_Fluc_concat.Rdata")
+
+```
+
+## Permute the loaded in file to remove day effects
+
+```{r}
+
+```
+
+
+## Permute the loaded in file to remove bulk effects
+
+```{r}
+
+```
+
+
+## Permute the loaded in file to remove parental effects
+
+```{r}
+
+```
+

@@ -1,0 +1,80 @@
+---
+title: "Sequencing Concentration Comparison"
+author: "Cassandra Buzby"
+date: "8/29/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+
+library(foreach)
+library(doParallel)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+```
+
+### Load in Data
+
+nM for each Qubit or Tapestation is the concentration from each measurement. Total is what is calculated by the amount actually added to the library (in uL), and percentages were all calculated in excel or copied from the MultiQC reports. MultiQC Reports for each can be found at:
+
+**CuSO4_CSSI**: http://core-fastqc.bio.nyu.edu/HNGLVDRXY/merged/multiqc_report.html
+
+**CSS_I_Fluconazole**: http://core-fastqc.bio.nyu.edu/HGVMVDRX2/merged/multiqc_report.html
+
+```{r}
+setwd("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Submission/")
+Comparison <- read.csv("SequencingConcentrationComparisons.csv")
+
+str(Comparison)
+```
+
+### Correlate Qubit and Tapestation nM Measurements
+
+Comparing if the Tapestation (KAPA) or the Qubit really is more accurate, or if their scale with one another. It looks like they scale slightly but that it's not a great correlation, so look next to how predictive their numbers are.
+
+```{r}
+Comparison %>% na.omit() %>% ggplot(aes(x = Qubit_nM, y = Tapestation_nM, color = Sequencing.Run))+ geom_smooth(aes(fill = Sequencing.Run), method = "lm", alpha = 0.1) + geom_point(size = 3, alpha = 0.5) + ggtitle("Qubit (red) vs KAPA (blue) Percentages") + geom_abline(slope = 1, linetype = "dashed") 
+
+```
+
+### Correlate Qubit and Tapestation Percentages
+
+Here is plots of how predictive the measurements are of the ratios within a library, or the nM to number of reads. 
+
+```{r}
+Comparison %>% na.omit() %>% ggplot(aes(x = Percent_Lib, y = Qubit_Expected_Perc, shape = Sequencing.Run)) + geom_point(size = 3, alpha = 0.5, color = "red") + geom_point(aes(x = Percent_Lib, y = Tapestation_Expected_Perc), size = 3, alpha = 0.4, color = "navyblue") + ggtitle("Qubit (red) vs KAPA (blue) Percentages") + ylab("Qubit or KAPA Expected Percentage")
+
+Comparison %>% na.omit() %>% ggplot(aes(x = Million_Reads, y = Qubit_Expected_Perc, shape = Sequencing.Run)) + geom_point(size = 3, alpha = 0.5, color = "red") + geom_point(aes(x = Million_Reads, y = Tapestation_Expected_Perc), size = 3, alpha = 0.4, color = "navyblue") + ggtitle("Qubit (red) vs KAPA (blue) Percentage vs Reads") + ylab("Qubit or KAPA Expected Percentage")
+
+Comparison %>% na.omit() %>% ggplot(aes(x = Million_Reads, y = Qubit_Total, shape = Sequencing.Run)) + geom_point(size = 3, alpha = 0.5, color = "red") + geom_point(aes(x = Million_Reads, y = Tapestation_Total), size = 3, alpha = 0.4, color = "navyblue") + ggtitle("Qubit (red) vs KAPA (blue) Percentage vs Reads") + ylab("Qubit or KAPA nM")
+
+Comparison %>% na.omit() %>% filter(Sequencing.Run == "CSS_I_Fluconazole") %>% pivot_longer(c(Qubit_nM, Tapestation_nM), names_to = "MeasureType", values_to = "nM") %>% 
+  ggplot(aes(x = Million_Reads, y = nM, color = MeasureType)) + 
+    geom_smooth(aes(fill = MeasureType), method = "lm", alpha = 0.1) +
+  geom_point(size = 3, alpha = 0.5) + 
+  ggtitle("Qubit vs KAPA Percentage vs Reads") 
+
+```
+
+### Correlate the fragment size to the number of reads
+
+Running this in case the fragment lengths weren't accounted for correctly or there was a bias in what was sequenced; that does not look to be the case (the CuSO4 discrepancies are likely pipetting error honestly).
+
+```{r}
+Comparison %>% na.omit() %>% 
+  ggplot(aes(x = Mean_Fgmt_Length, y = Million_Reads, color = Sequencing.Run)) + 
+    geom_smooth(method = "lm", alpha = 0.1) +
+  geom_point(size = 3, alpha = 0.5) + 
+  ggtitle("Qubit vs KAPA Reads vs Mean Fragment Length") 
+```
+

@@ -112,7 +112,6 @@ Work with a smaller dataset:
 
 ```{r}
 logregParental %>% select(-Wine, -Oak, -REF) -> GLMresults_100
-
 GLMresults_100 %>% filter(CHROM == "VIII") -> GLM_VIII
 
 ```
@@ -121,11 +120,23 @@ GLMresults_100 %>% filter(CHROM == "VIII") -> GLM_VIII
 Try the long way of getting the reassignment:
 
 ```{r}
+
+subset(GLM_VIII, POS == 100079)
+#Testing tableinv function
+GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == 100079)) #%>% select(-value)
+dim(subset(GLM_VIII_inv, allele == "REF" & bulk == "HIGH" & parent == "Oak")) #should equal 96
+dim(subset(GLM_VIII_inv, allele == "REF" & bulk == "LOW" & parent == "Wine")) #should equal 514
+dim(subset(GLM_VIII_inv, allele == "ALT" & bulk == "HIGH" & parent == "Oak")) #should equal 220
+rm(GLM_VIII_inv)
+
 #Testing if the numbers that are the same or different are even
 GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == 100079)) %>% select(-value)
 GLM_VIII_inv$bulk_resample <- sample(c("HIGH", "LOW"), replace = TRUE, size = length(GLM_VIII_inv$bulk))
 GLM_VIII_inv$Same <- GLM_VIII_inv$bulk == GLM_VIII_inv$bulk_resample
 table(GLM_VIII_inv$Same)
+
+head(GLM_VIII_inv)
+rm(GLM_VIII_inv)
 
 #Making the table for the function
 GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == 100079)) %>% select(-value)
@@ -153,76 +164,8 @@ dim(VIII_shuffledbulk)
 dim(GLM_VIII)
 ```
 
-Run the BSA code on this
-
-```{r, eval = FALSE}
-VIII_shuffle1 <- BSA_GLM(VIII_shuffledbulk, chr = "VIII")
-```
-
-```{r, eval = FALSE}
-ggplot(VIII_shuffle1, aes(x = POS, y = bulk_Zprime)) + geom_line()
-ggplot(VIII_shuffle1, aes(x = POS, y = parent_Zprime)) + geom_line()
-ggplot(VIII_shuffle1, aes(x = POS, y = Interaction_Zprime)) + geom_line()
-
-
-```
-
-Now maybe do the GLM inside every one?
-
-This is the *slowest code* so potentially just do them as two separate steps since iterating over it will take freaking forever.
-
-```{r}
-
-ShuffleBulk_Unsmoothed <- function(inputdata = GLMresults_100, chromosome = "III", MYSEED = Sys.time()){
-  
-  set.seed(MYSEED)
-  
-  foreachoutput <- foreach (i=unique(inputdata$POS), .combine=rbind) %dopar% {
-
-  GLM_VIII_inv <- tableinv(subset(inputdata, POS == i)) %>% select(-value)
-  GLM_VIII_inv$bulk <- sample(c("HIGH", "LOW"), replace = TRUE, size = length(GLM_VIII_inv$bulk))
-  GLM_VIII_inv %>% group_by(CHROM, POS, parent, bulk, allele, Type, reads) %>% count() -> lrP
-  
-  res <- glm(reads ~ bulk*parent, weights = n, family = binomial, data = lrP)
-  c(chromosome, i, res$coefficients)
-  
-  }
-  
-#Format the results for the next function
-    foreachoutput <- as.data.frame(foreachoutput)
-    colnames(foreachoutput) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction")
-    foreachoutput[,2] <- as.numeric(foreachoutput[,2])
-    foreachoutput[,3] <- as.numeric(foreachoutput[,3])
-    foreachoutput[,4] <- as.numeric(foreachoutput[,4])
-    foreachoutput[,5] <- as.numeric(foreachoutput[,5])
-    foreachoutput[,6] <- as.numeric(foreachoutput[,6])
-    
-    foreachoutput$seed <- MYSEED
-    
-    return(foreachoutput)
-}
-
-```
-
 
 ## Loop for iterations
-
-```{r, eval = FALSE}
-
-ShuffleOnce <- function(GLM_VIII){
-  
-  set.seed(Sys.time())
-  foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
-    GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i)) %>% select(-value)
-    GLM_VIII_inv$bulk <- sample(c("HIGH", "LOW"), replace = TRUE, size = length(GLM_VIII_inv$bulk))
-    GLM_VIII_inv %>% group_by(CHROM, POS, parent, bulk, allele, Type, reads) %>% count() -> result
-    result
-  }
-}
-
-ShuffleOnce(GLM_VIII = subset(logregParental, CHROM == "III"))
-
-```
 
 Function for Shuffling
 
@@ -247,153 +190,8 @@ ShuffleLoop <- function(GLM_VIII, iterations = 2){
   return(finalresult)
 }
 
-ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == "III"))
-
-```
-Okay, let's do this on a larger chromosome and more times...
-
-```{r}
-VIII_10 <- ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == "VIII"), iterations = 10)
-VIII_10$value <- VIII_10$n
-```
-
-
-Make a new function for this; ended up not using
-
-```{r, eval = FALSE}
-BSA_GLM_iteration <-  function(lrP, windowsize = 100){
-  
-  chr <- unique(lrP$CHROM)
-  
-  AllResults <- list()
-  for(c in unique(lrP$Index)){
-    lrPsub <- subset(lrP, Index == c)
-    
-    #Run the glm on that chromosome
-    Results <- foreach (i=unique(lrPsub$POS), .combine=rbind) %dopar% {
-      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrPsub[lrPsub$POS == i,])
-      c(chr, i, res$coefficients, c)
-    }
-  
-    #Format the results for the next function
-    Results <- as.data.frame(Results)
-    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh", "parentWine", "Interaction", "seed")
-    Results[,2] <- as.numeric(Results[,2])
-    Results[,3] <- as.numeric(Results[,3])
-    Results[,4] <- as.numeric(Results[,4])
-    Results[,5] <- as.numeric(Results[,5])
-    Results[,6] <- as.numeric(Results[,6])
-    
-    Results %>% arrange(POS) %>% select(-Intercept) -> Results
-  }
-  
- 
-  #Run the windows on that chromosome
-  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
-            #save the median value from original index 1 to original end index
-                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
-                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
-                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
-                #print CHROM, index, POS, and median
-                c(chr, i, seed, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
-                  res_bulk, res_parent, res_int)}
-  
-  WResult <- as.data.frame(WResult)
-  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
-                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
-  WResult[,2] <- as.numeric(WResult[,2])
-  WResult[,3] <- as.numeric(WResult[,3])
-  WResult[,4] <- as.numeric(WResult[,4])
-  WResult[,5] <- as.numeric(WResult[,5])
-  WResult[,6] <- as.numeric(WResult[,6])
-  WResult[,7] <- as.numeric(WResult[,7])
-  WResult[,8] <- as.numeric(WResult[,8])
-  WResult[,9] <- as.numeric(WResult[,9])
-  
-  return(WResult)
-  }
-
-```
-
-```{r, eval = FALSE}
-VIII_shuffle_10it_1 <- BSA_GLM(subset(VIII_10, Index == 1), chr = "VIII")
-
-VIII_shuffle_10it %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_line()
-####################################################################################
-
-VIII_it_10 <- list()
-VIII_shuffle_10it <- list()
-for(i in 1:10){
-  VIII_it_10[[i]] <- ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == "VIII"), iterations = 1)
-  VIII_it_10[[i]]$value <- VIII_it_10[[i]]$n
-  VIII_shuffle_10it[[i]] <- BSA_GLM(subset(VIII_10, Index == i), chr = "VIII")
-}
-
-VIII_shuffle_10it_df <- bind_rows(VIII_shuffle_10it, .id="Index")
-
-save(VIII_shuffle_10it_df, file = "VIII_shuffle_10it_df.Rdata")
-```
-
-```{r, eval = FALSE}
-ggplot(VIII_shuffle_10it_df, aes(x = POS, y = bulk_Zprime, group = Index)) + geom_line(alpha = 0.4) + ggtitle("Shuffled Chr VIII Bulks")
-ggplot(VIII_shuffle_10it_df, aes(x = POS, y = parent_Zprime, group = Index)) + geom_line(alpha = 0.4) + ggtitle("Shuffled Chr VIII Bulks")
-ggplot(VIII_shuffle_10it_df, aes(x = POS, y = Interaction_Zprime, group = Index)) + geom_line(alpha = 0.4) + ggtitle("Shuffled Chr VIII Bulks")
-
-
-```
-
-
-Doing this for many more trials:
-
-```{r, eval = FALSE}
-
-VIII_it_100 <- list()
-VIII_shuffle_100it <- list()
-for(i in 1:100){
-  VIII_it_100[[i]] <- ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == "VIII"), iterations = 1)
-  VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
-  VIII_shuffle_100it[[i]] <- BSA_GLM(subset(VIII_it_100[[i]]), chr = "VIII")
-}
-
-VIII_shuffle_100it_df <- bind_rows(VIII_shuffle_100it, .id="Index")
-
-save(VIII_shuffle_100it_df, file = "VIII_shuffle_100it_df.Rdata")
-
-#unique(VIII_shuffle_100it_df$Index)
-```
-
-Doing this for effect (rather than z-score, figured out later) on Chr VIII to test
-
-```{r, eval = FALSE}
-ggplot(VIII_shuffle_100it_df, aes(x = POS, y = bulk_Zprime, group = Index)) + geom_line(alpha = 0.1) + ggtitle("Shuffled Chr VIII Bulks")
-ggplot(VIII_shuffle_100it_df, aes(x = POS, y = parent_Zprime, group = Index)) + geom_line(alpha = 0.1) + ggtitle("Shuffled Chr VIII Bulks")
-ggplot(VIII_shuffle_100it_df, aes(x = POS, y = Interaction_Zprime, group = Index)) + geom_line(alpha = 0.1) + ggtitle("Shuffled Chr VIII Bulks")
-
-quantile(VIII_shuffle_100it_df$bulk_Zprime, c(0.025, 0.975))
-quantile(VIII_shuffle_100it_df$parent_Zprime, c(0.025, 0.975))
-quantile(VIII_shuffle_100it_df$Interaction_Zprime, c(0.025, 0.975))
-
-```
-
-What is the ranked p-value of each of these?
-
-Conclusion: a 1% FDR would be at a p-value of 0.84 or a Zprime of 0.2 for the parent, which is the highest of this group.
-
-```{r, eval = FALSE}
-VIII_shuffle_100it_df %>% pivot_longer(c(bulk_Zprime, parent_Zprime, Interaction_Zprime), names_to = "Factor", values_to = "Zprime") %>% select(CHROM, POS, Index, Factor, Zprime) %>% mutate(Pval = 2*(1-pnorm(abs(Zprime)))) -> VIII_100_pvals
-
-VIII_100_pvals %>% ggplot(aes(x = Pval, color = Factor)) + geom_density()
-VIII_100_pvals %>% ggplot(aes(x = Zprime, color = Factor)) + geom_density()
-
-VIII_100_pvals %>% group_by(Factor) %>% arrange(Pval) %>% mutate(Pval_Rank = row_number()) -> rankedpvals #assign ranks
-plot(rankedpvals$Pval_Rank, rankedpvals$Pval) #this worked
-
-length(unique(rankedpvals$Pval_Rank)) * 0.01 #2146 is lowest 1% of p values
-rankedpvals[rankedpvals$Pval_Rank == 2146,]
-
-# length(unique(rankedpvals$Pval_Rank)) * 0.99
-# rankedpvals[rankedpvals$Pval_Rank == 212454,]
-
+test_III <- ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == "III"))
+head(test_III)
 ```
 
 Make a single script that can be arrayed on the HPC:
@@ -508,145 +306,78 @@ save(Shuffled_100, file = paste("Shuffled_100_", args[1], ".Rdata", sep = ""))
 
 ## Processing the output of each array file
 
-```{r, eval = FALSE}
-# load('Shuffled_100_ III .Rdata')
-# Shuffled_100_III <- Shuffled_100
-# rm(Shuffled_100)
-
-load("Shuffled_100_ II .Rdata")
-Shuffled_100_II <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ IV .Rdata")
-Shuffled_100_IV <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ V .Rdata")
-Shuffled_100_V <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ VI .Rdata")
-Shuffled_100_VI <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ VII .Rdata")
-Shuffled_100_VII <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ VIII .Rdata")
-Shuffled_100_VIII <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ IX .Rdata")
-Shuffled_100_IX <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ X .Rdata")
-Shuffled_100_X <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XI .Rdata")
-Shuffled_100_XI <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XII .Rdata")
-Shuffled_100_XII <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XIII .Rdata")
-Shuffled_100_XIII <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XIV .Rdata")
-Shuffled_100_XIV <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XV .Rdata")
-Shuffled_100_XV <- Shuffled_100
-rm(Shuffled_100)
-
-load("Shuffled_100_ XVI .Rdata")
-Shuffled_100_XVI <- Shuffled_100
-rm(Shuffled_100)
-
-Shuffled_100_all <- rbind(Shuffled_100_III,Shuffled_100_II,Shuffled_100_IV,Shuffled_100_V, 
-                          Shuffled_100_VI, Shuffled_100_VII, Shuffled_100_VIII,Shuffled_100_IX, 
-                          Shuffled_100_X, Shuffled_100_XI, Shuffled_100_XII, Shuffled_100_XIII,
-                          Shuffled_100_XIV,Shuffled_100_XV,Shuffled_100_XVI)
-
-save(Shuffled_100_all, file = "Shuffled_100_all.Rdata")
-```
-
 Newly doing this with actual Z-scores instead of effects......
 
 ```{r, eval = FALSE}
-load("Shuffled_100_III.Rdata")
+load("ZPermutations/Shuffled_100_III.Rdata")
 Shuffled_100_III <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_II.Rdata")
+load("ZPermutations/Shuffled_100_II.Rdata")
 Shuffled_100_II <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_IV.Rdata")
+load("ZPermutations/Shuffled_100_IV.Rdata")
 Shuffled_100_IV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_V.Rdata")
+load("ZPermutations/Shuffled_100_V.Rdata")
 Shuffled_100_V <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_VI.Rdata")
+load("ZPermutations/Shuffled_100_VI.Rdata")
 Shuffled_100_VI <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_VII.Rdata")
+load("ZPermutations/Shuffled_100_VII.Rdata")
 Shuffled_100_VII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_VIII.Rdata")
+load("ZPermutations/Shuffled_100_VIII.Rdata")
 Shuffled_100_VIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_IX.Rdata")
+load("ZPermutations/Shuffled_100_IX.Rdata")
 Shuffled_100_IX <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_X.Rdata")
+load("ZPermutations/Shuffled_100_X.Rdata")
 Shuffled_100_X <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XI.Rdata")
+load("ZPermutations/Shuffled_100_XI.Rdata")
 Shuffled_100_XI <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XII.Rdata")
+load("ZPermutations/Shuffled_100_XII.Rdata")
 Shuffled_100_XII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XIII.Rdata")
+load("ZPermutations/Shuffled_100_XIII.Rdata")
 Shuffled_100_XIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XIV.Rdata")
+load("ZPermutations/Shuffled_100_XIV.Rdata")
 Shuffled_100_XIV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XV.Rdata")
+load("ZPermutations/Shuffled_100_XV.Rdata")
 Shuffled_100_XV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_XVI.Rdata")
+load("ZPermutations/Shuffled_100_XVI.Rdata")
 Shuffled_100_XVI <- Shuffled_100
 rm(Shuffled_100)
 
-Shuffled_100_z <- rbind(Shuffled_100_III,Shuffled_100_II,Shuffled_100_IV,Shuffled_100_V, 
+Shuffled_100_z_perm <- rbind(Shuffled_100_III,Shuffled_100_II,Shuffled_100_IV,Shuffled_100_V, 
                           Shuffled_100_VI, Shuffled_100_VII, Shuffled_100_VIII,Shuffled_100_IX, 
                           Shuffled_100_X, Shuffled_100_XI, Shuffled_100_XII, Shuffled_100_XIII,
                           Shuffled_100_XIV,Shuffled_100_XV,Shuffled_100_XVI)
 
-save(Shuffled_100_z, file = "Shuffled_100_z.Rdata")
+Shuffled_100_z_perm$CHROM <- factor( Shuffled_100_z_perm$CHROM, levels = ChromKey$chromosomes)
+save(Shuffled_100_z_perm, file = "Shuffled_100_z_perm.Rdata")
 ```
+
 Plotting this now
 
 ```{r, eval=FALSE}
@@ -666,10 +397,10 @@ Shuffled_100_z %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) +
 
 
 ```{r}
-load("Shuffled_100_z.Rdata")
+#load("Shuffled_100_z.Rdata")
 
 #Just the bulk
-Shuffled_100_z %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) + 
+Shuffled_100_z_perm %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) + 
   geom_line(color = "#345F6F", size = 0.2, alpha = 0.2) + 
   #scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
@@ -677,15 +408,18 @@ Shuffled_100_z %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) +
         axis.ticks.x=element_blank())
 
 #Just the parent
-Shuffled_100_z %>% ggplot(aes(x = POS, y = parent_Zprime, group = Index)) + 
+Shuffled_100_z_perm %>% ggplot(aes(x = POS, y = parent_Zprime, group = Index)) + 
   geom_line(color = "#FFB05C", alpha= 0.1, size = 0.2) +
   #scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
   ggtitle("Shuffled Bulk | Parent Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
+        axis.ticks.x=element_blank()) -> parent_z_perm_plot
+
+ggsave(parent_z_perm_plot, file = "parent_z_perm_plot.png")
+parent_z_perm_plot
 
 #Just the bulk
-Shuffled_100_z %>% ggplot(aes(x = POS, y = Interaction_Zprime, group = Index)) + 
+Shuffled_100_z_perm %>% ggplot(aes(x = POS, y = Interaction_Zprime, group = Index)) + 
   geom_line(color = "#D7335C", alpha= 0.1, size = 0.2) +
   #scale_x_continuous(breaks = seq(from = 0, to = max(ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
@@ -699,14 +433,15 @@ Find the max values of each iteration of the parent smoothed (since that matches
 Shuffled_100_z %>% pivot_longer(c(bulk_Zprime, parent_Zprime, Interaction_Zprime), names_to = "Factor", values_to = "Zprime") %>% select(CHROM, POS, Index, Factor, Zprime) %>% mutate(Pval = 2*(1-pnorm(abs(Zprime)))) -> z_100_pvals
 
 z_100_pvals %>% group_by(Factor) %>% arrange(Pval) %>% mutate(Pval_Rank = row_number()) -> z_rankedpvals #assign ranks
-plot(z_rankedpvals$Pval_Rank, z_rankedpvals$Pval) #this worked
+#plot(z_rankedpvals$Pval_Rank, z_rankedpvals$Pval) #this worked
 
 length(unique(z_rankedpvals$Pval_Rank)) * 0.01 #2146 is lowest 1% of p values
 
 #print the 95% for each
 z_rankedpvals[z_rankedpvals$Pval_Rank == 2146,]
 
-z_rankedpvals %>% ggplot(aes(x = Pval_Rank, y = Pval, color = Factor)) + geom_line() + geom_vline(xintercept = 2146, linetype = "dashed")
+#plot took too long
+# z_rankedpvals %>% ggplot(aes(x = Pval_Rank, y = Pval, color = Factor)) + geom_line() + geom_vline(xintercept = 2146, linetype = "dashed")
 
 ```
 
@@ -736,5 +471,211 @@ bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Z
   ggtitle("CuSO4 Selection Effects") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--   Coefficient  -->  Wine")
 
+```
+
+
+## New code from StatQuest
+
+```{r}
+xtabs(~ bulk + parent, data = GLM_VIII_inv)
+xtabs(~ allele + parent + bulk, data = GLM_VIII_inv)
+
+```
+
+## Diving deeper into the glm
+
+```{r}
+
+    #Run the glm on that chromosome
+      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = subset(GLM_VIII, POS == 100079))
+      #c(c, i, summary(res)$coefficients[10:12])
+
+  res
+  summary(res)
+
+        res2 <- glm(reads ~ parent*bulk, weights = value, family = binomial, data = subset(GLM_VIII, POS == 100079))
+
+res2
+  summary(res2)
+```
+
+
+## Function for Shuffling parent rather than bulk on HPC
+
+```{r, eval = FALSE}
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+#Load Libraries
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+###################################################################################
+#Load Functions
+#FUNCTION
+BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(reads ~ bulk*parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[10:12])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "bulkHigh", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    
+    Results %>% arrange(POS) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+}
+
+tableinv <- function(x){
+      y <- x[rep(rownames(x),x$value),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+ShuffleLoop <- function(GLM_VIII, iterations = 2){
+  
+  iterativelist <- list()
+  
+  for(x in 1:iterations){
+    
+    set.seed(Sys.time())
+    iterativelist[[x]] <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
+      GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i)) %>% select(-value)
+      GLM_VIII_inv$parent <- sample(GLM_VIII_inv$parent, replace = FALSE)
+      GLM_VIII_inv %>% group_by(CHROM, POS, parent, bulk, allele, Type, reads) %>% count() -> result
+      result
+    }
+    
+  }
+  finalresult <- bind_rows(iterativelist, .id = "Index") 
+  return(finalresult)
+}
+
+###################################################################################
+#Load Data
+load("logregParental.Rdata")
+
+#Run Script
+
+VIII_it_100 <- list()
+VIII_shuffle_100it <- list()
+for(i in 1:100){
+  VIII_it_100[[i]] <- ShuffleLoop(GLM_VIII = subset(logregParental, CHROM == args[1]), iterations = 1)
+  VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
+  VIII_shuffle_100it[[i]] <- BSA_GLM_z(subset(VIII_it_100[[i]]), chr = args[1])
+}
+
+ShuffledParent_100 <- bind_rows(VIII_shuffle_100it, .id="Index")
+
+save(ShuffledParent_100, file = paste("ShuffledParent_100_", args[1], ".Rdata", sep = ""))
+```
+
+
+## Simulating for how the GLM works for multiple effects
+
+```{r}
+#Simulate a dataset - need maybe a set of numbers, then a function, then the factors that apply to it
+samplesize <- 100
+simdataforglm <- data.frame(Reads = sample(c(0,1), size = samplesize, replace = T),
+                            startnumber = rnorm(samplesize, mean = 50, sd = 10),
+                            ABcategory = sample(c("A","B"), size = samplesize, replace = T),
+                            CDcategory = sample(c("C","D"), size = samplesize, replace = T))
+
+ggplot(simdataforglm, aes(x = startnumber, color = factor(Reads))) + geom_density()
+
+simdataforglm$Aeffect = simdataforglm$startnumber
+simdataforglm$Ceffect = simdataforglm$Aeffect
+simdataforglm$ADeffect = simdataforglm$Ceffect
+
+simdataforglm$Aeffect[simdataforglm$Reads == 1 & simdataforglm$ABcategory == "A"] = simdataforglm$startnumber+10
+simdataforglm$Ceffect[simdataforglm$Reads == 1 & simdataforglm$CDcategory == "C"] = simdataforglm$Aeffect+5
+simdataforglm$ADeffect[simdataforglm$Reads == 1 & simdataforglm$ABcategory == "A" & simdataforglm$CDcategory == "D"] = simdataforglm$Ceffect + 20
+
+ggplot(simdataforglm, aes(x = ADeffect, color = ABcategory, fill = CDcategory)) + geom_density(size = 2, alpha = 0.3) + facet_grid(~Reads)
+
+ggplot(simdataforglm, aes(x = ADeffect, y = paste(ABcategory, CDcategory), color = factor(Reads))) + geom_point(size = 2, alpha = 0.3)
+
+simresult <- glm(Reads ~ ABcategory*CDcategory, weights = ADeffect, family = binomial, data = simdataforglm)
+
+summary(simresult)
+
+
+```
+Okay so now I need to do it with a matrix since that's way better, and also actually show the number of reads instead of this giant list...?
+
+```{r}
+genotype_df <- data.frame(POS = rep(1:100, 2), 
+                          readtype = c(rep(0, 100), rep(1, 100)),
+                          bulkLOW = rnorm(100, mean = 200, sd = 5),
+                          bulkHIGH = rnorm(100, mean = 400, sd = 5),
+                          parentA = rnorm(100, mean = 100, sd = 5),
+                          parentB = rnorm(100, mean = 150, sd = 5))
+
+genotype_df %>% pivot_longer(c(bulkLOW, bulkHIGH), names_to = "bulk", values_to = "bulkreads") %>% pivot_longer(c(parentA, parentB), names_to = "parent", values_to = "parentreads") %>% mutate(reads = 5*(bulkreads+parentreads)) -> genotype_df_pivot
+
+genotype_df_pivot$reads[genotype_df_pivot$readtype == 1] <- genotype_df_pivot$reads*2
+
+dfglm <- data.frame(POS = 0, Intercept = 0, bulk = 0, parent = 0, interaction = 0)
+for(i in min(genotype_df_pivot$POS):max(genotype_df_pivot$POS)){
+  simresult <- glm(readtype ~ bulk*parent, weights = reads, family = binomial, data = genotype_df_pivot[genotype_df_pivot$POS == i,])
+  dfglm[i,] <- c(i, simresult$coefficients)
+}
+
+ggplot(dfglm, aes(x = POS, y = bulk)) + geom_point() + geom_point(aes(x = POS, y = parent), color = "violet") + geom_point(aes(x = POS, y = interaction), color = "firebrick")
+
+##########################################
+genotype_df_pivot$reads_epistasis <- genotype_df_pivot$reads
+genotype_df_pivot$reads_epistasis[genotype_df_pivot$POS %in% c(40:50) & genotype_df_pivot$parent == "parentA" & genotype_df_pivot$bulk == "bulkHIGH"] <- genotype_df_pivot$reads_epistasis[genotype_df_pivot$POS %in% c(40:50) & genotype_df_pivot$parent == "parentA" & genotype_df_pivot$bulk == "bulkHIGH"] * 1.2
+
+dfglm_ep <- data.frame(POS = 0, Intercept = 0, bulk = 0, parent = 0, interaction = 0)
+for(i in unique(genotype_df_pivot$POS)){
+  simresult <- glm(readtype ~ bulk*parent, weights = reads_epistasis, family = binomial, 
+                   data = genotype_df_pivot[genotype_df_pivot$POS == i,])
+  dfglm_ep[i,] <- c(i, simresult$coefficients)
+}
+
+ggplot(dfglm_ep, aes(x = POS, y = bulk)) + geom_point() + geom_point(aes(x = POS, y = parent), color = "violet") + geom_point(aes(x = POS, y = interaction), color = "firebrick")
+
+genotype_df_pivot %>% ggplot(aes(x = reads, fill = paste(bulk, parent), color = paste(bulk, parent), linetype = paste(bulk, parent))) + geom_density(alpha = 0.2, size = 1)
 ```
 
