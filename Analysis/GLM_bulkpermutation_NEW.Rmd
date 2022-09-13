@@ -44,7 +44,7 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 BSA_GLM <-  function(lrP, chr = "II", windowsize = 100){
   
@@ -287,7 +287,7 @@ ShuffleLoop <- function(GLM_VIII, iterations = 2){
 
 ###################################################################################
 #Load Data
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 #Run Script
 
@@ -309,63 +309,63 @@ save(Shuffled_100, file = paste("Shuffled_100_", args[1], ".Rdata", sep = ""))
 Newly doing this with actual Z-scores instead of effects......
 
 ```{r, eval = FALSE}
-load("ZPermutations/Shuffled_100_III.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_III.Rdata")
 Shuffled_100_III <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_II.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_II.Rdata")
 Shuffled_100_II <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_IV.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_IV.Rdata")
 Shuffled_100_IV <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_V.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_V.Rdata")
 Shuffled_100_V <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_VI.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_VI.Rdata")
 Shuffled_100_VI <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_VII.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_VII.Rdata")
 Shuffled_100_VII <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_VIII.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_VIII.Rdata")
 Shuffled_100_VIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_IX.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_IX.Rdata")
 Shuffled_100_IX <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_X.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_X.Rdata")
 Shuffled_100_X <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XI.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XI.Rdata")
 Shuffled_100_XI <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XII.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XII.Rdata")
 Shuffled_100_XII <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XIII.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XIII.Rdata")
 Shuffled_100_XIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XIV.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XIV.Rdata")
 Shuffled_100_XIV <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XV.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XV.Rdata")
 Shuffled_100_XV <- Shuffled_100
 rm(Shuffled_100)
 
-load("ZPermutations/Shuffled_100_XVI.Rdata")
+load("RdataFiles/ZPermutations/Shuffled_100_XVI.Rdata")
 Shuffled_100_XVI <- Shuffled_100
 rm(Shuffled_100)
 
@@ -381,7 +381,7 @@ save(Shuffled_100_z_perm, file = "Shuffled_100_z_perm.Rdata")
 Plotting this now
 
 ```{r, eval=FALSE}
-load("Shuffled_100_z.Rdata")
+load("RdataFiles/Shuffled_100_z.Rdata")
 
 Shuffled_100_z %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) + 
   geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
@@ -397,7 +397,7 @@ Shuffled_100_z %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) +
 
 
 ```{r}
-#load("Shuffled_100_z.Rdata")
+#load("RdataFiles/Shuffled_100_z.Rdata")
 
 #Just the bulk
 Shuffled_100_z_perm %>% ggplot(aes(x = POS, y = bulk_Zprime, group = Index)) + 
@@ -449,7 +449,7 @@ z_rankedpvals[z_rankedpvals$Pval_Rank == 2146,]
 ## Comparing Z-score and Coefficient
 
 ```{r}
-load("ZScores_GLM.Rdata")
+load("RdataFiles/ZScores_GLM.Rdata")
 
 ZScores_GLM$CHROM <- factor(ZScores_GLM$CHROM, levels = ChromKey$chromosomes)
 
@@ -462,7 +462,7 @@ ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) +
 ```
 
 ```{r}
-load("bsa_glm_results.Rdata")
+load("RdataFiles/bsa_glm_results.Rdata")
 
 bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
   geom_point(aes(x = POS, y = bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
@@ -593,7 +593,7 @@ ShuffleLoop <- function(GLM_VIII, iterations = 2){
 
 ###################################################################################
 #Load Data
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 #Run Script
 

@@ -12,7 +12,6 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 #Load packages
-library(ggplot2)
 library(tidyr)
 #library(tidyverse)
 library(reshape2)
@@ -41,18 +40,18 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
-# load("SAUA_4-13-22.Rdata")
-# load("SCUC_4-13-22.Rdata")
-# load("bsa_glm_results.Rdata")
+# load("RdataFiles/SAUA_4-13-22.Rdata")
+# load("RdataFiles/SCUC_4-13-22.Rdata")
+# load("RdataFiles/bsa_glm_results.Rdata")
 
 #rawData = "HGV.SortedCat.vcf.output.table"
 rawData = "HGVMVDRX2.SortedCat.vcf.output.table"
 
-load("CSSI_Fluc_concat.Rdata")
+load("RdataFiles/CSSI_Fluc_concat.Rdata")
 
 ```
 
-## Permute the loaded in file to remove day effects
+Test the following
 
 ```{r}
 
@@ -61,14 +60,138 @@ load("CSSI_Fluc_concat.Rdata")
 
 ## Permute the loaded in file to remove bulk effects
 
-```{r}
+THIS DOESN'T WORK BECAUSE OF THE TABLE FUNCTION - need a different setup of the initial dataframe to do it.
 
+Make a single script that can be arrayed on the HPC:
+
+```{r, eval = FALSE}
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+#Load Libraries
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+###################################################################################
+#Load Functions
+#FUNCTION
+BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[10:12])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "bulkHigh", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    
+    Results %>% arrange(POS) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], Results$parentWine[i],Results$Interaction[i],
+                  res_bulk, res_parent, res_int)}
+  WResult <- as.data.frame(WResult)
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "parent_Z", "Interaction_Z",
+                         "bulk_Zprime", "parent_Zprime", "Interaction_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  return(WResult)
+}
+
+tableinv <- function(x){
+      y <- x[rep(rownames(x),x$value),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+ShuffleLoop <- function(GLM_VIII, iterations = 2){
+  
+  iterativelist <- list()
+  
+  for(x in 1:iterations){
+    #x <- 1
+    #GLM_VIII <- subset(CSSI_Fluc_Pivot, CHROM == "I")
+    set.seed(Sys.time())
+    iterativelist[[x]] <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
+      GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i)) %>% select(-value, -ReadCount)
+      GLM_VIII_inv$bulk <- sample(unique(GLM_VIII_inv$bulk), replace = FALSE)
+      GLM_VIII_inv %>% group_by(CHROM, POS, Parent, Bulk, Allele, Type, Dataset) %>% count() -> result
+      result
+    }
+    
+  }
+  finalresult <- bind_rows(iterativelist, .id = "Index") 
+  return(finalresult)
+}
+
+###################################################################################
+#Load Data
+# load("RdataFiles/logregParental.Rdata")
+load("RdataFiles/CSSI_Fluc_Pivot.Rdata")
+
+#Make the subsequent functions work
+CSSI_Fluc_Pivot$value <- CSSI_Fluc_Pivot$ReadCount
+
+# str(CSSI_Fluc_Pivot)
+# str(logregParental)
+#i <- 1
+
+#Run Script
+
+VIII_it_100 <- list()
+VIII_shuffle_100it <- list()
+for(i in 1:100){
+  #VIII_it_100[[i]] <- ShuffleLoop(GLM_VIII = subset(CSSI_Fluc_Pivot, CHROM == args[1]), iterations = 1)
+  VIII_it_100[[i]] <- ShuffleLoop(GLM_VIII = subset(CSSI_Fluc_Pivot, CHROM == "I"), iterations = 1)
+  VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
+  #VIII_shuffle_100it[[i]] <- BSA_GLM_z(subset(VIII_it_100[[i]]), chr = args[1])
+  VIII_shuffle_100it[[i]] <- BSA_GLM_z(subset(VIII_it_100[[i]]), chr = "I")
+
+  }
+
+Shuffled_100 <- bind_rows(VIII_shuffle_100it, .id="Index")
+
+save(Shuffled_100, file = paste("Shuffled_100_FlucI_", args[1], ".Rdata", sep = ""))
 ```
 
 
-## Permute the loaded in file to remove parental effects
-
 ```{r}
+subset(logregParental, POS == 100153)
+tableinv(subset(logregParental, POS == 100153))
+
+CSSI_Fluc_Pivot$value <- CSSI_Fluc_Pivot$ReadCount
+subset(CSSI_Fluc_Pivot, POS == 925)
+tableinv(subset(CSSI_Fluc_Pivot, POS == 925))
 
 ```
 

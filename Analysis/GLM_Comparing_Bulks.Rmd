@@ -44,8 +44,8 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
-load("SAUA_4-13-22.Rdata")
-load("SCUC_4-13-22.Rdata")
+load("RdataFiles/SAUA_4-13-22.Rdata")
+load("RdataFiles/SCUC_4-13-22.Rdata")
 
 
 #################################################################################################
@@ -441,7 +441,7 @@ GLM_Bulk_Only <- function(startLRP, windowsize = 100, Chr = "II"){
   
 }
 
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 ```
 
 ## Post 7/19/22 Meeting
@@ -466,7 +466,7 @@ Notes:
 ### Run this for all chromosomes now
 
 ```{r}
-# load("logregParental.Rdata")
+# load("RdataFiles/logregParental.Rdata")
 # 
 # logregParental %>% filter(parent == "Wine") -> WineParents
 # logregParental %>% filter(parent == "Oak") -> OakParents
@@ -482,8 +482,8 @@ Notes:
 # save(PResults, file = "PResults.Rdata")
 # save(PResults_Wider, file = "PResults_Wider.Rdata")
 
-load("PResults.Rdata")
-load("PResults_Wider.Rdata")
+load("RdataFiles/PResults.Rdata")
+load("RdataFiles/PResults_Wider.Rdata")
 
 
 PResults %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Parent)) + geom_point(aes(x = POS, y = bulk_Z, color = Parent), alpha = 0.01) + geom_line() + ggtitle("Bulk Effects") + facet_grid(~CHROM, scales = "free_x") + ylim(-2,5)
@@ -502,7 +502,7 @@ PResults_Wider %>% ggplot(aes(x = bulk_Z_Wine, y = bulk_Z_Oak)) + geom_point(alp
 ## Find Parent and Interaction Effects from Randomized Parent
 
 ```{r}
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 parentscramble <- logregParental %>% select(-Type, -Oak, -Wine) %>% pivot_wider(names_from = c(parent), values_from = value)
 
 # swap <- sample(1:length(parentscramble$Oak), size = (length(parentscramble$Oak)/2), replace = FALSE)
@@ -606,7 +606,7 @@ save(randparentlist, file = "randparentlist.Rdata")
 ```
 
 ```{r}
-load("randparentlist.Rdata")
+load("RdataFiles/randparentlist.Rdata")
 randpdf <- bind_rows(randparentlist, .id = "CHROM")
 
 randpdf %>% ggplot(aes(x = POS, y = bulk_Zprime)) + geom_line() + geom_line(aes(x = POS, y = parent_Zprime), color = "gray") +
@@ -628,7 +628,7 @@ randpdf_X <- bind_rows(randparent_X, .id = "seed")
 
 save(randpdf_X, file = "randpdf_X.Rdata")
 
-load("randpdf_X.Rdata")
+load("RdataFiles/randpdf_X.Rdata")
 
 ggplot(randpdf_X, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random Parent, Chr X")
 
@@ -639,8 +639,8 @@ ggplot(randpdf_X, aes(x = POS, y = Interaction_Zprime, group = seed)) + geom_lin
 ```
 
 ```{r}
-load("randpdf_X.Rdata")
-load("logregParental.Rdata")
+load("RdataFiles/randpdf_X.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 VXResults <- BSA_GLM(lrP = logregParental, chr = "X")
 
@@ -662,13 +662,13 @@ randpdf_VIII <- bind_rows(randparent_VIII, .id = "seed")
 
 
 save(randpdf_VIII, file = "randpdf_VIII.Rdata")
-load("randpdf_VIII.Rdata")
+load("RdataFiles/randpdf_VIII.Rdata")
 ```
 
 Running Chr VIII again for real
 
 ```{r}
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 VIIIResults <- BSA_GLM(lrP = logregParental, chr = "VIII")
 
@@ -676,9 +676,9 @@ VIIIResults <- BSA_GLM(lrP = logregParental, chr = "VIII")
 ```
 
 ```{r}
-load("randpdf_VIII.Rdata")
+load("RdataFiles/randpdf_VIII.Rdata")
 
-load("WindowComparison.Rdata")
+load("RdataFiles/WindowComparison.Rdata")
 
 unique(WindowComp$Window)
 
@@ -765,7 +765,7 @@ GLM_RandBulk <- function(lrPinit, windowsize = 100, Chr = "III", seedstart = Sys
 
 #RUN FUNCTINO ABOVE THIS TO START
 
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 randbulk_VII <- list()
 for(i in 1:100){
@@ -781,7 +781,7 @@ save(randbdf_VII, file = "randbdf_VII.Rdata")
 ```
 
 ```{r}
-load("randbdf_VII.Rdata")
+load("RdataFiles/randbdf_VII.Rdata")
 
 #length(unique(randbdf_VII$seed))
 
@@ -806,7 +806,7 @@ max(abs(randbdf_VII$Interaction_Zprime))
 
 #RUN FUNCTINO ABOVE THIS TO START
 
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 randbulk_VIII <- list()
 for(i in 1:100){
@@ -822,7 +822,7 @@ save(randbdf_VIII, file = "randbdf_VIII.Rdata")
 ```
 
 ```{r}
-load("randbdf_VIII.Rdata")
+load("RdataFiles/randbdf_VIII.Rdata")
 
 #length(unique(randbdf_VIII$seed))
 
@@ -850,7 +850,7 @@ max(abs(randbdf_VIII$Interaction_Zprime))
 ## Running function for entire genome to average
 
 ```{r, eval = FALSE}
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 randbulk_II <- list()
 for(i in 1:100){
@@ -975,7 +975,7 @@ save(AllChromRandBulk, file = "AllChromRandBulk_100rep.Rdata")
 ```
 
 ```{r, eval=FALSE}
-load("AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
 
 ggplot(AllChromRandBulk, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + ggtitle("Bulk Effects with Random bulk") + facet_grid(~CHROM, scales = "free", space = "free_x")
 
@@ -990,7 +990,7 @@ Stats on this
 
 ```{r}
 
-load("AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
 
 quantile(AllChromRandBulk$bulk_Zprime, c(0.025, 0.975))
 quantile(AllChromRandBulk$parent_Zprime, c(0.025, 0.975))
@@ -999,7 +999,7 @@ quantile(AllChromRandBulk$Interaction_Zprime, c(0.025, 0.975))
 What if I were to look at the max of each trial and then find the 95% cutoffs of those?
 
 ```{r}
-load("AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
 
 AllChromRandBulk %>% group_by(seed) %>% summarise(max_bulk = max(abs(bulk_Zprime)),
                                                   max_parent = max(abs(parent_Zprime)),
@@ -1017,7 +1017,7 @@ Remove Chr VIII from this
 
 ```{r}
 
-load("AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
 AllChromRandBulk %>% filter(CHROM != "VIII") %>% group_by(seed) %>% summarise(max_bulk = max(abs(bulk_Zprime)),
                                                   max_parent = max(abs(parent_Zprime)),
                                                   max_int = max(abs(Interaction_Zprime))) -> Max_Zprimes_minus8
@@ -1041,7 +1041,7 @@ MaxZ_pivot_minus8 %>% ggplot(aes(x = Zprime, fill = scoretype)) + geom_density(a
 Looking at this cutoff on the plot
 
 ```{r}
-load("bsa_glm_results.Rdata")
+load("RdataFiles/bsa_glm_results.Rdata")
 
 bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Zprime)) + 
   geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
@@ -1060,8 +1060,8 @@ bsa_glm_results.plot %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = bulk_Z
 Plot the original lines on each
 
 ```{r}
-load("AllChromRandBulk_100rep.Rdata")
-load("bsa_glm_results.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/bsa_glm_results.Rdata")
 
 
 ggplot(AllChromRandBulk, aes(x = POS, y = bulk_Zprime, group = seed)) + geom_line(alpha = 0.1) + 
@@ -1173,7 +1173,7 @@ GLM_RandBulkandParent <- function(lrPinit, windowsize = 100, Chr = "III", seedst
 ```
 
 ```{r}
-load("logregParental.Rdata")
+load("RdataFiles/logregParental.Rdata")
 
 #rand_bp_VIII <- GLM_RandBulkandParent(logregParental, Chr = "VIII")
 
@@ -1188,9 +1188,9 @@ save(rand_bp_df_VIII, file = "rand_bp_df_VIII.Rdata")
 ```
 
 ```{r}
-load("rand_bp_df_VIII.Rdata")
-load("AllChromRandBulk_100rep.Rdata")
-load("bsa_glm_results.Rdata")
+load("RdataFiles/rand_bp_df_VIII.Rdata")
+load("RdataFiles/AllChromRandBulk_100rep.Rdata")
+load("RdataFiles/bsa_glm_results.Rdata")
 
 # length(unique(rand_bp_df_VIII$CHROM))
 # max(rand_bp_df_VIII$POS)
