@@ -1,0 +1,1263 @@
+---
+title: "CSS I Fluconazole Analysis from PosterScripts_Yeast2022"
+author: "Cassandra Buzby"
+date: "8/23/2022"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+
+library(foreach)
+library(doParallel)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+# load("SAUA_4-13-22.Rdata")
+# load("SCUC_4-13-22.Rdata")
+# load("bsa_glm_results.Rdata")
+
+#rawData = "HGV.SortedCat.vcf.output.table"
+rawData = "HGVMVDRX2.SortedCat.vcf.output.table"
+```
+
+
+## Plot 2
+
+Function to analyze:
+
+```{r}
+#################################################
+#Change this to analyze all differently
+#################################################
+
+mindepth = 50
+maxdepth = 1500
+minsampledepth = 50
+mingq = 0.98
+
+PipelineFunc <- function(HighBulk, LowBulk, rawData,
+                         mindepth = mindepth,
+                         maxdepth = maxdepth,
+                         minsampledepth = minsampledepth,
+                         mingq = mingq,
+                         windowSize = 2e4, #5e4 works
+                         Chroms = c("NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4"),
+                         BulkSize = 1000
+                         ){
+  
+  mytitle <- paste(HighBulk, LowBulk, sep = " vs ")
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  df <- importFromGATK(
+        file = rawData,
+        highBulk = HighBulk,
+        lowBulk = LowBulk,
+        chromList = Chroms #"NC_001133.9" #
+        )
+
+df %>% merge(.,ChromKey) %>% 
+  as.data.frame() %>% na.omit() -> df
+
+colnames(df)[1] <- "NC_Chrom"
+colnames(df)[which(colnames(df) == "chromosomes")] <- "CHROM"
+
+df$CHROM <- factor(df$CHROM, levels = c("I", "II", "III", "IV", 
+                                        "V", "VI", "VII", "VIII", 
+                                        "IX", "X", "XI", "XII", 
+                                        "XIII", "XIV", "XV", "XVI", "M"))
+#################################
+
+#Filter SNPs based on some criteria
+df_filt <-
+    filterSNPs(
+        SNPset = df,
+        refAlleleFreq = 0.10, #0.20
+        minTotalDepth = mindepth, #100
+        maxTotalDepth = maxdepth, #400
+        minSampleDepth = minsampledepth, #40
+        minGQ = mingq #99
+    )
+
+  #df %>% merge(.,ChromKey)
+  #df_filt <- df
+  
+  #Run G' analysis
+  df_filt <- runGprimeAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize, #1e6
+      outlierFilter = "deltaSNP", maxk = 1000)
+  
+  #Run QTLseq analysis
+  df_filt <- runQTLseqAnalysis(
+      SNPset = df_filt,
+      windowSize = windowSize,
+      popStruc = "F2",
+      bulkSize = 1000, #c(25, 25)
+      replications = 10000,
+      intervals = c(95, 99)
+  )
+
+  df_filt$idu <- row.names(df_filt)
+  q <- 0.01
+  fdrT <- getFDRThreshold(df_filt$pvalue, alpha = q)
+  GprimeT <- df_filt[which(df_filt$pvalue == fdrT), "Gprime"]
+  
+  # df_filt$chromosomes <- factor(df_filt$chromosomes, levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+    
+  return(as.data.frame(df_filt))
+}
+```
+
+Initial QTLseqR results; plot both including Chr I and not
+
+```{r}
+#Initial Data Processing
+
+teset <- read.table(rawData, header = T)
+colnames(teset) %>% tail(-4) -> namesofcols
+namesofcols[c(seq(from = 1, to = 36, by = 4))]
+
+colnames(teset) <- c("CHROM", "POS", "REF", "ALT",
+                     "OakI_Dilute_B.AD","OakI_Dilute_B.DP","OakI_Dilute_B.GQ","OakI_Dilute_B.PL",
+                     "OakI_Fluc_B.AD","OakI_Fluc_B.DP","OakI_Fluc_B.GQ","OakI_Fluc_B.PL",
+                     "OakI_Fluc_C.AD","OakI_Fluc_C.DP","OakI_Fluc_C.GQ","OakI_Fluc_C.PL",
+                     "OakI_Fluc_D.AD","OakI_Fluc_D.DP","OakI_Fluc_D.GQ","OakI_Fluc_D.PL",
+                     "WineI_Dilute_B.AD","WineI_Dilute_B.DP","WineI_Dilute_B.GQ","WineI_Dilute_B.PL",
+                     "WineI_Dilute_C.AD","WineI_Dilute_C.DP","WineI_Dilute_C.GQ","WineI_Dilute_C.PL",
+                     "WineI_Dilute_D.AD","WineI_Dilute_D.DP","WineI_Dilute_D.GQ","WineI_Dilute_D.PL",
+                     "WineI_Fluc_C.AD","WineI_Fluc_C.DP","WineI_Fluc_C.GQ","WineI_Fluc_C.PL")
+
+teset %>% select(CHROM, POS, REF, ALT, 
+                 OakI_Dilute_B.AD, OakI_Fluc_B.AD, OakI_Fluc_C.AD, OakI_Fluc_D.AD,
+                 WineI_Dilute_B.AD, WineI_Dilute_C.AD, WineI_Dilute_D.AD, WineI_Fluc_C.AD) -> columns
+
+
+```
+### Load Parental Data
+
+```{r}
+## Add parental alleles
+
+read.table("Wine_VCF.txt", header = TRUE) %>% mutate(parent = "Wine") -> WineTemp
+read.table("Oak_VCF.txt", header = TRUE) %>% mutate(parent = "Oak") -> OakTemp
+
+ParentalVCF <- rbind(WineTemp, OakTemp) %>% arrange(CHROM, POS) %>% select(CHROM, POS, REF, ALT, parent) %>% merge(ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes)
+
+ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+
+SNPids$Type <- NA
+SNPids$Type[is.na(SNPids$Wine) == TRUE] <- "Oak"
+SNPids$Type[is.na(SNPids$Oak) == TRUE] <- "Wine"
+SNPids$Type[SNPids$Wine == SNPids$Oak] <- "Alt"
+
+SNPids %>% select(CHROM, POS,  Type) -> SNPids
+```
+
+### Actual way to do this
+
+```{r, eval = FALSE}
+Chroms <- ChromKey$CHROM
+
+OakIDB <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        lowBulk = "HGVMVDRX2_n01_WineI_Fluc_C.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Dilute_B") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+OakIFB <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_OakI_Fluc_B.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Fluc_B") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+OakIFC <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_OakI_Fluc_C.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Fluc_C") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+OakIFD <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_OakI_Fluc_D.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "OakI_Fluc_D") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+WineIDC <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_WineI_Dilute_C.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Dilute_C") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+WineIDD <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_WineI_Dilute_D.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Dilute_D") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+WineIFC <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_WineI_Fluc_C.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Fluc_C") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+WineIDB <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_WineI_Dilute_B.fastq",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Dilute_B") %>% select(CHROM, POS, REF, ALT, 
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+WineIFD <- importFromGATK(
+        file = rawData,
+        highBulk = "HGVMVDRX2_n01_WineI_Fluc_D",
+        lowBulk = "HGVMVDRX2_n01_OakI_Dilute_B.fastq",
+        chromList = Chroms
+        ) %>% mutate(Dataset = "WineI_Fluc_D") %>% select(CHROM, POS, REF, ALT,
+                AD_REF.HIGH, AD_ALT.HIGH, DP.HIGH, GQ.HIGH, PL.HIGH, SNPindex.HIGH,
+                Dataset)
+
+rbind(OakIDB, OakIFB, OakIFC, OakIFD, WineIDC, WineIDD, WineIFC, WineIDB, WineIFD) %>% merge(., ChromKey) -> CSSI_Fluc_concat
+#rbind(OakIDB, OakIFB, OakIFC, OakIFD, WineIDC, WineIDD, WineIFC, WineIDB) %>% merge(., ChromKey) -> CSSI_Fluc_concat
+
+DatasetKey <- data.frame(Dataset = c("OakI_Dilute_B", "OakI_Fluc_B", "OakI_Fluc_C", "OakI_Fluc_D",
+                                     "WineI_Dilute_C", "WineI_Dilute_D", "WineI_Fluc_C", "WineI_Dilute_B", "WineI_Fluc_D"),
+                         Parent = c("Oak", "Oak", "Oak", "Oak", "Wine", "Wine", "Wine", "Wine", "Wine"),
+                         Bulk = c("Dilute", "Fluconazole", "Fluconazole", "Fluconazole", 
+                                  "Dilute", "Dilute", "Fluconazole", "Dilute", "Fluconazole"),
+                         Day = c(1,1,2,2,2,2,2,1,2))
+
+CSSI_Fluc_concat %>% left_join(DatasetKey, by = "Dataset") %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> CSSI_Fluc_concat
+
+CSSI_Fluc_concat$CHROM <- factor(CSSI_Fluc_concat$CHROM, levels = ChromKey$chromosomes)
+
+CSSI_Fluc_concat %>% left_join(SNPids, by = c("CHROM", "POS")) -> CSSI_Fluc_concat
+save(CSSI_Fluc_concat, file = "CSSI_Fluc_concat.Rdata")
+```
+
+## Initial Plots
+
+Plotting these to see if I can make sense of them
+
+```{r}
+load("CSSI_Fluc_concat.Rdata")
+
+# unique(CSSI_Fluc_concat$chromosomes)
+# CSSI_Fluc_concat %>% ggplot(aes(x = POS, y = abs(log(AD_REF.HIGH/AD_ALT.HIGH)), color = Bulk, linetype = Parent)) + geom_point(alpha = 0.2) + facet_grid(~chromosomes)
+
+# for(i in unique(CSSI_Fluc_concat$chromosomes)){
+#   CSSI_Fluc_concat %>% filter(chromosomes == i) %>% ggplot(aes(x = POS, y = abs(log(AD_REF.HIGH/AD_ALT.HIGH)), color = Bulk, shape = Parent)) + geom_point(alpha = 0.2) + ggtitle(i) -> plot
+#   print(plot)
+# }
+
+for(i in unique(CSSI_Fluc_concat$CHROM)){
+  CSSI_Fluc_concat %>% filter(CHROM == i) %>% ggplot(aes(x = POS, y = abs(log(AD_REF.HIGH/AD_ALT.HIGH)), color = Dataset)) + geom_point(alpha = 0.2) + ggtitle(i) + scale_color_manual(values = c("blue", "navyblue", "lightblue", "skyblue", "magenta", "red", "darkorange", "firebrick", "brown2")) + facet_grid(~Bulk) -> plot
+  print(plot)
+}
+```
+
+
+# Run the glm
+
+### Reformat for GLM - pivot
+
+```{r}
+load("CSSI_Fluc_concat.Rdata")
+
+#ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
+CSSI_Fluc_concat %>% filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>% pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSI_Fluc_Pivot
+
+CSSI_Fluc_Pivot$ReadCount <- CSSI_Fluc_Pivot$ReadCount + 1
+
+#Convert Alt/Ref to Oak/Wine
+CSSI_Fluc_Pivot$Allele <- NA
+CSSI_Fluc_Pivot$Allele[CSSI_Fluc_Pivot$ALT_REF == "AD_REF.HIGH" & CSSI_Fluc_Pivot$Type == "Wine"] <- "Wine"
+CSSI_Fluc_Pivot$Allele[CSSI_Fluc_Pivot$ALT_REF == "AD_REF.HIGH" & CSSI_Fluc_Pivot$Type == "Oak"] <- "Oak"
+CSSI_Fluc_Pivot$Allele[CSSI_Fluc_Pivot$ALT_REF == "AD_ALT.HIGH" & CSSI_Fluc_Pivot$Type == "Wine"] <- "Oak"
+CSSI_Fluc_Pivot$Allele[CSSI_Fluc_Pivot$ALT_REF == "AD_ALT.HIGH" & CSSI_Fluc_Pivot$Type == "Oak"] <- "Wine"
+
+#Convert all to factors for glm
+CSSI_Fluc_Pivot$Dataset <- factor(CSSI_Fluc_Pivot$Dataset)
+CSSI_Fluc_Pivot$Parent <- factor(CSSI_Fluc_Pivot$Parent)
+CSSI_Fluc_Pivot$Bulk <- factor(CSSI_Fluc_Pivot$Bulk)
+CSSI_Fluc_Pivot$Day <- factor(CSSI_Fluc_Pivot$Day)
+CSSI_Fluc_Pivot$Allele <- factor(CSSI_Fluc_Pivot$Allele)
+CSSI_Fluc_Pivot$CHROM <- factor(CSSI_Fluc_Pivot$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_Fluc_Pivot, file = "CSSI_Fluc_Pivot.Rdata")
+
+#Test GLM
+glmtest <- glm(Allele ~ Bulk*Parent+Day, weights = ReadCount, family = binomial, data = subset(CSSI_Fluc_Pivot, POS == 925 & CHROM == "I"))
+glmtest
+summary(glmtest)$coefficients [11:15]
+
+xtabs(~ Bulk + Parent + Allele + Day, data = subset(CSSI_Fluc_Pivot, POS == 925 & CHROM == "I"))
+
+length(unique(CSSI_Fluc_Pivot$POS[CSSI_Fluc_Pivot$CHROM == "I"]))
+
+head(CSSI_Fluc_Pivot)
+CSSI_Fluc_Pivot %>% group_by(CHROM, POS) %>% summarize(uniqueParents = length(unique(Parent)),
+                                                uniqueBulks = length(unique(Bulk)),
+                                                uniqueDays = length(unique(Day))) -> testingforglm
+
+table(testingforglm$uniqueParents)
+table(testingforglm$uniqueBulks)
+table(testingforglm$uniqueDays)
+
+testingforglm$exclusion <- NA
+testingforglm$exclusion[testingforglm$uniqueParents == 1 | testingforglm$uniqueBulks == 1 | testingforglm$uniqueDays == 1] <- "X"
+
+CSSI_Fluc_Pivot %>% left_join(testingforglm, by = c("CHROM", "POS")) %>% filter(is.na(exclusion)) %>% select(-uniqueParents, -uniqueBulks, -uniqueDays, -exclusion) -> CSSI_Fluc_Pivot_excl
+
+save(CSSI_Fluc_Pivot_excl, file = "CSSI_Fluc_Pivot_excl.Rdata")
+
+```
+
+
+## Plot with parental alleles as key
+
+```{r}
+
+load("CSSI_Fluc_Pivot.Rdata")
+
+for(i in unique(CSSI_Fluc_Pivot$CHROM)){
+  plot <- CSSI_Fluc_Pivot %>% filter(CHROM == i) %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.02) + 
+    scale_color_manual(values = c("navyblue", "lightblue", "blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
+    ggtitle(i) + 
+    facet_grid(~Bulk) 
+  print(plot)
+}
+
+for(i in unique(CSSI_Fluc_Pivot$CHROM)){
+  plot <- CSSI_Fluc_Pivot %>% filter(CHROM == i) %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.4) + 
+    #geom_line(alpha = 0.2) +
+    scale_color_manual(values = c("navyblue", "lightblue", "blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
+    ggtitle(i) + 
+    facet_grid(~Bulk+Parent) 
+  print(plot)
+}
+
+```
+
+### Correlation of replicates
+
+Install ggcorrplot
+
+```{r, eval = FALSE}
+install.packages("ggcorrplot")
+```
+
+```{r}
+rm(CSSI_Fluc_Pivot)
+
+library(ggcorrplot)
+load("CSSI_Fluc_Pivot.Rdata")
+
+CSSI_Fluc_Pivot %>% select(-Type, -Day, -Bulk, -Parent) %>% pivot_wider(names_from = Dataset, values_from = ReadCount) -> PivotCorrelation
+
+PivotCorrelation %>% filter(CHROM != "I", CHROM != "M")-> PivotCorrelation_filter
+
+# Using GGPLOT
+PivotCorrelation %>% ggplot() + 
+  geom_point(aes(x = OakI_Fluc_C, y = OakI_Fluc_D), alpha = 0.1, color = "red") + 
+  geom_point(aes(x = WineI_Fluc_C, y = OakI_Fluc_C), alpha = 0.1, color = "lightblue") + 
+  geom_point(aes(x = WineI_Dilute_B, y = OakI_Fluc_C), alpha = 0.1, color = "violet") + 
+  geom_abline(slope = 1, color = "black") + ggtitle("Full Correlation of Pairs")
+
+PivotCorrelation_filter %>% ggplot() + 
+  geom_point(aes(x = OakI_Fluc_C, y = OakI_Fluc_D), alpha = 0.1, color = "red") + 
+  geom_point(aes(x = WineI_Fluc_C, y = OakI_Fluc_C), alpha = 0.1, color = "lightblue") + 
+  geom_point(aes(x = WineI_Dilute_B, y = OakI_Fluc_C), alpha = 0.1, color = "violet") + 
+  geom_abline(slope = 1, color = "black") + ggtitle("Filtered Chr I and M | Correlation of Pairs")
+
+# Using GGCORRPLOT
+PivotCorrelation %>% select(-POS, -CHROM, -ALT_REF, -Allele) %>% na.omit() %>% 
+  select(OakI_Dilute_B, OakI_Fluc_B, OakI_Fluc_C, OakI_Fluc_D, 
+         WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B) -> testcor
+
+corr <-round(cor(testcor), 2)
+
+ggcorrplot(corr, ggtheme = ggplot2::theme_gray, outline.col = "white",
+   colors = c("black", "lightblue", "red"),lab = TRUE) + ggtitle("Full Correlation of Bulks by Day") 
+
+PivotCorrelation_filter %>% select(-POS, -CHROM, -ALT_REF, -Allele) %>% na.omit() %>% 
+  select(OakI_Dilute_B, OakI_Fluc_B, OakI_Fluc_C, OakI_Fluc_D, 
+         WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B) -> testcor
+
+
+corr <-round(cor(testcor), 2)
+
+ggcorrplot(corr, ggtheme = ggplot2::theme_gray, outline.col = "white",
+   colors = c("black", "lightblue", "red"),lab = TRUE) + ggtitle("Partial Correlation of Bulks by Day") 
+
+## Making a better correlation plot
+# PivotCorrelation %>% pivot_longer(c(OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") -> CompareWithOakI_Dilute_B
+# 
+# CompareWithOakI_Dilute_B %>% filter(CHROM != "I", CHROM != "M") %>% ggplot(aes(x = OakI_Dilute_B, y = Count, color = Bulk)) + 
+#   geom_point(alpha = 0.1) + 
+#   geom_smooth(method = "lm") + 
+#   scale_color_manual(values = c("navyblue", "blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
+#   facet_wrap(~Bulk)
+
+#plot(PivotCorrelation)
+```
+
+### A better plot
+
+```{r}
+PivotCorrelation %>% mutate(comparison = OakI_Dilute_B) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
+  filter(CHROM != "I", CHROM != "M") %>% 
+  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
+  geom_point(alpha = 0.1) + 
+  geom_smooth(method = "lm", color = "black") + 
+  scale_color_manual(values = c("navyblue", "lightblue","blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
+  facet_wrap(~Bulk)
+
+PivotCorrelation %>% mutate(comparison = WineI_Fluc_C) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
+  filter(CHROM != "I", CHROM != "M") %>% 
+  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
+  geom_point(alpha = 0.1) + 
+  geom_smooth(method = "lm", color = "black") + 
+  scale_color_manual(values = c("navyblue", "lightblue","blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
+  facet_wrap(~Bulk)
+
+```
+
+```{r}
+PivotCorrelation %>% mutate(comparison = OakI_Fluc_C) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
+  filter(CHROM != "I", CHROM != "M") %>% 
+  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
+  geom_abline(slope = 1, linetype = "dashed") +
+  #geom_point(alpha = 0.1) + 
+  geom_smooth(method = "lm", fill = "gray", se = TRUE) + 
+  xlim(0,750) + ylim(0,750) +
+  scale_color_manual(values = c("navyblue", "blue","lightblue", "skyblue", "firebrick", "darkred","red", "brown2", "darkorange")) 
+
+```
+
+
+```{r, eval = FALSE}
+
+#Same Bulk Same Day
+plot(PivotCorrelation$WineI_Dilute_C, PivotCorrelation$WineI_Dilute_D)
+plot(PivotCorrelation$OakI_Fluc_C, PivotCorrelation$OakI_Fluc_D)
+
+#Same Bulk Different Day
+plot(PivotCorrelation$WineI_Dilute_B, PivotCorrelation$WineI_Dilute_D)
+plot(PivotCorrelation$WineI_Dilute_B, PivotCorrelation$WineI_Dilute_C)
+plot(PivotCorrelation$OakI_Fluc_B, PivotCorrelation$OakI_Fluc_C)
+plot(PivotCorrelation$OakI_Fluc_B, PivotCorrelation$OakI_Fluc_D)
+
+#Dilute Same Day
+plot(PivotCorrelation$OakI_Dilute_B, PivotCorrelation$WineI_Dilute_B)
+
+
+```
+
+
+## Plot for Smoothed GLM
+
+Data Processing: function for running glm and windows
+
+```{r}
+#testing
+# lrP <- subset(CSSI_Fluc_Pivot_excl, CHROM == "I")
+# c <- "I"
+# chr <- "I"
+# windowsize = 100
+
+################################################################################
+#function
+BSA_GLM_CSSIF <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent+Day, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[11:15])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkFluconazole", "parentWine", "Day2", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+    Results[,7] <- as.numeric(Results[,7])
+    
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i], 
+                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], Results$Day2[i],
+                  res_bulk, res_parent, res_day, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", 
+                         "Bulk_Z", "Parent_Z", "Interaction_Z", "Day_Z",
+                         "Bulk_Zprime", "Parent_Zprime", "Day_Zprime","Interaction_Zprime")
+  
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  WResult[,10] <- as.numeric(WResult[,10])
+  WResult[,11] <- as.numeric(WResult[,11])
+  
+  return(WResult)
+  }
+```
+
+
+Combine data; do not evaluate 
+
+```{r, eval = FALSE}
+
+load("CSSI_Fluc_Pivot_excl.Rdata")
+
+zscore_1 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "I")
+zscore_2 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "II")
+zscore_3 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "III")
+zscore_4 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "IV")
+Sys.sleep(5)
+zscore_5 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "V")
+zscore_6 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "VI")
+zscore_7 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "VII")
+zscore_8 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "VIII")
+Sys.sleep(5)
+zscore_9 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "IX")
+zscore_10 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "X")
+zscore_11 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XI")
+zscore_12 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XII")
+Sys.sleep(5)
+zscore_13 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XIII")
+zscore_14 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XIV")
+zscore_15 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XV")
+zscore_16 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot_excl, "XVI")
+Sys.sleep(5)
+CSSI_F_ZScores_GLM <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_F_ZScores_GLM$CHROM <- factor(CSSI_F_ZScores_GLM$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_F_ZScores_GLM, file = "CSSI_F_ZScores_GLM.Rdata")
+```
+
+### Load data and plot
+
+```{r}
+
+load("CSSI_F_ZScores_GLM.Rdata")
+
+JaroszKey <- data.frame(POS = c(318265, 92671, 43887, 891344, 927577, 122347, 510241, 885015, 963579, 537874, 171534, 619798),
+                        CHROM = c("II","III","IV","IV","IV","VIII","XII","XII","XII","XV","XVI","XVI"),
+                        Yname = c("YBR041W", "YCL017C",  "YDL229W", "YDR213W", "YDR232W", "YHR007C", 
+                                 "YLR176C", "YLR382C", "YLR420W", "YOR114W", "YPL200W", "YPR026W"),
+                        name = c("FAT1", "NFS1",  "SSB1", "UPC2", "HEM1", "ERG11", 
+                                 "RFX1", "NAM2", "URA4", "DPI34 ", "CSM4", "ATH1"))
+
+InteractionNetwork <- data.frame(POS = c(889751, 469092, 215987, 120091, 398628),
+                                 CHROM = c("IV", "VII", "XIV", "VIII", "VII"),
+                                 name = c("UPC2", "PDR1", "PDR16", "ERG11", "OLE1"))
+
+
+# Z_Fig_bulk <- CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
+#   geom_point(aes(x = POS, y = Bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
+#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+#   ggtitle("CSSI Fluconazole Selection Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
+# 
+# 
+# Z_Fig_int <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
+#   geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
+#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+#     scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+#     geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+# ggtitle("CSSI Fluconazole Selection x Background Interaction Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+# 
+# Z_Fig_parent <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
+#   geom_point(aes(x = POS, y = Parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
+#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+#   ggtitle("CSS Fluconazole Parental Background Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+# 
+# Z_Fig_Day <- CSSI_F_ZScores_GLM  %>% ggplot(aes(x = POS, y = Day_Zprime)) +
+#   geom_point(aes(x = POS, y = Day_Z), color = "gray", alpha= 0.1) + theme_minimal() +
+#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+#   ggtitle("CSS I Fluconazole Replicate Day scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+
+
+ # ggsave(Z_Fig_bulk, file = "CSSI_Fluc_Z_Fig_bulk.png", width = 5, height = 4)
+ # ggsave(Z_Fig_int, file = "CSSI_Fluc_Z_Fig_int.png", width = 5, height = 4)
+ # ggsave(Z_Fig_parent, file = "CSSI_Fluc_Z_Fig_parent.png", width = 5, height = 4)
+ # ggsave(Z_Fig_Day, file = "CSSI_Fluc_Z_Fig_Day.png", width = 5, height = 4)
+ # ggsave(Z_Fig_overlay, file = "CSSI_Fluc_Z_Fig_overlay.png", width = 5, height = 4)
+
+# Z_Fig_bulk
+# Z_Fig_int
+# Z_Fig_parent
+# Z_Fig_Day
+
+CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+      geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.5, size = 0.7) +
+      geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 0.7, linetype = "dashed") +
+  
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+  geom_hline(yintercept = c(-1, 1), color = "black")+
+
+  geom_text(mapping = aes(x = POS,y = -10,label = name,
+                            #hjust = -1, 
+                          vjust = 1,
+                            angle = 90), color = "black", size = 1.8, data = JaroszKey) +
+  geom_text(mapping = aes(x = POS,y = -12,label = name,
+                            #hjust = -1, 
+                          vjust = -0.8,
+                            angle = 90), color = "red", size = 1.8, data = InteractionNetwork) +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+Removing Chr I from plot
+
+```{r}
+load("CSSI_F_ZScores_GLM.Rdata")
+
+CSSI_F_ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+    geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  #ylim(-5, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+# Without Using Day as a Factor
+
+```{r}
+#testing
+# lrP <- subset(CSSI_Fluc_Pivot_excl, CHROM == "I")
+# c <- "I"
+# chr <- "I"
+# windowsize = 100
+# i <- 925
+
+################################################################################
+#function
+BSA_GLM_CSSIF_noDay <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[9:12])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkFluconazole", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i], 
+                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], 
+                  res_bulk, res_parent, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", 
+                         "Bulk_Z", "Parent_Z", "Interaction_Z", 
+                         "Bulk_Zprime", "Parent_Zprime", "Interaction_Zprime")
+  
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  
+  return(WResult)
+  }
+```
+
+Excluding only specific loci
+
+```{r}
+CSSI_Fluc_Pivot %>% group_by(CHROM, POS) %>% summarize(uniqueParents = length(unique(Parent)),
+                                                uniqueBulks = length(unique(Bulk)),
+                                                uniqueDays = length(unique(Day))) -> testingforglm
+
+testingforglm$exclusion <- NA
+testingforglm$exclusion[testingforglm$uniqueParents == 1 | testingforglm$uniqueBulks == 1 ] <- "X"
+
+CSSI_Fluc_Pivot %>% left_join(testingforglm, by = c("CHROM", "POS")) %>% filter(is.na(exclusion)) %>% select(-uniqueParents, -uniqueBulks, -uniqueDays, -exclusion) -> CSSI_Fluc_Pivot_exclmD
+
+save(CSSI_Fluc_Pivot_exclmD, file = "CSSI_Fluc_Pivot_exclmD.Rdata")
+
+```
+
+Running Function
+
+```{r, eval = FALSE}
+
+load("CSSI_Fluc_Pivot_exclmD.Rdata")
+
+zscore_1 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "I")
+zscore_2 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "II")
+zscore_3 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "III")
+zscore_4 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "IV")
+Sys.sleep(5)
+
+zscore_5 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "V")
+zscore_6 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "VI")
+zscore_7 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "VII")
+zscore_8 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "VIII")
+Sys.sleep(5)
+
+zscore_9 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "IX")
+zscore_10 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "X")
+zscore_11 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XI")
+zscore_12 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XII")
+Sys.sleep(5)
+
+zscore_13 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XIII")
+zscore_14 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XIV")
+zscore_15 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XV")
+zscore_16 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot_exclmD, "XVI")
+Sys.sleep(5)
+
+CSSI_F_ZScores_GLM_noday <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_F_ZScores_GLM_noday$CHROM <- factor(CSSI_F_ZScores_GLM_noday$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_F_ZScores_GLM_noday, file = "CSSI_F_ZScores_GLM_noday.Rdata")
+```
+
+```{r}
+ 
+load("CSSI_F_ZScores_GLM_noday.Rdata")
+
+
+JaroszKey <- data.frame(POS = c(318265, 92671, 43887, 891344, 927577, 122347, 510241, 885015, 963579, 537874, 171534, 619798),
+                        CHROM = c("II","III","IV","IV","IV","VIII","XII","XII","XII","XV","XVI","XVI"),
+                        JaroszSNP = c(1,1,1,1,1,1,1,1,1,1,1,1))
+
+CSSI_F_ZScores_GLM_noday %>% mutate(JaroszSNP = NA) %>% left_join(JaroszKey) -> CSSI_F_ZScores_GLM_noday_J
+
+InteractionNetwork <- data.frame(POS = c(889751, 469092, 215987, 120091, 398628),
+                                 CHROM = c("IV", "VII", "XIV", "VIII", "VII"),
+                                 name = c("UPC2", "PDR1", "PDR16", "ERG11", "OLE1"))
+
+
+Z_Fig_bulk_mD <- CSSI_F_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
+  geom_point(aes(x = POS, y = Bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+  geom_vline(data = JaroszKey, aes(xintercept = POS), color = "red") +
+  ggtitle("CSSI Fluconazole Selection Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
+
+
+Z_Fig_int_mD <- CSSI_F_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
+  geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+    scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+    geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+    geom_vline(data = JaroszKey, aes(xintercept = POS), color = "lightblue") +
+ggtitle("CSSI Fluconazole Selection x Background Interaction Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+
+Z_Fig_parent_mD <- CSSI_F_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
+  geom_point(aes(x = POS, y = Parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+  ggtitle("CSS Fluconazole Parental Background Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+
+
+Z_Fig_overlay_mD <- CSSI_F_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+      geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.8, size = 1) +
+      geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 1, linetype= "dashed") +
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")# + ylim(-12,12)
+
+ # ggsave(Z_Fig_bulk, file = "CSSI_Fluc_Z_Fig_bulk.png", width = 5, height = 4)
+ # ggsave(Z_Fig_int, file = "CSSI_Fluc_Z_Fig_int.png", width = 5, height = 4)
+ # ggsave(Z_Fig_parent, file = "CSSI_Fluc_Z_Fig_parent.png", width = 5, height = 4)
+ # ggsave(Z_Fig_Day, file = "CSSI_Fluc_Z_Fig_Day.png", width = 5, height = 4)
+ # ggsave(Z_Fig_overlay, file = "CSSI_Fluc_Z_Fig_overlay.png", width = 5, height = 4)
+
+Z_Fig_bulk_mD
+Z_Fig_int_mD
+Z_Fig_parent_mD
+
+#To Compare:
+Z_Fig_overlay_mD
+#Z_Fig_overlay
+
+```
+
+# Comparing each bulk for significance between nulls
+
+Make a new function for this
+
+```{r}
+# #testing
+# lrP <- subset(WineDilute, CHROM == "I")
+# c <- "I"
+# chr <- "I"
+# windowsize = 100
+# i <- 122795 
+
+################################################################################
+#function
+BSA_GLM_Nulls <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  #remove those that only have one factor for the dataset
+  lrP %>% group_by(POS) %>% summarize(uniqueData = length(unique(Dataset))) -> testingforglm
+  
+  table(testingforglm$uniqueData)
+  
+  testingforglm$exclusion <- NA
+  testingforglm$exclusion[testingforglm$uniqueData == 1] <- "X"
+  
+  lrP %>% left_join(testingforglm, by = c("POS")) %>% filter(is.na(exclusion)) %>% select(-uniqueData, -exclusion) -> lrP  
+  #Run the glm on that chromosome
+  AllResults <- list()
+  Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+    res <- glm(Allele ~ Dataset, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
+    c(chr, i, summary(res)$coefficients[5:6])
+  }
+
+  #Format the results for the next function
+  Results <- as.data.frame(Results)
+  colnames(Results) <- c("CHROM", "POS", "Intercept", "Dataset")
+  Results[,2] <- as.numeric(Results[,2])
+  Results[,4] <- as.numeric(Results[,4])
+  #Results[,5] <- as.numeric(Results[,5])
+  # Results[,6] <- as.numeric(Results[,6])
+  # Results[,7] <- as.numeric(Results[,7])
+  
+  Results %>% arrange(POS) %>% select(-Intercept) -> Results
+
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_dataset <- mean(Results$Dataset[(i-windowsize):(i+windowsize)])
+                # res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                # res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                # res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i], Results$Dataset[i], res_dataset)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", 
+                         "Dataset_Z", "Dataset_Zprime")
+  
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  # WResult[,6] <- as.numeric(WResult[,6])
+  # WResult[,7] <- as.numeric(WResult[,7])
+  # WResult[,8] <- as.numeric(WResult[,8])
+  # WResult[,9] <- as.numeric(WResult[,9])
+  # WResult[,10] <- as.numeric(WResult[,10])
+  # WResult[,11] <- as.numeric(WResult[,11])
+  
+  return(WResult)
+  }
+```
+
+Run for just the dilute samples
+
+```{r, eval = FALSE}
+load("CSSI_Fluc_Pivot_excl.Rdata")
+unique(CSSI_Fluc_Pivot_excl$Dataset)
+
+CompareNulls <- function(TableToAnalyze = CSSI_Fluc_Pivot_excl, D1 = "WineI_Dilute_B", D2 = "WineI_Dilute_C"){
+  TableToAnalyze %>% filter(Dataset == D1 | Dataset == D2) -> WineDilute
+
+  zscore_1 <- BSA_GLM_Nulls(WineDilute, "I")
+  zscore_2 <- BSA_GLM_Nulls(WineDilute, "II")
+  zscore_3 <- BSA_GLM_Nulls(WineDilute, "III")
+  zscore_4 <- BSA_GLM_Nulls(WineDilute, "IV")
+  Sys.sleep(5)
+  zscore_5 <- BSA_GLM_Nulls(WineDilute, "V")
+  zscore_6 <- BSA_GLM_Nulls(WineDilute, "VI")
+  zscore_7 <- BSA_GLM_Nulls(WineDilute, "VII")
+  zscore_8 <- BSA_GLM_Nulls(WineDilute, "VIII")
+  Sys.sleep(5)
+  zscore_9 <- BSA_GLM_Nulls(WineDilute, "IX")
+  zscore_10 <- BSA_GLM_Nulls(WineDilute, "X")
+  zscore_11 <- BSA_GLM_Nulls(WineDilute, "XI")
+  zscore_12 <- BSA_GLM_Nulls(WineDilute, "XII")
+  Sys.sleep(5)
+  zscore_13 <- BSA_GLM_Nulls(WineDilute, "XIII")
+  zscore_14 <- BSA_GLM_Nulls(WineDilute, "XIV")
+  zscore_15 <- BSA_GLM_Nulls(WineDilute, "XV")
+  zscore_16 <- BSA_GLM_Nulls(WineDilute, "XVI")
+  Sys.sleep(5)
+  
+  CSSI_F_Wine_BC_Dilute_ZScores_GLM <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                       zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                       zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+  
+  CSSI_F_Wine_BC_Dilute_ZScores_GLM$CHROM <- factor(CSSI_F_Wine_BC_Dilute_ZScores_GLM$CHROM, levels = ChromKey$chromosomes)
+  return(CSSI_F_Wine_BC_Dilute_ZScores_GLM)
+}
+
+CSSI_F_Wine_BC_Dilute_ZScores_GLM <- CompareNulls(D1 = "WineI_Dilute_B", D2 = "WineI_Dilute_C")
+save(CSSI_F_Wine_BC_Dilute_ZScores_GLM, file = "CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_Wine_BD_Dilute_ZScores_GLM <- CompareNulls(D1 = "WineI_Dilute_B", D2 = "WineI_Dilute_D")
+# CSSI_F_Wine_BD_Dilute_ZScores_GLM <- CSSI_F_Wine_BC_Dilute_ZScores_GLM
+save(CSSI_F_Wine_BD_Dilute_ZScores_GLM, file = "CSSI_F_Wine_BD_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_OakFluc_BC_Dilute_ZScores_GLM <- CompareNulls(D1 = "OakI_Fluc_B", D2 = "OakI_Fluc_C")
+save(CSSI_F_OakFluc_BC_Dilute_ZScores_GLM, file = "CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_WineFluc_CD_Dilute_ZScores_GLM <- CompareNulls(D1 = "WineI_Fluc_D", D2 = "WineI_Fluc_C")
+save(CSSI_F_WineFluc_CD_Dilute_ZScores_GLM, file = "CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
+```
+
+Plotting the results of Wine Dilute B and Wine Dilute C
+
+```{r}
+load("CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_Wine_BC_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
+      
+  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
+  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  
+  ggtitle("Wine Dilute B vs Wine Dilute C") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+```{r}
+load("CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_OakFluc_BC_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
+      
+  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
+  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  
+  ggtitle("Oak Fluc B vs Oak Fluc C") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+```{r}
+load("CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_WineFluc_CD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
+      
+  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
+  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  
+  ggtitle("Wine Fluc D vs Wine Fluc C") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+```{r}
+load("CSSI_F_Wine_BD_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_Wine_BD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
+      
+  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
+  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  
+  ggtitle("Wine D vs B Dilute") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+
+Combining these replicates
+
+```{r}
+load("CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
+load("CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
+load("CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
+load("CSSI_F_Wine_BD_Dilute_ZScores_GLM.Rdata")
+
+CSSI_F_WineFluc_CD_Dilute_ZScores_GLM$Comparison <- "WineFluc_CD"
+CSSI_F_OakFluc_BC_Dilute_ZScores_GLM$Comparison <- "OakFluc_BC"
+CSSI_F_Wine_BC_Dilute_ZScores_GLM$Comparison <- "WineDilute_BC"
+CSSI_F_Wine_BD_Dilute_ZScores_GLM$Comparison <- "WineDilute_BD"
+
+NullComparison <- rbind(CSSI_F_WineFluc_CD_Dilute_ZScores_GLM,
+                        CSSI_F_OakFluc_BC_Dilute_ZScores_GLM,
+                        CSSI_F_Wine_BC_Dilute_ZScores_GLM,
+                        CSSI_F_Wine_BD_Dilute_ZScores_GLM)
+
+NullComparison %>% ggplot(aes(x = POS, y = Dataset_Zprime, color = Comparison)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(NullComparison$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  
+  ggtitle("All Null Replicate Comparisons") + theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+```
+
+Adding in the full plot just to compare
+
+```{r}
+load("CSSI_F_ZScores_GLM.Rdata")
+
+CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+      # geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.5, size = 0.7) +
+      # geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 0.7, linetype = "dashed") +
+      # 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(max(abs(NullComparison$Dataset_Zprime)), -max(abs(NullComparison$Dataset_Zprime))), 
+             color = "black", linetype = "dashed") +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+
+```
+
+## Looking at where the data doesn't match in some bulks
+
+```{r}
+load("CSSI_Fluc_concat.Rdata")
+
+#ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
+CSSI_Fluc_concat %>% #filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>%
+  pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIF_Pivot3
+
+CSSI_Fluc_concat %>% filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>%
+  pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIF_Pivot2
+
+#CSSIF_Pivot2$ReadCount <- CSSIF_Pivot2$ReadCount + 1
+
+#Convert Alt/Ref to Oak/Wine
+CSSIF_Pivot2$Allele <- NA
+CSSIF_Pivot2$Allele[CSSIF_Pivot2$ALT_REF == "AD_REF.HIGH" & CSSIF_Pivot2$Type == "Wine"] <- "Wine"
+CSSIF_Pivot2$Allele[CSSIF_Pivot2$ALT_REF == "AD_REF.HIGH" & CSSIF_Pivot2$Type == "Oak"] <- "Oak"
+CSSIF_Pivot2$Allele[CSSIF_Pivot2$ALT_REF == "AD_ALT.HIGH" & CSSIF_Pivot2$Type == "Wine"] <- "Oak"
+CSSIF_Pivot2$Allele[CSSIF_Pivot2$ALT_REF == "AD_ALT.HIGH" & CSSIF_Pivot2$Type == "Oak"] <- "Wine"
+
+#Convert all to factors for glm
+CSSIF_Pivot2$Dataset <- factor(CSSIF_Pivot2$Dataset)
+CSSIF_Pivot2$Parent <- factor(CSSIF_Pivot2$Parent)
+CSSIF_Pivot2$Bulk <- factor(CSSIF_Pivot2$Bulk)
+CSSIF_Pivot2$Day <- factor(CSSIF_Pivot2$Day)
+CSSIF_Pivot2$Allele <- factor(CSSIF_Pivot2$Allele)
+CSSIF_Pivot2$CHROM <- factor(CSSIF_Pivot2$CHROM, levels = ChromKey$chromosomes)
+
+#NEW CODE
+#How many positions have a read count of 0 in each chromosome?
+#table(CSSIF_Pivot2$CHROM[CSSIF_Pivot2$ReadCount == 0])
+round(100*table(CSSIF_Pivot2$CHROM[CSSIF_Pivot2$ReadCount == 0])/table(CSSIF_Pivot2$CHROM))
+
+#How many of each dataset are missing?
+
+NumbersOfDatasets <- as.data.frame(table(CSSIF_Pivot2$Dataset))
+NumbersOfDatasets
+NumbersOfDatasets[which(NumbersOfDatasets$Freq == max(NumbersOfDatasets$Freq)),]
+NumbersOfDatasets[which(NumbersOfDatasets$Freq == min(NumbersOfDatasets$Freq)),]
+
+#Mark all positions that don't have all bulks - which do they have?
+# CSSIF_Pivot2 %>% select(CHROM, POS, Dataset, Allele, ReadCount) %>% distinct() %>% pivot_wider(names_from = Allele, values_from = ReadCount)
+
+# CSSIF_Pivot2 %>% select(CHROM, POS, Dataset, Allele, ReadCount) -> test2
+# 
+# for(i in unique(test2$CHROM)){
+#   xtabtest <- xtabs(~ POS + Dataset, data = subset(test2, CHROM == i))
+#   #print(xtabs(~Dataset == 0, data = xtabtest))
+# }
+# 
+# xtabs(~ POS + Dataset, data = CSSIF_Pivot2[CSSIF_Pivot2$POS == 4526,])
+# 
+# CSSIF_Pivot2[CSSIF_Pivot2$POS == 4526,]
+
+
+# CSSIF_Pivot2 %>% select(CHROM, POS, Dataset, Allele, ReadCount) %>% dplyr::group_by(CHROM, POS, Dataset, Allele) %>%
+#     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+#     dplyr::filter(n > 1L)
+
+# CSSIF_Pivot2 %>% filter(CHROM == "VII", POS == 1014179) %>% select(CHROM, POS, Dataset, Allele, ReadCount) %>% pivot_wider(names_from = Allele, values_from = ReadCount)
+
+#Those are useless scripts, just do what you did before
+CSSIF_Pivot2 %>% group_by(CHROM, POS) %>% summarize(uniqueDatasets = length(unique(Dataset))) -> testingforglm
+
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = CHROM)) + geom_bar(position = "dodge") + ggtitle("With Removing GQ < 99")
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y")+ ggtitle("With Removing GQ < 99")
+
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y")+ ggtitle("With Removing GQ < 99")
+
+CSSIF_Pivot3 %>% group_by(CHROM, POS) %>% summarize(uniqueDatasets = length(unique(Dataset))) %>% ggplot(aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y") + ggtitle("Without Removing GQ < 99")
+
+testingforglm %>% filter(CHROM == "I") %>% ggplot(aes(fill = factor(uniqueDatasets), x = CHROM)) + geom_bar(position = "dodge") + ggtitle("With Removing GQ < 99")
+
+#Combine the number of unique Datasets, find which ones are missing?
+CSSIF_Pivot2 %>% left_join(testingforglm, by = c("CHROM", "POS")) -> testforweirdnumbers
+
+```
+
+## Redoing Analysis with removing 
