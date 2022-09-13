@@ -420,63 +420,68 @@ save(Shuffled_100, file = paste("Shuffled_100_pFlucI_", args[1], ".Rdata", sep =
 ## Load in permuted data to save
 
 ```{r, eval = FALSE}
+
+load("Shuffled_100_pFlucI_I.Rdata")
+Shuffled_100_I <- Shuffled_100
+rm(Shuffled_100)
+
 load("Shuffled_100_pFlucI_III.Rdata")
 Shuffled_100_III <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__II.Rdata")
+load("Shuffled_100_pFlucI_II.Rdata")
 Shuffled_100_II <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__IV.Rdata")
+load("Shuffled_100_pFlucI_IV.Rdata")
 Shuffled_100_IV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__V.Rdata")
+load("Shuffled_100_pFlucI_V.Rdata")
 Shuffled_100_V <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__VI.Rdata")
+load("Shuffled_100_pFlucI_VI.Rdata")
 Shuffled_100_VI <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__VII.Rdata")
+load("Shuffled_100_pFlucI_VII.Rdata")
 Shuffled_100_VII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__VIII.Rdata")
+load("Shuffled_100_pFlucI_VIII.Rdata")
 Shuffled_100_VIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__IX.Rdata")
+load("Shuffled_100_pFlucI_IX.Rdata")
 Shuffled_100_IX <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__X.Rdata")
+load("Shuffled_100_pFlucI_X.Rdata")
 Shuffled_100_X <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XI.Rdata")
+load("Shuffled_100_pFlucI_XI.Rdata")
 Shuffled_100_XI <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XII.Rdata")
+load("Shuffled_100_pFlucI_XII.Rdata")
 Shuffled_100_XII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XIII.Rdata")
+load("Shuffled_100_pFlucI_XIII.Rdata")
 Shuffled_100_XIII <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XIV.Rdata")
+load("Shuffled_100_pFlucI_XIV.Rdata")
 Shuffled_100_XIV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XV.Rdata")
+load("Shuffled_100_pFlucI_XV.Rdata")
 Shuffled_100_XV <- Shuffled_100
 rm(Shuffled_100)
 
-load("Shuffled_100_pFlucI__XVI.Rdata")
+load("Shuffled_100_pFlucI_XVI.Rdata")
 Shuffled_100_XVI <- Shuffled_100
 rm(Shuffled_100)
 
@@ -492,9 +497,12 @@ rm(Shuffled_100_I, Shuffled_100_III,Shuffled_100_II,Shuffled_100_IV,Shuffled_100
                           Shuffled_100_VI, Shuffled_100_VII, Shuffled_100_VIII,Shuffled_100_IX, 
                           Shuffled_100_X, Shuffled_100_XI, Shuffled_100_XII, Shuffled_100_XIII,
                           Shuffled_100_XIV,Shuffled_100_XV,Shuffled_100_XVI)
+
 ```
 
 ## Making a more maleable script for running simulations
+
+(base) [cb4097@log-2 SimShuffledParent_Fluc_CSSI]$ vi RunGLMPermutation.R
 
 ```{r, eval = FALSE}
 #!/usr/bin/env Rscript
@@ -509,23 +517,100 @@ library(dplyr)
 library(foreach)
 library(doParallel)
 
-ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
-                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
-                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
-                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
-                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"),
                        num = as.character(1:17))
 
+cmd_args <- commandArgs(TRUE)
+
 argchr <- ChromKey$chromosomes[ChromKey$num == args[1]]
+
+if(length(cmd_args) < 3){
+  Folder <- "None"
+  print("No Folder Created")
+}else{
+  Folder <- args[3]
+  print(Folder)
+  if(file.exists(Folder)){
+    print("Using existing folder")
+  }else{
+    dir.create(Folder)
+    print("New folder created")
+  }
+}
+#to test
+#argchr <- "III"
 
 ###################################################################################
 #Load Functions
 #FUNCTION
-BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
-  
+BSA_GLM_CSSIF <-  function(lrP, chr = "II", windowsize = 100){
+
   lrP <- subset(lrP, CHROM == chr)
-  
+
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent+Day, weights = value, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[11:15])
+    }
+
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkFluconazole", "parentWine", "Day2", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+    Results[,7] <- as.numeric(Results[,7])
+
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+
+
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i],
+                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], Results$Day2[i],
+                  res_bulk, res_parent, res_day, res_int)}
+
+  WResult <- as.data.frame(WResult)
+
+  colnames(WResult) <- c("CHROM", "Index", "POS",
+                         "Bulk_Z", "Parent_Z", "Interaction_Z", "Day_Z",
+                         "Bulk_Zprime", "Parent_Zprime", "Day_Zprime","Interaction_Zprime")
+
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  WResult[,10] <- as.numeric(WResult[,10])
+  WResult[,11] <- as.numeric(WResult[,11])
+
+  return(WResult)
+}
+
+BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
+
+  lrP <- subset(lrP, CHROM == chr)
+
   AllResults <- list()
   for(c in unique(lrP$CHROM)){
     lrP <- subset(lrP, CHROM == c)
@@ -534,7 +619,7 @@ BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
       res <- glm(Allele ~ Bulk*Parent, weights = value, family = binomial, data = lrP[lrP$POS == i,])
       c(c, i, summary(res)$coefficients[10:12])
     }
-  
+
     #Format the results for the next function
     Results <- as.data.frame(Results)
     colnames(Results) <- c("CHROM", "POS", "bulkHigh", "parentWine", "Interaction")
@@ -542,11 +627,11 @@ BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
     Results[,3] <- as.numeric(Results[,3])
     Results[,4] <- as.numeric(Results[,4])
     Results[,5] <- as.numeric(Results[,5])
-    
+
     Results %>% arrange(POS) -> Results
   }
-  
- 
+
+
   #Run the windows on that chromosome
   WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
             #save the median value from original index 1 to original end index
@@ -567,7 +652,7 @@ BSA_GLM_z <-  function(lrP, chr = "II", windowsize = 100){
   WResult[,7] <- as.numeric(WResult[,7])
   WResult[,8] <- as.numeric(WResult[,8])
   WResult[,9] <- as.numeric(WResult[,9])
-  
+
   return(WResult)
 }
 
@@ -576,23 +661,21 @@ tableinv <- function(x){
       rownames(y) <- c(1:nrow(y))
       return(y)}
 
-ShuffleLoop <- function(GLM_VIII, iterations = 2){
-  
-  iterativelist <- list()
-  
-  for(x in 1:iterations){
-    #x <- 1
-    #GLM_VIII <- subset(CSSI_Fluc_Pivot, CHROM == "I")
-    set.seed(Sys.time())
-    iterativelist[[x]] <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
-      GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i)) %>% select(-value, -ReadCount)
-      GLM_VIII_inv$Parent <- sample(unique(GLM_VIII_inv$Parent), replace = FALSE)
-      GLM_VIII_inv %>% group_by(CHROM, POS, Parent, Bulk, Allele, Type, Dataset) %>% count() -> result
-      result
-    }
-    
-  }
-  finalresult <- bind_rows(iterativelist, .id = "Index") 
+ShuffleLoop_Day <- function(GLM_VIII, iterations = 2, COL = "Bulk"){
+    iterativelist <- list()
+    for(x in 1:iterations){
+      #x <- 1
+      #GLM_VIII <- subset(CSSI_Fluc_Pivot, CHROM == "I")
+      set.seed(Sys.time())
+      iterativelist[[x]] <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
+        GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i)) %>% select(-value, -ReadCount)
+        GLM_VIII_inv[[COL]] <- sample(GLM_VIII_inv[[COL]], replace = FALSE)
+        GLM_VIII_inv %>% group_by(CHROM, POS, Parent, Bulk, Day, Allele, Type, Dataset) %>% count() -> result
+        result
+        }
+
+      }
+      finalresult <- bind_rows(iterativelist, .id = "Index")
   return(finalresult)
 }
 
@@ -603,18 +686,91 @@ load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
 #Make the subsequent functions work
 CSSI_Fluc_Pivot$value <- CSSI_Fluc_Pivot$ReadCount
 
-#Run Script
+#Print Notices
+print(paste("Input Chromosome: ", args[1], " corresponding to ", argchr, sep = ""))
 
+if(args[2] %in% colnames(CSSI_Fluc_Pivot)){
+  print(paste("Using column ", args[2], " out of:", sep = ""))
+  print(colnames(CSSI_Fluc_Pivot))
+}else{
+  print("Incorrect Column Selected")
+}
+
+#Run Script
 VIII_it_100 <- list()
 VIII_shuffle_100it <- list()
 for(i in 1:100){
-  VIII_it_100[[i]] <- ShuffleLoop(GLM_VIII = subset(CSSI_Fluc_Pivot, CHROM == argchr), iterations = 1)
+  VIII_it_100[[i]] <- ShuffleLoop_Day(GLM_VIII = subset(CSSI_Fluc_Pivot, CHROM == argchr), iterations = 1, COL = args[2])
   VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
-  VIII_shuffle_100it[[i]] <- BSA_GLM_z(subset(VIII_it_100[[i]]), chr = argchr)
-
-  }
+  VIII_shuffle_100it[[i]] <- BSA_GLM_CSSIF(subset(VIII_it_100[[i]]), chr = argchr)
+}
 
 Shuffled_100 <- bind_rows(VIII_shuffle_100it, .id="Index")
 
-save(Shuffled_100, file = paste("Shuffled_100_pFlucI_", argchr, ".Rdata", sep = ""))
+if(Folder == "None"){
+  save(Shuffled_100, file = paste(args[2], "_permute100_FI_", argchr, ".Rdata", sep = ""))
+}else{
+  save(Shuffled_100, file = paste(Folder, "/", args[2], "_permute100_FI_", argchr, ".Rdata", sep = ""))
+}
+
 ```
+
+Testing how to make the columns work
+
+```{r}
+testdf <- data.frame(A = 1:10, B = 1:10, C = 1:10)
+
+testdf$A
+
+selectcol <- function(D = "A", df = testdf){
+  print(testdf[[D]])
+  D %in% colnames(df)
+}
+
+selectcol("A", testdf)
+
+file.exists("Selection")
+dir()
+```
+## HPC Script to bind them all together into the correct file
+
+```{r, eval = FALSE}
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+#Load Libraries
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+includedchromosomes <- data.frame(chr = ChromKey$chromosomes, included = "NotIncluded")
+for(i in args[2:length(args)]){
+  #i <- "RdataFiles/Shuffled_100_III.Rdata"
+  load(i)
+  newname <- unique(Shuffled_100$CHROM)
+  includedchromosomes$included[includedchromosomes$chr == newname] <- "Included"
+  assign(newname, Shuffled_100)
+  rm(Shuffled_100)
+}
+
+combineddfs <- rbind(I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, XIII, XIV, XV, XVI)
+#length(unique(combineddfs$CHROM))
+
+combineddfs$CHROM <- factor(combineddfs$CHROM, levels = ChromKey$chromosomes)
+
+assign(args[1], combineddfs)
+save(eval(parse(text=args[1])), file = paste(args[1], ".Rdata", sep = ""))
+
+```
+
