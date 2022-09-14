@@ -733,6 +733,10 @@ file.exists("Selection")
 dir()
 ```
 ## HPC Script to bind them all together into the correct file
+```{r}
+args <- list("Input")
+args[1]
+```
 
 ```{r, eval = FALSE}
 #!/usr/bin/env Rscript
@@ -765,12 +769,77 @@ for(i in args[2:length(args)]){
 }
 
 combineddfs <- rbind(I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, XIII, XIV, XV, XVI)
+
+#combineddfs <- rbind(II, III)
 #length(unique(combineddfs$CHROM))
 
 combineddfs$CHROM <- factor(combineddfs$CHROM, levels = ChromKey$chromosomes)
 
-assign(args[1], combineddfs)
-save(eval(parse(text=args[1])), file = paste(args[1], ".Rdata", sep = ""))
+# assign(as.character(args[1]), combineddfs)
+# save(args[1], file = paste(as.character(args[1]), ".Rdata", sep = ""))
+# save(get(as.character(args[1])), file = paste(as.character(args[1]), ".Rdata", sep = ""))
 
+saveRDS(combineddfs, file = paste(as.character(args[1]), ".rds", sep = ""))
+
+NewInput <- readRDS("Input.rds")
+```
+
+## Loading this stuff in
+
+```{r}
+parentperm <- readRDS("RdataFiles/CSSIFluc_ParentPermd.rds")
+dayperm <- readRDS("RdataFiles/CSSIFluc_DayPermd.rds")
+bulkperm <- readRDS("RdataFiles/CSSIFluc_BulkPermd.rds")
+
+#PERMUTED BULK
+bulkperm %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Bulk Effects with Permuted Bulk")
+
+bulkperm %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Parent Effects with Permuted Bulk")
+
+bulkperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Interactions with Permuted Bulk")
+
+bulkperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Bulk")
+
+#PERMUTED PARENT
+parentperm %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Bulk Effects with Permuted Parent")
+
+parentperm %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Parent Effects with Permuted Parent")
+
+parentperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Interactions with Permuted Parent")
+
+parentperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Parent")
+
+#PERMUTED DAY
+dayperm %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Bulk Effects with Permuted Day")
+
+dayperm %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Parent Effects with Permuted Day")
+
+dayperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Interactions with Permuted Day")
+
+dayperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Day")
 ```
 

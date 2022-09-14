@@ -8,3 +8,5 @@
 *vcf
 *Rhistory
 *RDataTmp
+*.rds
+*RemakeSavedDatasets_6.14.22
