@@ -165,8 +165,9 @@ SNPids %>% select(CHROM, POS,  Type) -> SNPids
 
 CuSO4
 
-```{r}
+```{r, eval = FALSE}
 rawData = "Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+Chroms <- ChromKey$CHROM
 
 #CHANGE THE HIGH AND LOW BULKS
 OakI_CuSO4_C <- importFromGATK(
@@ -189,7 +190,7 @@ OakI_CuSO4_D <- importFromGATK(
 
 WineI_CuSO4_C <- importFromGATK(
         file = rawData,
-        highBulk = "SelectedA",
+        highBulk = "SelectedC",
         lowBulk = "UnselectedA",
         chromList = Chroms
         ) %>% mutate(Dataset = "WineI_CuSO4_C") %>% select(CHROM, POS, REF, ALT, 
@@ -208,15 +209,15 @@ WineI_CuSO4_D <- importFromGATK(
 rbind(OakI_CuSO4_C, OakI_CuSO4_D, WineI_CuSO4_C, WineI_CuSO4_D) %>% merge(., ChromKey) -> CSSI_CuSO4_concat
 
 DatasetKey <- data.frame(Dataset = c("OakI_CuSO4_C", "OakI_CuSO4_D", "WineI_CuSO4_C", "WineI_CuSO4_D"),
-                         Parent = c("Oak", "Oak", "Wine", "Wine", "Wine"),
-                         Bulk = c("Dilute", "CuSO4", "CuSO4", "Dilute"))
+                         Parent = c("Oak", "Oak", "Wine", "Wine"),
+                         Bulk = c("CuSO4", "Dilute", "CuSO4", "Dilute"))
 
 CSSI_CuSO4_concat %>% left_join(DatasetKey, by = "Dataset") %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> CSSI_CuSO4_concat
 
 CSSI_CuSO4_concat$CHROM <- factor(CSSI_CuSO4_concat$CHROM, levels = ChromKey$chromosomes)
 
 CSSI_CuSO4_concat %>% left_join(SNPids, by = c("CHROM", "POS")) -> CSSI_CuSO4_concat
-save(CSSI_CuSO4_concat, file = "CSSI_CuSO4_concat.Rdata")
+save(CSSI_CuSO4_concat, file = "RdataFiles/CSSI_CuSO4_concat.Rdata")
 
 ```
 
@@ -328,7 +329,66 @@ save(CSSI_Fluc_concat, file = "CSSI_Fluc_concat.Rdata")
 
 ## Looking at where the data doesn't match in some bulks
 
-```{r}
+CuSO4
+```{r, eval = FALSE}
+load("RdataFiles/CSSI_CuSO4_concat.Rdata")
+
+#ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
+CSSI_Fluc_concat %>% #filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>%
+  pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIC_Pivot3
+
+CSSI_Fluc_concat %>% filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>%
+  pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIC_Pivot2
+
+#CSSIF_Pivot2$ReadCount <- CSSIF_Pivot2$ReadCount + 1
+
+#Convert Alt/Ref to Oak/Wine
+CSSIC_Pivot2$Allele <- NA
+CSSIC_Pivot2$Allele[CSSIC_Pivot2$ALT_REF == "AD_REF.HIGH" & CSSIC_Pivot2$Type == "Wine"] <- "Wine"
+CSSIC_Pivot2$Allele[CSSIC_Pivot2$ALT_REF == "AD_REF.HIGH" & CSSIC_Pivot2$Type == "Oak"] <- "Oak"
+CSSIC_Pivot2$Allele[CSSIC_Pivot2$ALT_REF == "AD_ALT.HIGH" & CSSIC_Pivot2$Type == "Wine"] <- "Oak"
+CSSIC_Pivot2$Allele[CSSIC_Pivot2$ALT_REF == "AD_ALT.HIGH" & CSSIC_Pivot2$Type == "Oak"] <- "Wine"
+
+#Convert all to factors for glm
+CSSIC_Pivot2$Dataset <- factor(CSSIC_Pivot2$Dataset)
+CSSIC_Pivot2$Parent <- factor(CSSIC_Pivot2$Parent)
+CSSIC_Pivot2$Bulk <- factor(CSSIC_Pivot2$Bulk)
+CSSIC_Pivot2$Day <- factor(CSSIC_Pivot2$Day)
+CSSIC_Pivot2$Allele <- factor(CSSIC_Pivot2$Allele)
+CSSIC_Pivot2$CHROM <- factor(CSSIC_Pivot2$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSIC_Pivot2, file = "CSSIC_Pivot2.Rdata")
+
+#NEW CODE
+#How many positions have a read count of 0 in each chromosome?
+#table(CSSIC_Pivot2$CHROM[CSSIC_Pivot2$ReadCount == 0])
+round(100*table(CSSIC_Pivot2$CHROM[CSSIC_Pivot2$ReadCount == 0])/table(CSSIC_Pivot2$CHROM))
+
+#How many of each dataset are missing?
+
+NumbersOfDatasets <- as.data.frame(table(CSSIC_Pivot2$Dataset))
+NumbersOfDatasets
+NumbersOfDatasets[which(NumbersOfDatasets$Freq == max(NumbersOfDatasets$Freq)),]
+NumbersOfDatasets[which(NumbersOfDatasets$Freq == min(NumbersOfDatasets$Freq)),]
+
+CSSIC_Pivot2 %>% group_by(CHROM, POS) %>% summarize(uniqueDatasets = length(unique(Dataset))) -> testingforglm
+CSSIC_Pivot2 %>% left_join(testingforglm, by = c("CHROM", "POS")) -> testforweirdnumbers
+
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = CHROM)) + geom_bar(position = "dodge") + ggtitle("With Removing GQ < 99")
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y")+ ggtitle("With Removing GQ < 99")
+
+ggplot(testingforglm, aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y")+ ggtitle("With Removing GQ < 99")
+
+CSSIC_Pivot3 %>% group_by(CHROM, POS) %>% summarize(uniqueDatasets = length(unique(Dataset))) %>% ggplot(aes(fill = factor(uniqueDatasets), x = 1)) + geom_bar(position = "dodge") + facet_wrap(~CHROM, scales = "free_y") + ggtitle("Without Removing GQ < 99")
+
+testingforglm %>% filter(CHROM == "I") %>% ggplot(aes(fill = factor(uniqueDatasets), x = CHROM)) + geom_bar(position = "dodge") + ggtitle("With Removing GQ < 99")
+
+```
+
+
+Fluconazole
+
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_Fluc_concat.Rdata")
 
 #ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
@@ -386,7 +446,39 @@ testingforglm %>% filter(CHROM == "I") %>% ggplot(aes(fill = factor(uniqueDatase
 
 ### Reformat for GLM - pivot
 
-```{r}
+CuSO4
+
+```{r, eval = FALSE}
+load("RdataFiles/CSSI_CuSO4_concat.Rdata")
+
+#ggplot(CSSI_CuSO4_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
+CSSI_CuSO4_concat %>% filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>% pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIC_Pivot2
+
+#REMOVE POSITIONS WHERE THERE ISN'T ALL BULKS
+CSSIC_Pivot2 %>% group_by(CHROM, POS) %>% summarize(uniqueDatasets = length(unique(Dataset))) -> testingforglm
+CSSIC_Pivot2 %>% left_join(testingforglm, by = c("CHROM", "POS")) %>% filter(uniqueDatasets == 4) -> CSSI_CuSO4_Pivot
+
+#Convert Alt/Ref to Oak/Wine
+CSSI_CuSO4_Pivot$Allele <- NA
+CSSI_CuSO4_Pivot$Allele[CSSI_CuSO4_Pivot$ALT_REF == "AD_REF.HIGH" & CSSI_CuSO4_Pivot$Type == "Wine"] <- "Wine"
+CSSI_CuSO4_Pivot$Allele[CSSI_CuSO4_Pivot$ALT_REF == "AD_REF.HIGH" & CSSI_CuSO4_Pivot$Type == "Oak"] <- "Oak"
+CSSI_CuSO4_Pivot$Allele[CSSI_CuSO4_Pivot$ALT_REF == "AD_ALT.HIGH" & CSSI_CuSO4_Pivot$Type == "Wine"] <- "Oak"
+CSSI_CuSO4_Pivot$Allele[CSSI_CuSO4_Pivot$ALT_REF == "AD_ALT.HIGH" & CSSI_CuSO4_Pivot$Type == "Oak"] <- "Wine"
+
+#Convert all to factors for glm
+CSSI_CuSO4_Pivot$Dataset <- factor(CSSI_CuSO4_Pivot$Dataset)
+CSSI_CuSO4_Pivot$Parent <- factor(CSSI_CuSO4_Pivot$Parent)
+CSSI_CuSO4_Pivot$Bulk <- factor(CSSI_CuSO4_Pivot$Bulk)
+CSSI_CuSO4_Pivot$Allele <- factor(CSSI_CuSO4_Pivot$Allele)
+CSSI_CuSO4_Pivot$CHROM <- factor(CSSI_CuSO4_Pivot$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_CuSO4_Pivot, file = "RdataFiles/CSSI_CuSO4_Pivot.Rdata")
+
+```
+
+Fluconazole
+
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_Fluc_concat.Rdata")
 
 #ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
@@ -411,11 +503,11 @@ CSSI_Fluc_Pivot$Day <- factor(CSSI_Fluc_Pivot$Day)
 CSSI_Fluc_Pivot$Allele <- factor(CSSI_Fluc_Pivot$Allele)
 CSSI_Fluc_Pivot$CHROM <- factor(CSSI_Fluc_Pivot$CHROM, levels = ChromKey$chromosomes)
 
-save(CSSI_Fluc_Pivot, file = "CSSI_Fluc_Pivot_2.Rdata")
+save(CSSI_Fluc_Pivot, file = "RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 #CSSI_Fluc_Pivot$ReadCount <- CSSI_Fluc_Pivot$ReadCount + 1
 
 
@@ -429,131 +521,6 @@ xtabs(~ Bulk + Parent + Allele + Day, data = subset(CSSI_Fluc_Pivot, POS == 925 
 length(unique(CSSI_Fluc_Pivot$POS[CSSI_Fluc_Pivot$CHROM == "I"]))
 
 ```
-
-
-## Plot with parental alleles as key
-
-```{r}
-
-for(i in unique(CSSI_Fluc_Pivot$CHROM)){
-  plot <- CSSI_Fluc_Pivot %>% filter(CHROM == i) %>% select(-ALT_REF) %>% 
-    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
-    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
-    geom_point(size = 1, alpha = 0.4) + 
-    #geom_line(alpha = 0.2) +
-    scale_color_manual(values = c("navyblue", "lightblue", "blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
-    ggtitle(i) + 
-    facet_grid(~Bulk+Parent) 
-  print(plot)
-}
-
-```
-
-### Correlation of replicates
-
-Install ggcorrplot
-
-```{r, eval = FALSE}
-install.packages("ggcorrplot")
-```
-
-```{r}
-rm(CSSI_Fluc_Pivot)
-
-library(ggcorrplot)
-load("RdataFiles/CSSI_Fluc_Pivot.Rdata")
-
-CSSI_Fluc_Pivot %>% select(-Type, -Day, -Bulk, -Parent) %>% pivot_wider(names_from = Dataset, values_from = ReadCount) -> PivotCorrelation
-
-PivotCorrelation %>% filter(CHROM != "I", CHROM != "M")-> PivotCorrelation_filter
-
-# Using GGPLOT
-PivotCorrelation %>% ggplot() + 
-  geom_point(aes(x = OakI_Fluc_C, y = OakI_Fluc_D), alpha = 0.1, color = "red") + 
-  geom_point(aes(x = WineI_Fluc_C, y = OakI_Fluc_C), alpha = 0.1, color = "lightblue") + 
-  geom_point(aes(x = WineI_Dilute_B, y = OakI_Fluc_C), alpha = 0.1, color = "violet") + 
-  geom_abline(slope = 1, color = "black") + ggtitle("Full Correlation of Pairs")
-
-PivotCorrelation_filter %>% ggplot() + 
-  geom_point(aes(x = OakI_Fluc_C, y = OakI_Fluc_D), alpha = 0.1, color = "red") + 
-  geom_point(aes(x = WineI_Fluc_C, y = OakI_Fluc_C), alpha = 0.1, color = "lightblue") + 
-  geom_point(aes(x = WineI_Dilute_B, y = OakI_Fluc_C), alpha = 0.1, color = "violet") + 
-  geom_abline(slope = 1, color = "black") + ggtitle("Filtered Chr I and M | Correlation of Pairs")
-
-# Using GGCORRPLOT
-PivotCorrelation %>% select(-POS, -CHROM, -ALT_REF, -Allele) %>% na.omit() %>% 
-  select(OakI_Dilute_B, OakI_Fluc_B, OakI_Fluc_C, OakI_Fluc_D, 
-         WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B) -> testcor
-
-corr <-round(cor(testcor), 2)
-
-ggcorrplot(corr, ggtheme = ggplot2::theme_gray, outline.col = "white",
-   colors = c("black", "lightblue", "red"),lab = TRUE) + ggtitle("Full Correlation of Bulks by Day") 
-
-PivotCorrelation_filter %>% select(-POS, -CHROM, -ALT_REF, -Allele) %>% na.omit() %>% 
-  select(OakI_Dilute_B, OakI_Fluc_B, OakI_Fluc_C, OakI_Fluc_D, 
-         WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B) -> testcor
-
-
-corr <-round(cor(testcor), 2)
-
-ggcorrplot(corr, ggtheme = ggplot2::theme_gray, outline.col = "white",
-   colors = c("black", "lightblue", "red"),lab = TRUE) + ggtitle("Partial Correlation of Bulks by Day") 
-
-```
-
-### A better plot
-
-```{r}
-PivotCorrelation %>% mutate(comparison = OakI_Dilute_B) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
-  filter(CHROM != "I", CHROM != "M") %>% 
-  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
-  geom_point(alpha = 0.1) + 
-  geom_smooth(method = "lm", color = "black") + 
-  scale_color_manual(values = c("navyblue", "lightblue","blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
-  facet_wrap(~Bulk)
-
-PivotCorrelation %>% mutate(comparison = WineI_Fluc_C) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
-  filter(CHROM != "I", CHROM != "M") %>% 
-  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
-  geom_point(alpha = 0.1) + 
-  geom_smooth(method = "lm", color = "black") + 
-  scale_color_manual(values = c("navyblue", "lightblue","blue", "skyblue", "firebrick", "red", "darkred", "brown2", "darkorange")) +
-  facet_wrap(~Bulk)
-
-```
-
-```{r}
-PivotCorrelation %>% mutate(comparison = OakI_Fluc_C) %>% pivot_longer(c(OakI_Dilute_B, OakI_Fluc_B,OakI_Fluc_C,OakI_Fluc_D, WineI_Fluc_D, WineI_Fluc_C, WineI_Dilute_C, WineI_Dilute_D, WineI_Dilute_B), names_to = "Bulk", values_to = "Count") %>% 
-  filter(CHROM != "I", CHROM != "M") %>% 
-  ggplot(aes(x = comparison, y = Count, color = Bulk)) + 
-  geom_abline(slope = 1, linetype = "dashed") +
-  #geom_point(alpha = 0.1) + 
-  geom_smooth(method = "lm", fill = "gray", se = TRUE) + 
-  xlim(0,750) + ylim(0,750) +
-  scale_color_manual(values = c("navyblue", "blue","lightblue", "skyblue", "firebrick", "darkred","red", "brown2", "darkorange")) 
-
-```
-
-
-```{r, eval = FALSE}
-
-#Same Bulk Same Day
-plot(PivotCorrelation$WineI_Dilute_C, PivotCorrelation$WineI_Dilute_D)
-plot(PivotCorrelation$OakI_Fluc_C, PivotCorrelation$OakI_Fluc_D)
-
-#Same Bulk Different Day
-plot(PivotCorrelation$WineI_Dilute_B, PivotCorrelation$WineI_Dilute_D)
-plot(PivotCorrelation$WineI_Dilute_B, PivotCorrelation$WineI_Dilute_C)
-plot(PivotCorrelation$OakI_Fluc_B, PivotCorrelation$OakI_Fluc_C)
-plot(PivotCorrelation$OakI_Fluc_B, PivotCorrelation$OakI_Fluc_D)
-
-#Dilute Same Day
-plot(PivotCorrelation$OakI_Dilute_B, PivotCorrelation$WineI_Dilute_B)
-
-
-```
-
 
 ## Plot for Smoothed GLM
 
@@ -682,38 +649,38 @@ InteractionNetwork <- data.frame(POS = c(889751, 469092, 215987, 120091, 398628)
                                  name = c("UPC2", "PDR1", "PDR16", "ERG11", "OLE1"))
 
 
-# Z_Fig_bulk <- CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
-#   geom_point(aes(x = POS, y = Bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
-#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-#   ggtitle("CSSI Fluconazole Selection Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
-# 
-# 
-# Z_Fig_int <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
-#   geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
-#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-#     scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-#     geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-# ggtitle("CSSI Fluconazole Selection x Background Interaction Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
-# 
-# Z_Fig_parent <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
-#   geom_point(aes(x = POS, y = Parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
-#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-#   ggtitle("CSS Fluconazole Parental Background Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
-# 
-# Z_Fig_Day <- CSSI_F_ZScores_GLM  %>% ggplot(aes(x = POS, y = Day_Zprime)) +
-#   geom_point(aes(x = POS, y = Day_Z), color = "gray", alpha= 0.1) + theme_minimal() +
-#   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-#   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-#   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-#   ggtitle("CSS I Fluconazole Replicate Day scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-#         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+Z_Fig_bulk <- CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
+  geom_point(aes(x = POS, y = Bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+  ggtitle("CSSI Fluconazole Selection Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
+
+
+Z_Fig_int <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
+  geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+    scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+    geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+ggtitle("CSSI Fluconazole Selection x Background Interaction Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+
+Z_Fig_parent <- CSSI_F_ZScores_GLM %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
+  geom_point(aes(x = POS, y = Parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+  ggtitle("CSS Fluconazole Parental Background Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
+
+Z_Fig_Day <- CSSI_F_ZScores_GLM  %>% ggplot(aes(x = POS, y = Day_Zprime)) +
+  geom_point(aes(x = POS, y = Day_Z), color = "gray", alpha= 0.1) + theme_minimal() +
+  geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
+  ggtitle("CSS I Fluconazole Replicate Day scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
 
 
  # ggsave(Z_Fig_bulk, file = "CSSI_Fluc_Z_Fig_bulk.png", width = 5, height = 4)
@@ -722,10 +689,10 @@ InteractionNetwork <- data.frame(POS = c(889751, 469092, 215987, 120091, 398628)
  # ggsave(Z_Fig_Day, file = "CSSI_Fluc_Z_Fig_Day.png", width = 5, height = 4)
  # ggsave(Z_Fig_overlay, file = "CSSI_Fluc_Z_Fig_overlay.png", width = 5, height = 4)
 
-# Z_Fig_bulk
-# Z_Fig_int
-# Z_Fig_parent
-# Z_Fig_Day
+Z_Fig_bulk
+Z_Fig_int
+Z_Fig_parent
+Z_Fig_Day
 
 CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
       geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.5, size = 0.7) +
@@ -775,7 +742,7 @@ CSSI_F_ZScores_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zpr
 
 ```{r}
 #testing
-# lrP <- subset(CSSI_Fluc_Pivot_excl, CHROM == "I")
+# lrP <- subset(CSSI_CuSO4_Pivot_exclmD, CHROM == "I")
 # c <- "I"
 # chr <- "I"
 # windowsize = 100
@@ -841,116 +808,167 @@ BSA_GLM_CSSIF_noDay <-  function(lrP, chr = "II", windowsize = 100){
   }
 ```
 
+### Removing ones with not enough categories
+
+CuSO4
+
+```{r, eval = FALSE}
+load("RdataFiles/CSSI_CuSO4_Pivot.Rdata")
+CSSI_CuSO4_Pivot %>% group_by(CHROM, POS) %>% summarize(uniqueParents = length(unique(Parent)),
+                                                uniqueBulks = length(unique(Bulk))) -> Ctestingforglm
+
+Ctestingforglm$exclusion <- NA
+Ctestingforglm$exclusion[Ctestingforglm$uniqueParents == 1 | Ctestingforglm$uniqueBulks == 1 ] <- "X"
+
+CSSI_CuSO4_Pivot %>% left_join(Ctestingforglm, by = c("CHROM", "POS")) %>% filter(is.na(exclusion)) %>% select(-uniqueParents, -uniqueBulks, -exclusion) -> CSSI_CuSO4_Pivot_exclmD
+
+save(CSSI_CuSO4_Pivot_exclmD, file = "RdataFiles/CSSI_CuSO4_Pivot_exclmD.Rdata")
+
+```
+
+Fluconazole
+```{r, eval = FALSE}
+CSSI_Fluc_Pivot %>% group_by(CHROM, POS) %>% summarize(uniqueParents = length(unique(Parent)),
+                                                uniqueBulks = length(unique(Bulk)),
+                                                uniqueDays = length(unique(Day))) -> testingforglm
+
+testingforglm$exclusion <- NA
+testingforglm$exclusion[testingforglm$uniqueParents == 1 | testingforglm$uniqueBulks == 1 ] <- "X"
+
+CSSI_Fluc_Pivot %>% left_join(testingforglm, by = c("CHROM", "POS")) %>% filter(is.na(exclusion)) %>% select(-uniqueParents, -uniqueBulks, -uniqueDays, -exclusion) -> CSSI_Fluc_Pivot_exclmD
+
+save(CSSI_Fluc_Pivot_exclmD, file = "CSSI_Fluc_Pivot_exclmD.Rdata")
+
+```
 
 Running Function
 
 ```{r, eval = FALSE}
 
-load("RdataFiles/CSSI_Fluc_Pivot_exclmD.Rdata")
+load("RdataFiles/CSSI_CuSO4_Pivot_exclmD.Rdata")
 
-zscore_1 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "I")
-zscore_2 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "II")
-zscore_3 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "III")
-zscore_4 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "IV")
+zscore_1 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "I")
+zscore_2 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "II")
 Sys.sleep(5)
 
-zscore_5 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "V")
-zscore_6 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "VI")
-zscore_7 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "VII")
-zscore_8 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "VIII")
+zscore_3 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "III")
+zscore_4 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "IV")
 Sys.sleep(5)
 
-zscore_9 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "IX")
-zscore_10 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "X")
-zscore_11 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XI")
-zscore_12 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XII")
+zscore_5 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "V")
+zscore_6 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "VI")
 Sys.sleep(5)
 
-zscore_13 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XIII")
-zscore_14 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XIV")
-zscore_15 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XV")
-zscore_16 <- BSA_GLM_CSSIF_noDay(CSSI_Fluc_Pivot, "XVI")
+zscore_7 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "VII")
+zscore_8 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "VIII")
 Sys.sleep(5)
 
-CSSI_F_ZScores_GLM_noday <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+zscore_9 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "IX")
+zscore_10 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "X")
+Sys.sleep(5)
+
+zscore_11 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XI")
+zscore_12 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XII")
+Sys.sleep(5)
+
+zscore_13 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XIII")
+zscore_14 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XIV")
+Sys.sleep(5)
+
+zscore_15 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XV")
+zscore_16 <- BSA_GLM_CSSIF_noDay(CSSI_CuSO4_Pivot_exclmD, "XVI")
+Sys.sleep(5)
+
+CSSI_C_ZScores_GLM_noday <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
                      zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
                      zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
 
-CSSI_F_ZScores_GLM_noday$CHROM <- factor(CSSI_F_ZScores_GLM_noday$CHROM, levels = ChromKey$chromosomes)
+CSSI_C_ZScores_GLM_noday$CHROM <- factor(CSSI_C_ZScores_GLM_noday$CHROM, levels = ChromKey$chromosomes)
 
-save(CSSI_F_ZScores_GLM_noday, file = "CSSI_F_ZScores_GLM_noday2.Rdata")
+save(CSSI_C_ZScores_GLM_noday, file = "RdataFiles/CSSI_C_ZScores_GLM_noday.Rdata")
 ```
 
 ```{r}
  
-load("RdataFiles/CSSI_F_ZScores_GLM_noday2.Rdata")
+load("RdataFiles/CSSI_C_ZScores_GLM_noday.Rdata")
 
 
-JaroszKey <- data.frame(POS = c(318265, 92671, 43887, 891344, 927577, 122347, 510241, 885015, 963579, 537874, 171534, 619798),
-                        CHROM = c("II","III","IV","IV","IV","VIII","XII","XII","XII","XV","XVI","XVI"),
-                        JaroszSNP = c(1,1,1,1,1,1,1,1,1,1,1,1))
-
-CSSI_F_ZScores_GLM_noday %>% mutate(JaroszSNP = NA) %>% left_join(JaroszKey) -> CSSI_F_ZScores_GLM_noday_J
-
-InteractionNetwork <- data.frame(POS = c(889751, 469092, 215987, 120091, 398628),
-                                 CHROM = c("IV", "VII", "XIV", "VIII", "VII"),
-                                 name = c("UPC2", "PDR1", "PDR16", "ERG11", "OLE1"))
-
-
-Z_Fig_bulk_mD <- CSSI_F_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
+Z_Fig_bulk_CuSO4 <- CSSI_C_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
   geom_point(aes(x = POS, y = Bulk_Z), color = "#345F6F", alpha= 0.1) + theme_minimal() +
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-  geom_vline(data = JaroszKey, aes(xintercept = POS), color = "red") +
-  ggtitle("CSSI Fluconazole Selection Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+  ggtitle("CSSI CuSO4 Selection Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine") #+ ylim(-12,12)
 
 
-Z_Fig_int_mD <- CSSI_F_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
+Z_Fig_int_CuSO4 <- CSSI_C_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Interaction_Zprime)) +
   geom_point(aes(x = POS, y = Interaction_Z), color = "#D7335C", alpha= 0.1) + theme_minimal() +
   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-    scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+    scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
     geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-    geom_vline(data = JaroszKey, aes(xintercept = POS), color = "lightblue") +
-ggtitle("CSSI Fluconazole Selection x Background Interaction Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+ggtitle("CSSI CuSO4 Selection x Background Interaction Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
 
-Z_Fig_parent_mD <- CSSI_F_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
+Z_Fig_parent_CuSO4 <- CSSI_C_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Parent_Zprime)) +
   geom_point(aes(x = POS, y = Parent_Z), color = "#FFB05C", alpha= 0.1) + theme_minimal() +
   geom_point(color = "black", size = 0.2) + facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
   geom_hline(yintercept = c(-1.96, 1.96), color = "black")+
-  ggtitle("CSS Fluconazole Parental Background Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+  ggtitle("CSS CuSO4 Parental Background Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")#+ ylim(-12,12)
 
-
-Z_Fig_overlay_mD <- CSSI_F_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
-      geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.8, size = 1) +
-      geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 1, linetype= "dashed") +
+CSSI_C_ZScores_GLM_noday %>%  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
   geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
   geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
   geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")# + ylim(-12,12)
+  #ylim(-5, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
- # ggsave(Z_Fig_bulk, file = "CSSI_Fluc_Z_Fig_bulk.png", width = 5, height = 4)
- # ggsave(Z_Fig_int, file = "CSSI_Fluc_Z_Fig_int.png", width = 5, height = 4)
- # ggsave(Z_Fig_parent, file = "CSSI_Fluc_Z_Fig_parent.png", width = 5, height = 4)
- # ggsave(Z_Fig_Day, file = "CSSI_Fluc_Z_Fig_Day.png", width = 5, height = 4)
- # ggsave(Z_Fig_overlay, file = "CSSI_Fluc_Z_Fig_overlay.png", width = 5, height = 4)
+Z_Fig_bulk_CuSO4
+Z_Fig_parent_CuSO4
+Z_Fig_int_CuSO4
 
-Z_Fig_bulk_mD
-Z_Fig_int_mD
-Z_Fig_parent_mD
+```
 
-#To Compare:
-Z_Fig_overlay_mD
-#Z_Fig_overlay
+# Compare CuSO4 and Fluconazole overlays
+
+```{r}
+load("RdataFiles/CSSI_C_ZScores_GLM_noday.Rdata")
+load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+
+
+CSSI_C_ZScores_GLM_noday %>% #filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI CuSO4 | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-10, 10) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+CSSI_F_ZScores_GLM %>% #filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+    geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-10, 10) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
 ```
 
@@ -1134,7 +1152,7 @@ CSSI_F_WineFluc_CD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) +
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
 
-```{r}
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_F_Wine_BD_Dilute_ZScores_GLM.Rdata")
 
 CSSI_F_Wine_BD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
@@ -1154,7 +1172,7 @@ CSSI_F_Wine_BD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) +
 
 Combining these replicates
 
-```{r}
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
 load("RdataFiles/CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
 load("RdataFiles/CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
@@ -1182,7 +1200,7 @@ NullComparison %>% ggplot(aes(x = POS, y = Dataset_Zprime, color = Comparison)) 
 
 Adding in the full plot just to compare
 
-```{r}
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
 
 CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
@@ -1206,7 +1224,7 @@ CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
 
 ## Actually pull out the peaks
 
-```{r}
+```{r, eval = FALSE}
 #Want the max value above the line for every slope, so maybe per 0 observed in the smoothed line (since there aren't any that really go the same way besides XIV and that's a bit iffy as is.)
 
 load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
@@ -1258,69 +1276,5 @@ head(chrompeaks)
 chrompeaks_int %>% pivot_longer(c(peak, trough), values_to = "Int_POS") %>% select(CHROM, Int_POS) %>% na.omit() -> IntPeaks
 
 left_join(BulkPeaks,IntPeaks) %>% pivot_longer(c(Bulk_POS, Int_POS)) %>% na.omit() -> Peaks
-```
-
-## Calculating the FDR using adjusted p-values
-
-1. Rank your p-values
-2. Assign a q-value(?)
-3. What is the p-value when the q-values are a certain number??????
-
-```{r}
-# if (!require("BiocManager", quietly = TRUE))
-#     install.packages("BiocManager")
-# 
-# BiocManager::install("qvalue")
-
-library(qvalue)
-load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
-head(CSSI_F_ZScores_GLM)
-
-CSSI_F_ZScores_GLM %>% arrange(abs(Bulk_Zprime)) %>% mutate(Bulk_Zprime_Rank = length(Bulk_Zprime):1) %>%
-  arrange(abs(Parent_Zprime)) %>% mutate(Parent_Zprime_Rank = length(Bulk_Zprime):1) %>%
-  arrange(abs(Day_Zprime)) %>% mutate(Day_Zprime_Rank = length(Bulk_Zprime):1) %>%
-  arrange(abs(Interaction_Zprime)) %>% mutate(Interaction_Zprime_Rank = length(Bulk_Zprime):1) -> ranks
-
-ggplot(ranks, aes(x = Bulk_Zprime_Rank, y = abs(Bulk_Zprime))) + geom_line(color = "#345F6F", size = 1) +
-  geom_line(aes(x = Parent_Zprime_Rank, y = abs(Parent_Zprime)), color = "#FFB05C", size = 1) +
-  geom_line(aes(x = Day_Zprime_Rank, y = abs(Day_Zprime)), color = "gray", size = 1) +
-  geom_line(aes(x = Interaction_Zprime_Rank, y = abs(Interaction_Zprime)), color = "#D7335C", size = 1) +
-  ggtitle("Ranked Z-scores by Factor") + ylab("Absolute Value of Z-Score") + xlab("Rank") +
-  geom_hline(yintercept = c(1.96,1), linetype = "dashed")
-
-#Testing formulas for below function
-# qnorm(.025)
-# pnorm(-1.96, lower.tail = T)*2
-
-CSSI_F_ZScores_GLM %>% select(-Bulk_Z, -Parent_Z, -Interaction_Z, -Day_Z) %>% 
-  pivot_longer(c(Bulk_Zprime, Parent_Zprime, Interaction_Zprime, Day_Zprime), names_to = "Effect", values_to = "Zprime") %>%
-  arrange(abs(Zprime)) %>% mutate(Rank = length(Effect):1, pval = pnorm(abs(Zprime), lower.tail = F)*2) -> TotalRanks
-
-qvalresults <- qvalue(TotalRanks$pval, fdr.level = 0.5)
-TotalRanks$qval <- qvalresults$qvalues
-
-#head(qvalresults)
-
-# ggplot(TotalRanks, aes(x = Rank, y = abs(Zprime), color = Effect)) + geom_point(alpha = 0.4) + scale_color_manual(values = c("#345F6F", "gray", "#D7335C", "#FFB05C"))
-# 
-# ggplot(TotalRanks, aes(x = Rank, y = abs(Zprime), color = Effect)) + geom_line(size = 1) + scale_color_manual(values = c("#345F6F", "gray", "#D7335C", "#FFB05C")) + facet_wrap(~Effect) + geom_hline(yintercept = 1, linetype = "dashed") 
-# 
-# ggplot(TotalRanks, aes(x = Rank, y = pval, color = Effect)) + geom_line(size = 1) + scale_color_manual(values = c("#345F6F", "gray", "#D7335C", "#FFB05C")) + facet_wrap(~Effect) + geom_hline(yintercept = 0.05, linetype = "dashed") 
-
-ggplot(TotalRanks, aes(y = qval, x = Zprime, color = Effect)) + geom_line(size = 1) + scale_color_manual(values = c("#345F6F", "gray", "#D7335C", "#FFB05C")) + geom_hline(yintercept = 0.05, linetype = "dashed") + facet_wrap(~Effect)
-
-ggplot(TotalRanks, aes(x = POS, y = -log(qval), color = Effect)) + geom_line(size = 1) +
-  scale_color_manual(values = c("#345F6F", "gray", "#D7335C", "#FFB05C"))+ 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),axis.ticks.x=element_blank())
-```
-
-
-## Actually permuting to calculate the FDR
-
-See how often at every cutoff the Z-score is significant in the bulk permutations. This would be the total number of positives out of the entire thing because they'd be shuffled so there are no true positives. Rank the p-values of the shuffled Z-scores and then find the rank where 5% of them are true.
-
-```{r}
-
 ```
 
