@@ -17,7 +17,7 @@ library(tidyr)
 library(reshape2)
 library(cowplot)
 library(dplyr)
-
+library(ggplot2)
 library(foreach)
 library(doParallel)
 
@@ -787,8 +787,6 @@ NewInput <- readRDS("Input.rds")
 ## Loading this stuff in
 
 ```{r}
-parentperm <- readRDS("RdataFiles/CSSIFluc_ParentPermd.rds")
-dayperm <- readRDS("RdataFiles/CSSIFluc_DayPermd.rds")
 bulkperm <- readRDS("RdataFiles/CSSIFluc_BulkPermd.rds")
 
 #PERMUTED BULK
@@ -807,6 +805,10 @@ bulkperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geom_
 bulkperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Bulk")
+```
+
+```{r}
+parentperm <- readRDS("RdataFiles/CSSIFluc_ParentPermd.rds")
 
 #PERMUTED PARENT
 parentperm %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
@@ -824,6 +826,10 @@ parentperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geo
 parentperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Parent")
+```
+
+```{r}
+dayperm <- readRDS("RdataFiles/CSSIFluc_DayPermd.rds")
 
 #PERMUTED DAY
 dayperm %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
@@ -841,5 +847,31 @@ dayperm %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Index)) + geom_l
 dayperm %>% ggplot(aes(x = POS, y = Day_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + ggtitle("Day Effects with Permuted Day")
+```
+
+
+## Finding the q values of each shuffled bulk
+
+```{r}
+bulkperm <- readRDS("RdataFiles/CSSIFluc_BulkPermd.rds")
+dayperm <- readRDS("RdataFiles/CSSIFluc_DayPermd.rds")
+parentperm <- readRDS("RdataFiles/CSSIFluc_ParentPermd.rds")
+
+bulkperm %>%  mutate(pval = pnorm(abs(Bulk_Zprime), lower.tail = F)*2) %>% arrange(pval) %>% mutate(Rank = length(pval):1) -> bulk_p
+parentperm %>%  mutate(pval = pnorm(abs(Parent_Zprime), lower.tail = F)*2) %>% arrange(pval) %>% mutate(Rank = length(pval):1) -> parent_p
+dayperm %>%  mutate(pval = pnorm(abs(Day_Zprime), lower.tail = F)*2) %>% arrange(pval) %>% mutate(Rank = length(pval):1) -> day_p
+
+#bulk_p %>% group_by(Index) %>% arrange(pval) %>% summarise(quantile(0.05)) -> bulk_p_summary
+
+bulk_p %>% ggplot(aes(x = pval, y = Rank, color = Index)) + geom_line(alpha = 0.1) + theme(legend.position = "none")
+
+#Okay so now pick a cutoff and get the number of positives
+qs <- quantile(bulk_p$Rank, c(0.05, 0.95))
+
+bulk_p[bulk_p$Rank == 150306,]
+bulk_p[bulk_p$Rank == 2855795,]
+
+#So I want to know if I have a cutoff of 0.8, for example, how many are positive each time?
+length(which(bulk_p$pval < 0.8))
 ```
 
