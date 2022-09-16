@@ -1,5 +1,5 @@
 ---
-title: "CSS I Fluconazole Analysis from PosterScripts_Yeast2022"
+title: "CSS I Fluconazole vs CuSO4 Experiments"
 author: "Cassandra Buzby"
 date: "8/23/2022"
 output:
@@ -49,7 +49,7 @@ setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 ```
 
 
-## Streamlined Data Input
+### Streamlined Data Input
 
 Function to analyze:
 
@@ -325,10 +325,6 @@ CSSI_Fluc_concat %>% left_join(SNPids, by = c("CHROM", "POS")) -> CSSI_Fluc_conc
 save(CSSI_Fluc_concat, file = "CSSI_Fluc_concat.Rdata")
 ```
 
-# Checking Data (the reason this is no longer prelim analysis)
-
-## Looking at where the data doesn't match in some bulks
-
 CuSO4
 ```{r, eval = FALSE}
 load("RdataFiles/CSSI_CuSO4_concat.Rdata")
@@ -442,7 +438,7 @@ testingforglm %>% filter(CHROM == "I") %>% ggplot(aes(fill = factor(uniqueDatase
 ```
 
 
-# Run the glm
+## Run the glm
 
 ### Reformat for GLM - pivot
 
@@ -1010,9 +1006,6 @@ BSA_GLM_Nulls <-  function(lrP, chr = "II", windowsize = 100){
   colnames(Results) <- c("CHROM", "POS", "Intercept", "Dataset")
   Results[,2] <- as.numeric(Results[,2])
   Results[,4] <- as.numeric(Results[,4])
-  #Results[,5] <- as.numeric(Results[,5])
-  # Results[,6] <- as.numeric(Results[,6])
-  # Results[,7] <- as.numeric(Results[,7])
   
   Results %>% arrange(POS) %>% select(-Intercept) -> Results
 
@@ -1022,10 +1015,7 @@ BSA_GLM_Nulls <-  function(lrP, chr = "II", windowsize = 100){
   WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
             #save the median value from original index 1 to original end index
                 res_dataset <- mean(Results$Dataset[(i-windowsize):(i+windowsize)])
-                # res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
-                # res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
-                # res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
-
+              
                 #print CHROM, index, POS, and mean
                 c(chr, i, Results$POS[i], Results$Dataset[i], res_dataset)}
   
@@ -1038,12 +1028,7 @@ BSA_GLM_Nulls <-  function(lrP, chr = "II", windowsize = 100){
   WResult[,3] <- as.numeric(WResult[,3])
   WResult[,4] <- as.numeric(WResult[,4])
   WResult[,5] <- as.numeric(WResult[,5])
-  # WResult[,6] <- as.numeric(WResult[,6])
-  # WResult[,7] <- as.numeric(WResult[,7])
-  # WResult[,8] <- as.numeric(WResult[,8])
-  # WResult[,9] <- as.numeric(WResult[,9])
-  # WResult[,10] <- as.numeric(WResult[,10])
-  # WResult[,11] <- as.numeric(WResult[,11])
+
   
   return(WResult)
   }
@@ -1053,27 +1038,40 @@ Run for just the dilute samples
 
 ```{r, eval = FALSE}
 load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+load("RdataFiles/CSSI_CuSO4_Pivot.Rdata")
 
-CompareNulls <- function(TableToAnalyze = CSSI_Fluc_Pivot, D1 = "WineI_Dilute_B", D2 = "WineI_Dilute_C"){
-  TableToAnalyze %>% filter(Dataset == D1 | Dataset == D2) -> WineDilute
+CompareNulls <- function(Table1 = CSSI_Fluc_Pivot, Table2 = Table1, D1 = "WineI_Dilute_B", D2 = "WineI_Dilute_C"){
+  Table1 %>% filter(Dataset == D1) -> WD
+  str(WD)
+  #Table2 %>% filter(Dataset == D2) -> test
+  str(test)
+  #%>% rbind(WD) -> WineDilute
 
   zscore_1 <- BSA_GLM_Nulls(WineDilute, "I")
   zscore_2 <- BSA_GLM_Nulls(WineDilute, "II")
+  Sys.sleep(5)
+
   zscore_3 <- BSA_GLM_Nulls(WineDilute, "III")
   zscore_4 <- BSA_GLM_Nulls(WineDilute, "IV")
   Sys.sleep(5)
   zscore_5 <- BSA_GLM_Nulls(WineDilute, "V")
   zscore_6 <- BSA_GLM_Nulls(WineDilute, "VI")
+  Sys.sleep(5)
+
   zscore_7 <- BSA_GLM_Nulls(WineDilute, "VII")
   zscore_8 <- BSA_GLM_Nulls(WineDilute, "VIII")
   Sys.sleep(5)
   zscore_9 <- BSA_GLM_Nulls(WineDilute, "IX")
   zscore_10 <- BSA_GLM_Nulls(WineDilute, "X")
+  Sys.sleep(5)
+
   zscore_11 <- BSA_GLM_Nulls(WineDilute, "XI")
   zscore_12 <- BSA_GLM_Nulls(WineDilute, "XII")
   Sys.sleep(5)
   zscore_13 <- BSA_GLM_Nulls(WineDilute, "XIII")
   zscore_14 <- BSA_GLM_Nulls(WineDilute, "XIV")
+  Sys.sleep(5)
+
   zscore_15 <- BSA_GLM_Nulls(WineDilute, "XV")
   zscore_16 <- BSA_GLM_Nulls(WineDilute, "XVI")
   Sys.sleep(5)
@@ -1098,81 +1096,50 @@ save(CSSI_F_OakFluc_BC_Dilute_ZScores_GLM, file = "CSSI_F_OakFluc_BC_Dilute_ZSco
 
 CSSI_F_WineFluc_CD_Dilute_ZScores_GLM <- CompareNulls(D1 = "WineI_Fluc_D", D2 = "WineI_Fluc_C")
 save(CSSI_F_WineFluc_CD_Dilute_ZScores_GLM, file = "CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
+
+unique(CSSI_Fluc_Pivot$Dataset)
+unique(CSSI_CuSO4_Pivot$Dataset)
+
+CSSI_CuSO4_Pivot %>% mutate(Day = 0) -> CSSI_CuSO4_Pivot_D
+CuF_Oak_Dilute <- CompareNulls(Table1 = CSSI_Fluc_Pivot,
+                                Table2 = CSSI_CuSO4_Pivot_D,
+                                D1 = "OakI_Dilute_B",
+                                D2 = "OakI_CuSO4_D")
+save(CuF_Oak_Dilute, file = "RdataFiles/CuF_Oak_Dilute.Rdata")
+
+#CSSI_CuSO4_Pivot %>% mutate(Day = 0) -> CSSI_CuSO4_Pivot_D
+CuF_Wine_Dilute <- CompareNulls(Table1 = CSSI_Fluc_Pivot,
+                                Table2 = CSSI_CuSO4_Pivot_D,
+                                D1 = "WineI_Dilute_B",
+                                D2 = "WineI_CuSO4_D")
+save(CuF_Wine_Dilute, file = "RdataFiles/CuF_Wine_Dilute.Rdata")
+
+CuF_Wine_DiluteC <- CompareNulls(Table1 = CSSI_Fluc_Pivot, 
+                                Table2 = CSSI_CuSO4_Pivot_D,
+                                D1 = "WineI_Dilute_C", 
+                                D2 = "WineI_CuSO4_D")
+save(CuF_Wine_DiluteC, file = "RdataFiles/CuF_Wine_DiluteC.Rdata")
+
+#CSSI_CuSO4_Pivot %>% mutate(Day = 0) -> CSSI_CuSO4_Pivot_D
+CuF_Wine_DiluteD <- CompareNulls(Table1 = CSSI_Fluc_Pivot, 
+                                Table2 = CSSI_CuSO4_Pivot_D,
+                                D1 = "WineI_Dilute_D", 
+                                D2 = "WineI_CuSO4_D")
+save(CuF_Wine_DiluteD, file = "RdataFiles/CuF_Wine_DiluteD.Rdata")
+
+#Reversing oak and wine to test
+CuF_OakB_Wine <- CompareNulls(Table1 = CSSI_Fluc_Pivot, 
+                                Table2 = CSSI_CuSO4_Pivot_D,
+                                D1 = "OakI_Dilute_B", 
+                                D2 = "WineI_CuSO4_D")
+save(CuF_OakB_Wine, file = "RdataFiles/CuF_OakB_Wine.Rdata")
+
 ```
 
-Plotting the results of Wine Dilute B and Wine Dilute C
+
+Combining these replicates of only CSS I Fluconazole experiment
 
 ```{r}
-load("RdataFiles/CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
-
-CSSI_F_Wine_BC_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
-      
-  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
-  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
-  
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  
-  ggtitle("Wine Dilute B vs Wine Dilute C") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
-```
-
-```{r}
-load("RdataFiles/CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
-
-CSSI_F_OakFluc_BC_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
-      
-  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
-  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
-  
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  
-  ggtitle("Oak Fluc B vs Oak Fluc C") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
-```
-```{r}
-load("RdataFiles/CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
-
-CSSI_F_WineFluc_CD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
-      
-  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
-  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
-  
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  
-  ggtitle("Wine Fluc D vs Wine Fluc C") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
-```
-
-```{r, eval = FALSE}
-load("RdataFiles/CSSI_F_Wine_BD_Dilute_ZScores_GLM.Rdata")
-
-CSSI_F_Wine_BD_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
-      
-  geom_point(color = "violet", size = 0.2, alpha = 0.1) + 
-  geom_point(aes(x = POS, y = Dataset_Zprime), color = "black", alpha= 0.8, size = 0.2) +
-  
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_Wine_BC_Dilute_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  
-  ggtitle("Wine D vs B Dilute") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
-```
-
-
-Combining these replicates
-
-```{r, eval = FALSE}
 load("RdataFiles/CSSI_F_WineFluc_CD_Dilute_ZScores_GLM.Rdata")
 load("RdataFiles/CSSI_F_OakFluc_BC_Dilute_ZScores_GLM.Rdata")
 load("RdataFiles/CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
@@ -1198,83 +1165,116 @@ NullComparison %>% ggplot(aes(x = POS, y = Dataset_Zprime, color = Comparison)) 
 
 ```
 
-Adding in the full plot just to compare
+Combining these replicates of the two experiments
 
-```{r, eval = FALSE}
-load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+```{r}
+load("RdataFiles/CuF_Oak_Dilute.Rdata")
+load("RdataFiles/CuF_Wine_Dilute.Rdata")
+load("RdataFiles/CuF_Wine_DiluteC.Rdata")
+load("RdataFiles/CuF_Wine_DiluteD.Rdata")
+load("RdataFiles/CuF_OakB_Wine.Rdata")
 
-CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
-      # geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.5, size = 0.7) +
-      # geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 0.7, linetype = "dashed") +
-      # 
-  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
-  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
-  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
-  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+
+CuF_Oak_Dilute$Comparison <- "Oak_FlucvsCuSO4"
+CuF_Wine_Dilute$Comparison <- "Wine_FlucvsCuSO4_B"
+CuF_Wine_DiluteC$Comparison <- "Wine_FlucvsCuSO4_C"
+CuF_Wine_DiluteD$Comparison <- "Wine_FlucvsCuSO4_D"
+CuF_OakB_Wine$Comparison <- "FOakB_CWine"
+
+CF_NullComparison <- rbind(CuF_Oak_Dilute,CuF_Wine_Dilute, CuF_Wine_DiluteC, CuF_Wine_DiluteD, CuF_OakB_Wine)
+
+CF_NullComparison %>% ggplot(aes(x = POS, y = Dataset_Zprime, color = Comparison)) + geom_line(alpha = 0.8) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CF_NullComparison$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  geom_hline(yintercept = c(max(abs(NullComparison$Dataset_Zprime)), -max(abs(NullComparison$Dataset_Zprime))), 
-             color = "black", linetype = "dashed") +
-  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray") + 
+  scale_color_manual(values = c("black", "navyblue", "red", "firebrick", "darkorange")) +
+  ggtitle("All Null Replicate Comparisons") + theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
+CF_NullComparison %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Dataset_Zprime, color = Comparison)) + geom_line(alpha = 0.8) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CF_NullComparison$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray") + 
+  scale_color_manual(values = c("black", "navyblue", "red", "firebrick", "darkorange")) +
+  ggtitle("All Null Replicate Comparisons w/o Chr I") + theme(axis.text.x=element_blank(),axis.ticks.x=element_blank(), legend.position = "null") + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
 ```
 
-## Actually pull out the peaks
+Compare just the oak and wine dilutes from the original experiment
 
-```{r, eval = FALSE}
-#Want the max value above the line for every slope, so maybe per 0 observed in the smoothed line (since there aren't any that really go the same way besides XIV and that's a bit iffy as is.)
+```{r}
+# CuSO4_Null_Comparison <- CompareNulls(Table1 = CSSI_CuSO4_Pivot_D, 
+#                                 Table2 = CSSI_CuSO4_Pivot_D,
+#                                 D1 = "OakI_CuSO4_D", 
+#                                 D2 = "WineI_CuSO4_D")
+# save(CuSO4_Null_Comparison, file = "RdataFiles/CuSO4_Null_Comparison.Rdata")
 
+load("RdataFiles/CuSO4_Null_Comparison.Rdata")
+
+CuSO4_Null_Comparison %>% ggplot(aes(x = POS, y = Dataset_Zprime)) + geom_line() + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CuSO4_Null_Comparison$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray") + 
+  ggtitle("All Null Replicate Comparisons") + theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+```
+## Adding lines from comparisons of replicates
+
+```{r}
+
+CuSO4_Null_Comparison %>% filter(CHROM != "I") %>% select(CHROM, Dataset_Zprime) -> CuSO4_cutoff_df
+NullComparison %>% filter(CHROM != "I") %>% select(CHROM, Dataset_Zprime) -> Fluconazole_cutoff_df
+
+C_cutoff <- quantile(abs(CuSO4_cutoff_df$Dataset_Zprime), 0.975)
+F_cutoff <- quantile(abs(Fluconazole_cutoff_df$Dataset_Zprime), 0.975)
+
+CuSO4_cutoff_df %>% ggplot(aes(x = Dataset_Zprime)) + 
+  geom_density(fill = "blue", alpha = 0.4, size = 1) + 
+  geom_vline(xintercept = c(C_cutoff, -C_cutoff)) +
+    geom_vline(xintercept = c(max(abs(CuSO4_cutoff_df$Dataset_Zprime)), -max(abs(CuSO4_cutoff_df$Dataset_Zprime))), linetype = "dashed") +
+  xlim(-3, 3) + 
+  ylim(0,2) + 
+  ggtitle("CuSO4 Nulls")
+
+Fluconazole_cutoff_df %>% ggplot(aes(x = Dataset_Zprime)) + 
+  geom_density(fill = "goldenrod", alpha = 0.4, size = 1) + 
+      geom_vline(xintercept = c(max(abs(Fluconazole_cutoff_df$Dataset_Zprime)), -max(abs(Fluconazole_cutoff_df$Dataset_Zprime))), linetype = "dashed") +
+  geom_vline(xintercept = c(F_cutoff, -F_cutoff))+  
+  xlim(-3, 3) + 
+  ylim(0,2) + ggtitle("Fluconazole Replicates")
+
+
+load("RdataFiles/CSSI_C_ZScores_GLM_noday.Rdata")
 load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
 
-chrompeaks <- data.frame(CHROM = unique(CSSI_F_ZScores_GLM$CHROM),
-                         peak = NA,
-                         trough = NA)
+CSSI_C_ZScores_GLM_noday %>% #filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI CuSO4 | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-10, 10) + 
+  geom_hline(yintercept = c(C_cutoff, -C_cutoff)) +
+  geom_hline(yintercept = c(max(abs(CuSO4_cutoff_df$Dataset_Zprime)), -max(abs(CuSO4_cutoff_df$Dataset_Zprime))), linetype = "dashed") +
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
-for(i in unique(CSSI_F_ZScores_GLM$CHROM)){
-  #i <- "I"
-  x <- subset(CSSI_F_ZScores_GLM, CHROM == i)
-  peak = max(x$Bulk_Zprime[x$Bulk_Zprime > max(abs(NullComparison$Dataset_Zprime))]) 
-  trough = min(x$Bulk_Zprime[x$Bulk_Zprime < -max(abs(NullComparison$Dataset_Zprime))])
-  if(peak > 1){
-      chrompeaks$peak[chrompeaks$CHROM == i] <- x$POS[x$Bulk_Zprime == peak]
-  }
-  if(trough < 1){
-      chrompeaks$trough[chrompeaks$CHROM == i] <- x$POS[x$Bulk_Zprime == trough]
-  }
-
-}
-
-head(chrompeaks)
-
-chrompeaks %>% pivot_longer(c(peak, trough), values_to = "Bulk_POS") %>% select(CHROM, Bulk_POS) %>% na.omit() -> BulkPeaks
-
-###############################################################################
-
-chrompeaks_int <- data.frame(CHROM = unique(CSSI_F_ZScores_GLM$CHROM),
-                         peak = NA,
-                         trough = NA)
-
-for(i in unique(CSSI_F_ZScores_GLM$CHROM)){
-  #i <- "I"
-  x <- subset(CSSI_F_ZScores_GLM, CHROM == i)
-  peak = max(x$Interaction_Zprime[x$Interaction_Zprime > max(abs(NullComparison$Dataset_Zprime))]) 
-  trough = min(x$Interaction_Zprime[x$Interaction_Zprime < -max(abs(NullComparison$Dataset_Zprime))])
-  if(peak > 1){
-      chrompeaks_int$peak[chrompeaks_int$CHROM == i] <- x$POS[x$Interaction_Zprime == peak]
-  }
-  if(trough < 1){
-      chrompeaks_int$trough[chrompeaks_int$CHROM == i] <- x$POS[x$Interaction_Zprime == trough]
-  }
-
-}
-
-head(chrompeaks)
-
-chrompeaks_int %>% pivot_longer(c(peak, trough), values_to = "Int_POS") %>% select(CHROM, Int_POS) %>% na.omit() -> IntPeaks
-
-left_join(BulkPeaks,IntPeaks) %>% pivot_longer(c(Bulk_POS, Int_POS)) %>% na.omit() -> Peaks
+CSSI_F_ZScores_GLM %>% #filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+    geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  geom_hline(yintercept = c(max(abs(Fluconazole_cutoff_df$Dataset_Zprime)), -max(abs(Fluconazole_cutoff_df$Dataset_Zprime))), linetype = "dashed") +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-10, 10) + geom_hline(yintercept = c(F_cutoff, -F_cutoff)) +
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
 
