@@ -875,3 +875,243 @@ bulk_p[bulk_p$Rank == 2855795,]
 length(which(bulk_p$pval < 0.8))
 ```
 
+# Testing half of each null with other half vs other null
+
+The idea of this test is the compare a sub-sampled experiment with itself to identify the null distribution of effects, and then to compare this sub-sample to a half sample of a replicate to identify if this replicate is from the same distribution. This may help to provide a cutoff from the other nulls (ie if it's different by a certain amount, or if it's the same).
+
+To start off, I want to ONLY compare two bulks (nulls) or one bulk (two sub-samples) to see how similar they are, which means that I should limit the comparison to two bulks and also choose which bulks ahead of time to sample.
+
+### Update: changing the code to only sample half and half without replacement
+
+The original is on the HPC and also github
+
+```{r, eval = FALSE}
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+#Load Libraries
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"),
+                       num = as.character(1:17))
+
+cmd_args <- commandArgs(TRUE)
+
+#args <- c("ChromosomeAsNumber", "Column", "Folder")
+#args <- c("ChromAsNumber", "Comp1Dataset", "Comp2Dataset", "Folder")
+
+argchr <- ChromKey$chromosomes[ChromKey$num == args[1]]
+
+if(length(cmd_args) < 4){
+  Folder <- "None"
+  print("No Folder Created")
+}else{
+  Folder <- args[4]
+  print(Folder)
+  if(file.exists(Folder)){
+    print("Using existing folder")
+  }else{
+    dir.create(Folder)
+    print("New folder created")
+  }
+}
+#to test
+#argchr <- "III"
+
+###################################################################################
+#Load Functions
+#FUNCTION
+
+BSA_GLM_z_sub <-  function(lrP, chr = unique(lrP$CHROM)[1], windowsize = 100){
+
+  lrP <- subset(lrP, CHROM == chr)
+
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ IDcol, weights = n, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[5:6])
+    }
+
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,4] <- as.numeric(Results[,4])
+
+    Results %>% arrange(POS) -> Results
+  }
+
+
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], res_bulk)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "bulk_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+
+  return(WResult)
+}
+
+tableinv <- function(x, COL = "value"){
+      y <- x[rep(rownames(x),x[[COL]]),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+#GLM_VIII <- CSSI_Fluc_Pivot
+#GLM_VIII <- subset(GLM_VIII, POS < 2000)
+#unique(GLM_VIII$POS)
+#i <- 925
+
+SubSample <- function(GLM_VIII, SubProportion = 0.5, BulkName = unique(GLM_VIII$Dataset)[1]){
+      iterativelist <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
+        
+          #make a table for all of the reads of that position
+          GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i), COL = "ReadCount")
+          
+          #sample half the amount of data (or whatever proportion is given)
+          GLM_VIII_inv_sampled <- GLM_VIII_inv[sample(x = 1:dim(GLM_VIII_inv)[1],
+                                        size = round(dim(GLM_VIII_inv)[1]*SubProportion)),]
+          
+          GLM_VIII_inv_sampled$IDcol <- BulkName
+          
+          #add them back in 
+          GLM_VIII_inv_sampled %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> result
+          result
+      }
+      
+      finalresult <- bind_rows(iterativelist)
+      finalresult$ReadCount <- finalresult$n
+      
+      return(finalresult)
+
+}
+
+###################################################################################
+#Load Data
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+
+#Make the subsequent functions work
+CSSI_Fluc_Pivot$value <- CSSI_Fluc_Pivot$ReadCount
+
+#argchr <- "I"
+#Print Notices
+print(paste("Input Chromosome: ", args[1], " corresponding to ", argchr, sep = ""))
+
+#Run Script
+VIII_it_100 <- list()
+VIII_shuffle_100it <- list()
+for(i in 1:100){
+  comp1 <- SubSample(subset(CSSI_Fluc_Pivot, CHROM == argchr & Dataset == args[2]), SubProportion = 0.5, BulkName = paste("1_",args[2], sep = ""))
+  comp2 <- SubSample(subset(CSSI_Fluc_Pivot, CHROM == argchr & Dataset == args[3]), SubProportion = 0.5, BulkName = paste("2_",args[3], sep = ""))
+  VIII_it_100[[i]] <- rbind(comp1, comp2)
+  
+  VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
+  
+  VIII_shuffle_100it[[i]] <- BSA_GLM_z_sub(VIII_it_100[[i]])
+}
+
+Shuffled_100 <- bind_rows(VIII_shuffle_100it, .id="Index")
+
+if(Folder == "None"){
+  save(Shuffled_100, file = paste(args[2], args[3], "_SubSample_FI_", argchr, ".Rdata", sep = ""))
+}else{
+  save(Shuffled_100, file = paste(Folder, "/", args[2], args[3], "_SubSample_FI_", argchr, ".Rdata", sep = ""))
+}
+
+```
+
+Load in data to process
+
+```{r}
+WineIFluc_D <- readRDS("RdataFiles/WineIFluc_D.rds")
+OakIFluc_B <- readRDS("RdataFiles/OakIFluc_B.rds")
+OakIDilute_B <- readRDS("RdataFiles/OakIDilute_B.rds")
+WineIDilute_BD <- readRDS("RdataFiles/WineIDilute_BD.rds")
+WineIDilute_B <- readRDS("RdataFiles/WineIDilute_B.rds")
+WineIDilute_C <- readRDS("RdataFiles/WineIDilute_C.rds")
+
+# unique(WineIFluc_D$CHROM)
+# head(WineIDilute_B)
+```
+
+```{r}
+WineIDilute_BD %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(WineIDilute_BD$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("SubSampled Wine Dilute B vs D")
+
+WineIDilute_B %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(WineIDilute_B$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("SubSampled Wine Dilute B")
+
+```
+
+Density of each
+
+```{r}
+
+WineIDilute_BD %>% ggplot(aes(x = bulk_Zprime))  +
+  geom_density(data = OakIFluc_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  geom_density(data = OakIDilute_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  geom_density(data = WineIFluc_D, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  geom_density(data = WineIDilute_C, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  geom_density(data = WineIDilute_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) + 
+  geom_density(fill = "red", alpha = 0.2, size = 1)
+
+```
+
+```{r}
+WineIDilute_BD %>% ggplot(aes(x = bulk_Zprime, color = Index))+ geom_density(alpha = 0.02) + theme(legend.position = "none")
+
+```
+
+Figuring out the confidence on the peaks
+
+```{r}
+#Find max values for each iteration
+
+WineIDilute_BD %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> Wine_BD_Max
+
+WineIDilute_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> Wine_B_Max
+
+head(Wine_BD_Max)
+
+Wine_BD_Max %>% ggplot(aes(x = absmax)) + geom_density(fill = "red", alpha = 0.2, size = 1) + 
+  geom_density(aes(x = abs_95), fill = "gray", alpha = 0.2, size = 1) +
+  geom_density(data = Wine_B_Max, aes(x = absmax), fill = "navyblue", 
+               alpha = 0.2, size = 1, linetype = "dashed") +
+  geom_density(data = Wine_B_Max, aes(x = abs_95), fill = "gray", 
+               alpha = 0.2, size = 1, linetype = "dashed")+
+  ggtitle("Comparison of Max (colored) and 95% (gray) of B vs BxD")
+
+between_max <- mean(Wine_BD_Max$absmax)
+between_95 <- mean(Wine_BD_Max$abs_95)
+within_max <- mean(Wine_B_Max$absmax)
+within_95 <- mean(Wine_B_Max$abs_95)
+
+
+```
+

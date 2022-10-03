@@ -1257,12 +1257,208 @@ ggplot(TotalRanks, aes(x = POS, y = -log(qval), color = Effect)) + geom_line(siz
   theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),axis.ticks.x=element_blank())
 ```
 
+## Using "Population" for different "Day" values so it's just one of each?
 
-## Actually permuting to calculate the FDR
+This doesn't help at all, and makes everything confusing because each population then is its own thing and that takes up all of the effects.
 
-See how often at every cutoff the Z-score is significant in the bulk permutations. This would be the total number of positives out of the entire thing because they'd be shuffled so there are no true positives. Rank the p-values of the shuffled Z-scores and then find the rank where 5% of them are true.
+```{r, eval = FALSE}
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+CSSI_Fluc_Pivot$Day <- CSSI_Fluc_Pivot$Dataset
 
-```{r}
+zscore_1 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "I")
+zscore_2 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "II")
+zscore_3 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "III")
+zscore_4 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "IV")
+Sys.sleep(5)
+zscore_5 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "V")
+zscore_6 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "VI")
+zscore_7 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "VII")
+zscore_8 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "VIII")
+Sys.sleep(5)
+zscore_9 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "IX")
+zscore_10 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "X")
+zscore_11 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XI")
+zscore_12 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XII")
+Sys.sleep(5)
+zscore_13 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XIII")
+zscore_14 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XIV")
+zscore_15 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XV")
+zscore_16 <- BSA_GLM_CSSIF(CSSI_Fluc_Pivot, "XVI")
+Sys.sleep(5)
+
+CSSI_F_ZScores_GLM_DATASET <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_F_ZScores_GLM_DATASET$CHROM <- factor(CSSI_F_ZScores_GLM_DATASET$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_F_ZScores_GLM_DATASET, file = "RdataFiles/CSSI_F_ZScores_GLM_DATASET.Rdata")
+```
+
+
+
+```{r, eval = FALSE}
+#Does the day matter now? THIS IS NOT USEFUL AT ALL
+
+load("RdataFiles/CSSI_F_ZScores_GLM_DATASET.Rdata")
+
+CSSI_F_ZScores_GLM_DATASET %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+      # geom_vline(data = JaroszKey, aes(xintercept = POS), color = "black", alpha = 0.5, size = 0.7) +
+      # geom_vline(data = InteractionNetwork, aes(xintercept = POS), color = "red", alpha = 1, size = 0.7, linetype = "dashed") +
+      # 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_DATASET$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(max(abs(NullComparison$Dataset_Zprime)), -max(abs(NullComparison$Dataset_Zprime))), 
+             color = "black", linetype = "dashed") +
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ylim(-10, 10) +
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
 ```
+
+Looking at cutoffs of subsetting and comparing between nulls
+
+```{r}
+WineIFluc_D <- readRDS("RdataFiles/WineIFluc_D.rds")
+OakIFluc_B <- readRDS("RdataFiles/OakIFluc_B.rds")
+OakIDilute_B <- readRDS("RdataFiles/OakIDilute_B.rds")
+WineIDilute_BD <- readRDS("RdataFiles/WineIDilute_BD.rds")
+WineIDilute_B <- readRDS("RdataFiles/WineIDilute_B.rds")
+WineIDilute_C <- readRDS("RdataFiles/WineIDilute_C.rds")
+
+WineIDilute_BD %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "between",
+                                                 bulk = "dilute",
+                                                 Sample = "WineD_BD_Max")-> WineD_BD_Max
+
+WineIDilute_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "within",
+                                                 bulk = "dilute",
+                                                 Sample = "WineD_B_Max")-> WineD_B_Max
+
+OakIFluc_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "within",
+                                                 bulk = "fluconazole",
+                                                 Sample = "OakF_B_Max")-> OakF_B_Max
+WineIFluc_D %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "within",
+                                                 bulk = "fluconazole",
+                                                 Sample = "WineF_D_Max")-> WineF_D_Max
+WineIDilute_C %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "within",
+                                                 bulk = "dilute",
+                                                 Sample = "WineD_C_Max")-> WineD_C_Max
+OakIDilute_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "within",
+                                                 bulk = "dilute",
+                                                 Sample = "OakD_B_Max")-> OakD_B_Max
+
+between_max <- mean(WineD_BD_Max$absmax)
+between_95 <- mean(WineD_BD_Max$abs_95)
+within_max <- mean(WineD_B_Max$absmax)
+within_95 <- mean(WineD_B_Max$abs_95)
+
+MaxVals <- rbind(OakD_B_Max, WineD_C_Max,WineF_D_Max,OakF_B_Max,WineD_B_Max,WineD_BD_Max)
+
+MaxVals %>% ggplot(aes(x = absmax, group = Sample, color = bulk, linetype = group)) + 
+   geom_vline(xintercept = c(between_95), linetype = "dashed", size = 0.8) +
+    geom_vline(xintercept = c(between_max), size = 0.8) +
+  geom_density(size = 0.8) +
+  geom_density(aes(x = abs_95, group = Sample, linetype = group), alpha = 0.2, fill = "gray", size = 0.8) +
+  ggtitle("Distribution of Max (white) and 95% Max (gray)")
+
+
+# WineD_BD_Max %>% ggplot(aes(x = absmax)) + geom_density(fill = "red", alpha = 0.2, size = 1) + 
+#   geom_density(aes(x = abs_95), fill = "gray", alpha = 0.2, size = 1) +
+#   geom_density(data = Wine_B_Max, aes(x = absmax), fill = "navyblue", 
+#                alpha = 0.2, size = 1, linetype = "dashed") +
+#   geom_density(data = Wine_B_Max, aes(x = abs_95), fill = "gray", 
+#                alpha = 0.2, size = 1, linetype = "dashed")+
+#   ggtitle("Comparison of Max (colored) and 95% (gray) of B vs BxD")
+
+between_max <- mean(WineD_BD_Max$absmax)
+between_95 <- mean(WineD_BD_Max$abs_95)
+within_max <- mean(WineD_B_Max$absmax)
+within_95 <- mean(WineD_B_Max$abs_95)
+
+```
+
+### Plot using the between 95% cutoff
+
+```{r}
+between_95 <- mean(WineD_BD_Max$abs_95)
+between_max <- mean(WineD_BD_Max$absmax)
+
+load("RdataFiles/CSSI_F_ZScores_GLM_noday2.Rdata")
+
+CSSI_F_ZScores_GLM_noday %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_hline(yintercept = c(-between_95, between_95), linetype = "dashed", size = 0.8) +
+    geom_hline(yintercept = c(-between_max, between_max), size = 0.8) +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores (-D)") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+```{r}
+between_95 <- mean(WineD_BD_Max$abs_95)
+between_max <- mean(WineD_BD_Max$absmax)
+
+load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+
+CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_hline(yintercept = c(-between_95, between_95), linetype = "dashed", size = 0.8) +
+    geom_hline(yintercept = c(-between_max, between_max), size = 0.8) +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+## Just Chr 7 for presentation
+
+```{r}
+between_95 <- mean(WineD_BD_Max$abs_95)
+between_max <- mean(WineD_BD_Max$absmax)
+
+load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+
+CSSI_F_ZScores_GLM %>% filter(CHROM == "VII" | CHROM == "XIII") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_hline(yintercept = c(-between_95, between_95), linetype = "dashed", size = 0.8) +
+    geom_hline(yintercept = c(-between_max, between_max), size = 0.8) +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+```
+
 
