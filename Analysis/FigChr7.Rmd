@@ -103,6 +103,17 @@ within_max <- mean(WineD_B_Max$absmax)
 within_95 <- mean(WineD_B_Max$abs_95)
 ```
 
+## Max and min on Chr VII
+
+```{r}
+load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+
+CSSI_F_ZScores_GLM[which(CSSI_F_ZScores_GLM$Bulk_Zprime == min(CSSI_F_ZScores_GLM$Bulk_Zprime[CSSI_F_ZScores_GLM$CHROM == "VII"])),]
+
+CSSI_F_ZScores_GLM[which(CSSI_F_ZScores_GLM$Bulk_Zprime == max(CSSI_F_ZScores_GLM$Bulk_Zprime[CSSI_F_ZScores_GLM$CHROM == "VII"])),]
+  
+```
+
 
 ## Just Chr 7 for presentation
 

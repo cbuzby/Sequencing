@@ -881,9 +881,6 @@ The idea of this test is the compare a sub-sampled experiment with itself to ide
 
 To start off, I want to ONLY compare two bulks (nulls) or one bulk (two sub-samples) to see how similar they are, which means that I should limit the comparison to two bulks and also choose which bulks ahead of time to sample.
 
-### Update: changing the code to only sample half and half without replacement
-
-The original is on the HPC and also github
 
 ```{r, eval = FALSE}
 #!/usr/bin/env Rscript
@@ -1041,6 +1038,219 @@ if(Folder == "None"){
 }
 
 ```
+
+### Remaking the function to sample without replacement for the two from the same sample
+
+```{r}
+dataset <- subset(CSSI_Fluc_Pivot, POS < 2000)
+
+SubSample_Halves <- function(dataset){
+  iterativelist <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
+  #split everything into the table
+  datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
+  
+  #sample half the data and then the other half without replacement
+  indices <- data.frame(index = 1:dim(datainv)[1], samples = NA)
+  indices$samples <- sample(x = c(1,2), size = length(indices$samples), replace = TRUE)
+  
+  SampleA <- datainv[indices$samples == 1,]
+  SampleA$IDcol <- "A"
+  SampleB <- datainv[indices$samples == 2,]
+  SampleB$IDcol <- "B"
+  
+  SampleA %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultA
+  SampleB %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultB
+  
+  result <- rbind(resultA, resultB)
+  
+  }
+  finalresult <- bind_rows(iterativelist)
+  finalresult$ReadCount <- finalresult$n
+      
+  return(finalresult)
+
+}
+
+test <- SubSample_Halves(dataset)
+```
+
+## New HPC Script for single samples
+
+```{r}
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+#Load Libraries
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"),
+                       num = as.character(1:17))
+
+cmd_args <- commandArgs(TRUE)
+
+#args <- c("ChromosomeAsNumber", "Dataset", "Folder")
+
+argchr <- ChromKey$chromosomes[ChromKey$num == args[1]]
+
+if(length(cmd_args) < 3){
+  Folder <- "None"
+  print("No Folder Created")
+}else{
+  Folder <- args[3]
+  print(Folder)
+  if(file.exists(Folder)){
+    print("Using existing folder")
+  }else{
+    dir.create(Folder)
+    print("New folder created")
+  }
+}
+
+###################################################################################
+#Load Functions
+#FUNCTION
+
+BSA_GLM_z_sub <-  function(lrP, chr = unique(lrP$CHROM)[1], windowsize = 100){
+
+  lrP <- subset(lrP, CHROM == chr)
+
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ IDcol, weights = n, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[5:6])
+    }
+
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkHigh")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,4] <- as.numeric(Results[,4])
+
+    Results %>% arrange(POS) -> Results
+  }
+
+
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_bulk <- mean(Results$bulkHigh[(i-windowsize):(i+windowsize)])
+                #print CHROM, index, POS, and median
+                c(chr, i, Results$POS[i], Results$bulkHigh[i], res_bulk)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", "bulk_Z", "bulk_Zprime")
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+
+  return(WResult)
+}
+
+tableinv <- function(x, COL = "value"){
+      y <- x[rep(rownames(x),x[[COL]]),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+SubSample_Halves <- function(dataset){
+  iterativelist[[i]] <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
+  #split everything into the table
+  datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
+  
+  #sample half the data and then the other half without replacement
+  indices <- data.frame(index = 1:dim(datainv)[1], samples = NA)
+  indices$samples <- sample(x = c(1,2), size = length(indices$samples), replace = TRUE)
+  
+  SampleA <- datainv[indices$samples == 1,]
+  SampleA$IDcol <- "A"
+  SampleB <- datainv[indices$samples == 2,]
+  SampleB$IDcol <- "B"
+  
+  SampleA %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultA
+  SampleB %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultB
+  
+  result <- rbind(resultA, resultB)
+  
+  }
+  
+  finalresult <- bind_rows(iterativelist)
+  finalresult$ReadCount <- finalresult$n
+      
+  return(finalresult)
+
+}
+
+SubSample <- function(GLM_VIII, SubProportion = 0.5, BulkName = unique(GLM_VIII$Dataset)[1]){
+      iterativelist <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
+        
+          #make a table for all of the reads of that position
+          GLM_VIII_inv <- tableinv(subset(GLM_VIII, POS == i), COL = "ReadCount")
+          
+          #sample half the amount of data (or whatever proportion is given)
+          GLM_VIII_inv_sampled <- GLM_VIII_inv[sample(x = 1:dim(GLM_VIII_inv)[1],
+                                        size = round(dim(GLM_VIII_inv)[1]*SubProportion)),]
+          
+          GLM_VIII_inv_sampled$IDcol <- BulkName
+          
+          #add them back in 
+          GLM_VIII_inv_sampled %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> result
+          result
+      }
+      
+      finalresult <- bind_rows(iterativelist)
+      finalresult$ReadCount <- finalresult$n
+      
+      return(finalresult)
+
+}
+
+###################################################################################
+#Load Data
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+
+#Make the subsequent functions work
+CSSI_Fluc_Pivot$value <- CSSI_Fluc_Pivot$ReadCount
+
+#argchr <- "I"
+#Print Notices
+print(paste("Input Chromosome: ", args[1], " corresponding to ", argchr, sep = ""))
+
+#Run Script
+VIII_it_100 <- list()
+VIII_shuffle_100it <- list()
+for(i in 1:100){
+  VIII_it_100[[i]] <- SubSample_Halves(subset(CSSI_Fluc_Pivot, CHROM == argchr & Dataset == args[2]))
+
+  VIII_it_100[[i]]$value <- VIII_it_100[[i]]$n
+  
+  VIII_shuffle_100it[[i]] <- BSA_GLM_z_sub(VIII_it_100[[i]])
+}
+
+Shuffled_100 <- bind_rows(VIII_shuffle_100it, .id="Index")
+
+if(Folder == "None"){
+  save(Shuffled_100, file = paste(args[2], "_SubSample_FI_", argchr, ".Rdata", sep = ""))
+}else{
+  save(Shuffled_100, file = paste(Folder, "/", args[2], "_SubSample_FI_", argchr, ".Rdata", sep = ""))
+}
+
+```
+
 
 Load in data to process
 
