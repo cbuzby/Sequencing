@@ -1189,7 +1189,44 @@ SubSample_Halves <- function(dataset){
   }
   
   finalresult <- bind_rows(iterativelist)
-  finalresult$ReadCount <- finalresult$n
+  finalresult$ReadCount <- finalresult$n + 1
+      
+  return(finalresult)
+
+}
+
+#New Functions
+tableforcount <- function(x, value){
+        y <- x[rep(rownames(x),1),1:(ncol(x))]
+        rownames(y) <- c(1:nrow(y))
+        return(y)}
+
+SubSample_Halves_FIXED <- function(dataset){
+  iterativelist[[i]] <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
+  #split everything into the table
+  datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
+  
+  #sample half the data and then the other half without replacement
+  indices <- data.frame(index = 1:dim(datainv)[1], samples = NA)
+  indices$samples <- sample(x = c(1,2), size = length(indices$samples), replace = TRUE)
+  
+  #New Code
+  addinv <- tableforcount(subset(dataset, POS == i), 1)
+
+  SampleA <- datainv[indices$samples == 1,]
+  SampleA$IDcol <- "A"
+  SampleB <- datainv[indices$samples == 2,]
+  SampleB$IDcol <- "B"
+  
+  SampleA %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultA
+  SampleB %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultB
+  
+  result <- rbind(resultA, resultB)
+  
+  }
+  
+  finalresult <- bind_rows(iterativelist)
+  finalresult$ReadCount <- finalresult$n + 1
       
   return(finalresult)
 

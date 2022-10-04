@@ -141,6 +141,7 @@ BSA_GLM_CSSIF <-  function(lrP, chr = "II", windowsize = 100){
   }
 ```
 
+Run GLM per chromosome 
 
 ```{r, eval = FALSE}
 
@@ -173,6 +174,7 @@ CSSI_F_lowsample_GLM$CHROM <- factor(CSSI_F_lowsample_GLM$CHROM, levels = ChromK
 save(CSSI_F_lowsample_GLM, file = "RdataFiles/CSSI_F_lowsample_GLM.Rdata")
 ```
 
+Plot subsample of lowest coverage
 
 ```{r}
 load("RdataFiles/CSSI_F_lowsample_GLM.Rdata")
@@ -181,10 +183,10 @@ max(CSSI_F_lowsample_GLM$Bulk_Zprime)
 min(CSSI_F_lowsample_GLM$Bulk_Zprime)
 
 CSSI_F_lowsample_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
- geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
-  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
-  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
-    geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.2) +
+ geom_point(color = "#345F6F", size = 0.4, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.4) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.4) +
+    geom_point(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.4) +
 
   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_lowsample_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
@@ -268,9 +270,11 @@ SampleComparison %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Sample)
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
 
-## Run 1/4 of the data and then use the half thresholds from permutations
+## Run 1/2 of the data and then use the half thresholds from permutations
 
-```{r}
+Using the lowest threshold divided in half to mimic the thresholds calculated from comparing half of one dataset to half of the other in the Wine BD sub-sampling comparison.
+
+```{r, eval = FALSE}
 load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
 
 tableinv <- function(x, COL = "value"){
@@ -324,7 +328,7 @@ CSSI_F_qsample_GLM$CHROM <- factor(CSSI_F_qsample_GLM$CHROM, levels = ChromKey$c
 save(CSSI_F_qsample_GLM, file = "RdataFiles/CSSI_F_qsample_GLM.Rdata")
 ```
 
-Add the threshold here
+### Add the threshold and plot
 
 ```{r}
 #Calculate the thresholds
@@ -341,7 +345,10 @@ between_max <- mean(WineD_BD_Max$absmax)
 
 load("RdataFiles/CSSI_F_qsample_GLM.Rdata")
 
-CSSI_F_qsample_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+min(CSSI_F_qsample_GLM$Bulk_Zprime)
+max(CSSI_F_qsample_GLM$Bulk_Zprime)
+
+CSSI_F_qsample_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
   geom_hline(yintercept = c(-between_95, between_95), linetype = "dashed", size = 0.8) +
     geom_hline(yintercept = c(-between_max, between_max), size = 0.8) +
   geom_line(color = "#345F6F", size = 0.4) + 
@@ -351,7 +358,7 @@ CSSI_F_qsample_GLM %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zpr
 
   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_qsample_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+  ggtitle("CSSI Fluconazole 1/4 Sample | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + 
   #ylim(-5, 5) + 
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")

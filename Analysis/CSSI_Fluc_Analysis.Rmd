@@ -273,6 +273,8 @@ save(CSSI_Fluc_concat, file = "CSSI_Fluc_concat.Rdata")
 ```{r}
 load("RdataFiles/CSSI_Fluc_concat.Rdata")
 
+head(CSSI_Fluc_concat)
+
 #ggplot(CSSI_Fluc_concat, aes(x = GQ.HIGH, color = Bulk)) + geom_density()
 CSSI_Fluc_concat %>% #filter(GQ.HIGH > 98) %>% select(-DP.HIGH, - GQ.HIGH, -SNPindex.HIGH, -PL.HIGH, -REF, -ALT) %>%
   pivot_longer(c(AD_REF.HIGH, AD_ALT.HIGH), names_to = "ALT_REF", values_to = "ReadCount") %>% filter(Type != "Alt") %>% na.omit() -> CSSIF_Pivot3
@@ -612,6 +614,8 @@ save(CSSI_F_ZScores_GLM, file = "CSSI_F_ZScores_GLM_allexcl.Rdata")
 
 load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
 
+head(CSSI_F_ZScores_GLM)
+
 JaroszKey <- data.frame(POS = c(318265, 92671, 43887, 891344, 927577, 122347, 510241, 885015, 963579, 537874, 171534, 619798),
                         CHROM = c("II","III","IV","IV","IV","VIII","XII","XII","XII","XV","XVI","XVI"),
                         Yname = c("YBR041W", "YCL017C",  "YDL229W", "YDR213W", "YDR232W", "YHR007C", 
@@ -785,6 +789,12 @@ BSA_GLM_CSSIF_noDay <-  function(lrP, chr = "II", windowsize = 100){
 
 
 Running Function
+
+```{r}
+load("RdataFiles/CSSI_Fluc_Pivot_exclmD.Rdata")
+head(CSSI_Fluc_Pivot)
+```
+
 
 ```{r, eval = FALSE}
 
@@ -1028,6 +1038,8 @@ Plotting the results of Wine Dilute B and Wine Dilute C
 
 ```{r}
 load("RdataFiles/CSSI_F_Wine_BC_Dilute_ZScores_GLM.Rdata")
+
+head(CSSI_F_Wine_BC_Dilute_ZScores_GLM)
 
 CSSI_F_Wine_BC_Dilute_ZScores_GLM %>% ggplot(aes(x = POS, y = Dataset_Z)) + 
       
@@ -1436,6 +1448,7 @@ CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
         axis.ticks.x=element_blank()) + 
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
+
 ## Just Chr 7 for presentation
 
 ```{r}
