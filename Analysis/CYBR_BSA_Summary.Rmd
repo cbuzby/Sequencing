@@ -1,7 +1,7 @@
 ---
 title: "CYBR BSA Summary"
 author: "Cassandra Buzby"
-date: "10/4/2022"
+date: "10/21/2022"
 output: 
   html_document:
     df_print: paged
@@ -20,7 +20,7 @@ library(dplyr)
 library(foreach)
 library(doParallel)
 
- ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
                                        "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
                        CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
                                  "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
@@ -50,7 +50,7 @@ library(doParallel)
 ```
 
 
-## Convert VCF to GATK table
+### Convert VCF to GATK table
 
 Script is in bash
 
@@ -66,7 +66,9 @@ gatk VariantsToTable \
 ```
 
 
-## Convert GATK table to Data Frame
+## Functions
+
+### Convert GATK table to Data Frame
 
 Make a better way to do this that doesn't use QTLseqR
 
@@ -120,7 +122,7 @@ cybrInputGATKTable <- function(rawData, yeast = TRUE){
 
 ```
 
-## Filter by quality
+### Filter by quality
 
 ```{r}
 cybrQualityFilter <- function(gatkdf, GQcutoff = 98, cleandata = TRUE){
@@ -128,7 +130,7 @@ cybrQualityFilter <- function(gatkdf, GQcutoff = 98, cleandata = TRUE){
   #Filter by quality
   gatkdf %>% filter(GQ > GQcutoff) %>% 
     select(-DP, -GQ, -PL.ALT, -PL.REF) %>% 
-    pivot_longer(c(AD.REF, AD.ALT), names_to = "Allele", values_to = "ReadCount") %>% 
+    pivot_longer(c(AD.REF, AD.ALT), names_to = "AltRef_Allele", values_to = "ReadCount") %>% 
     na.omit() -> filteredgatkdf
   
   if(cleandata == TRUE){
@@ -146,7 +148,7 @@ cybrQualityFilter <- function(gatkdf, GQcutoff = 98, cleandata = TRUE){
 }
 ```
 
-## Convert Parental VCFs to Data Frame
+### Convert Parental VCFs to Data Frame
 
 ```{r}
 cybrConvertParentalAlleles <- function(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), 
@@ -198,7 +200,7 @@ cybrConvertParentalAlleles <- function(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.
 
 ```
 
-## Combine Parental and Experimental Variants
+### Combine Parental and Experimental Variants
 
 Combine truncated with total dataset
 
@@ -206,20 +208,22 @@ Combine truncated with total dataset
 
 cybrIDAlleles <- function(BSAdfstart = finaldf, Parentdf = test, yeast = TRUE){
   
+  Parentdf %>% na.omit()
   BSAdf <- left_join(BSAdfstart, Parentdf)
   BSAdf$PAllele <- NA
   
   Parents <- unique(Parentdf$Type)
   if(length(Parents) == 2){
-      BSAdf$PAllele[BSAdf$Allele == "AD.REF" & BSAdf$Type == Parents[1]] <- Parents[1]
-      BSAdf$PAllele[BSAdf$Allele == "AD.REF" & BSAdf$Type == Parents[2]] <- Parents[2]
+      BSAdf$PAllele[BSAdf$AltRef_Allele == "AD.REF" & BSAdf$Type == Parents[1]] <- Parents[1]
+      BSAdf$PAllele[BSAdf$AltRef_Allele == "AD.REF" & BSAdf$Type == Parents[2]] <- Parents[2]
       
       #Run if only two-parent cross
-      BSAdf$PAllele[BSAdf$Allele == "AD.ALT" & BSAdf$Type == "Wine"] <- "Oak"
-      BSAdf$PAllele[BSAdf$Allele == "AD.ALT" & BSAdf$Type == "Oak"] <- "Wine"
+      BSAdf$PAllele[BSAdf$AltRef_Allele == "AD.ALT" & BSAdf$Type == Parents[1]] <- Parents[2]
+      BSAdf$PAllele[BSAdf$AltRef_Allele == "AD.ALT" & BSAdf$Type == Parents[2]] <- Parents[1]
+      
   }else{
     for(i in Parents){
-      BSAdf$PAllele[BSAdf$Allele == "AD.REF" & BSAdf$Type == i] <- i
+      BSAdf$PAllele[BSAdf$AltRef_Allele == "AD.REF" & BSAdf$Type == i] <- i
     }
   }
   
@@ -236,7 +240,7 @@ cybrIDAlleles <- function(BSAdfstart = finaldf, Parentdf = test, yeast = TRUE){
   
   #Convert all to factors for glm
   BSAdf$Dataset <- factor(BSAdf$Dataset)
-  BSAdf$Allele <- factor(BSAdf$Allele)
+  BSAdf$AltRef_Allele <- factor(BSAdf$AltRef_Allele)
   BSAdf$PAllele <- factor(BSAdf$PAllele)
   
   return(BSAdf)
@@ -244,7 +248,7 @@ cybrIDAlleles <- function(BSAdfstart = finaldf, Parentdf = test, yeast = TRUE){
 
 ```
 
-## Running Pipeline of Functions
+### Running Pipeline of Functions
 
 ```{r, warning=FALSE, message=FALSE}
 mydatatotest = "HGV.SortedCat.vcf.output.table"
@@ -258,12 +262,12 @@ head(qualitydf)
 parentSNPids <- cybrConvertParentalAlleles(Truncate = TRUE)
 head(parentSNPids)
 
-testmerge <- cybrIDAlleles(BSAdfstart = qualitydf, Parentdf = parentSNPids, yeast = TRUE)
+testmerge <- cybrIDAlleles(BSAdfstart = qualitydf, Parentdf = parentSNPids, yeast = TRUE) %>% na.omit()
 head(testmerge)
 
 ```
 
-Reformat data so that it has bulk etc included
+#### Reformat data so that it has bulk etc included
 
 ```{r}
 unique(testmerge$Dataset)
@@ -298,27 +302,10 @@ head(testmerge)
 
 ```
 
-
-```{r, eval = FALSE}
-#For testing
-
-load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
-head(CSSI_Fluc_Pivot)
-lrP <- CSSI_Fluc_Pivot
-chr = "I"
-windowsize = 100
-POS = 925
-i <- POS
-
-lrP <- subset(lrP, CHROM == chr)
-
-lrP[lrP$POS == i,]
-```
-
-## FUNCTION: Run GLM
+### Run GLM Function
 
 ```{r}
-cybrBSA_GLM <-  function(lrP, chr = "II", windowsize = 100, formula = "Allele ~ Bulk*Parent", 
+cybrBSA_GLM <-  function(lrP, chr = "II", windowsize = 100, formula = "PAllele ~ Bulk*Parent", 
                            resultscol = c("Intercept", "Bulk", "Parent", "Interaction")){
   
   lrP <- subset(lrP, CHROM == chr)
@@ -345,47 +332,9 @@ cybrBSA_GLM <-  function(lrP, chr = "II", windowsize = 100, formula = "Allele ~ 
 return(Results)
 }
 
-#Hard-coded windows
-SmoothBSAWindows <- function(Results){
-  #Run the windows on that chromosome
-  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
-            #save the median value from original index 1 to original end index
-                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
-                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
-                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
-                res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
-
-                #print CHROM, index, POS, and mean
-                c(chr, i, Results$POS[i], 
-                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], Results$Day2[i],
-                  res_bulk, res_parent, res_day, res_int)}
-  
-  WResult <- as.data.frame(WResult)
-  
-  colnames(WResult) <- c("CHROM", "Index", "POS", 
-                         "Bulk_Z", "Parent_Z", "Interaction_Z", "Day_Z",
-                         "Bulk_Zprime", "Parent_Zprime", "Day_Zprime","Interaction_Zprime")
-  
-  for(i in 2:length(colnames(WResult))){
-      Results[,i] <- as.numeric(Results[,i])
-  }
-  
-  # WResult[,2] <- as.numeric(WResult[,2])
-  # WResult[,3] <- as.numeric(WResult[,3])
-  # WResult[,4] <- as.numeric(WResult[,4])
-  # WResult[,5] <- as.numeric(WResult[,5])
-  # WResult[,6] <- as.numeric(WResult[,6])
-  # WResult[,7] <- as.numeric(WResult[,7])
-  # WResult[,8] <- as.numeric(WResult[,8])
-  # WResult[,9] <- as.numeric(WResult[,9])
-  # WResult[,10] <- as.numeric(WResult[,10])
-  # WResult[,11] <- as.numeric(WResult[,11])
-  # 
-  return(WResult)
-}
 ```
 
-New Window Script Function
+### New Window Script Function
 
 ```{r}
 cybrSmoothBSAWindows <- function(Results, windowsize = 100, chr = unique(Results$CHROM)[1]){
@@ -427,18 +376,18 @@ cybrSmoothBSAWindows <- function(Results, windowsize = 100, chr = unique(Results
 Testing new cybr scripts
 
 ```{r}
-testbsa <- cybrBSA_GLM(testmerge)
-anothertest <- cybrSmoothBSAWindows(testbsa)
+# testbsa <- cybrBSA_GLM(testmerge, chr = "I")
+# anothertest <- cybrSmoothBSAWindows(testbsa)
 
 #Running the entire genome in a loop instead of just chr II
 wholegenomeBSA <- foreach(i=unique(testmerge$CHROM), .combine=rbind) %dopar%{
   cybrBSA_GLM(testmerge, chr = i) %>% cybrSmoothBSAWindows()
 }
 
-length(unique(wholegenomeBSA$Parent_Zprime))
-dim(wholegenomeBSA)
+# length(unique(wholegenomeBSA$Parent_Zprime))
+# dim(wholegenomeBSA)
 ```
-Plot this
+## Plot to confirm
 
 ```{r}
 wholegenomeBSA$CHROM <- factor(wholegenomeBSA$CHROM, levels = ChromKey$chromosomes)
@@ -448,7 +397,7 @@ wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
   ggplot(aes(x = POS, y = Zprime, color = Factor)) + 
   
   #Add Bulk, Parent, Day, and Interaction Traces
-  geom_line(size = 0.5, alpha = 0.8) + 
+  geom_line(size = 0.75) + 
   scale_color_manual(values = c("#345F6F", "#D7335C", "#FFB05C")) + 
   
   #Add the breaks for the facets
@@ -456,7 +405,8 @@ wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
   theme(legend.position = "bottom", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+  xlab("Genomic Position") + ylab("Oak  <--  Zprime  -->  Wine")+
+  ggtitle("Functionalized Trace for CSS I Fluconazole")
   
 wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
   ggplot(aes(x = POS, y = Bulk_Z)) + 
@@ -470,49 +420,9 @@ wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
   theme(legend.position = "bottom", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+  xlab("Genomic Position") + ylab("Oak  <--   Zscore  -->  Wine") +
+    ggtitle("Functionalized Plot for Bulk CSSI Fluconazole")
+
   
-```
-
-
-Input:
-
-```{r, collapse=TRUE}
-load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
-head(CSSI_Fluc_Pivot)
-```
-
-Output:
-
-```{r, collapse=TRUE}
-load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
-head(CSSI_F_ZScores_GLM)
-```
-
-## Plotting
-
-Using the same data as above
-
-```{r}
-load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
-
-CSSI_F_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
-  #Set Cutoff Line
-  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+
-  
-  #Add Bulk, Parent, Day, and Interaction Traces
-  geom_line(color = "#345F6F", size = 0.5, alpha = 0.8) + 
-  geom_line(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.5) +
-  geom_line(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.5) +
-  geom_line(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.5) +
-  
-  #Add the breaks for the facets
-  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  
-  #Add legends and title
-  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
 
