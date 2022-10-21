@@ -1,0 +1,232 @@
+---
+title: "Coverage Analysis"
+date: "3/14/2022"
+output:
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+#library(conflicted)
+#conflict_prefer("filter", "dplyr")
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyr)
+#library(tidyverse)
+library(reshape2)
+library(cowplot)
+library(ggrepel)
+library(readr)
+
+ggplot2::theme_set(theme_light())
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#561F37",
+                    "627264", "#7B4B94", "#8FC93A",  "#065143","#270722", "#C98686", "#B7E3CC", "#B4436C",
+                    "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#4C4C47", "#561F37")
+```
+
+Copper Sulfate Experiment
+
+```{r}
+coverage_dir <- "Data/"
+
+coverage_files <- c("SelectedA.aln-se.bam_bqsr.bam.cov.bed", 
+                    "SelectedC.aln-se.bam_bqsr.bam.cov.bed", 
+                    "UnselectedA.aln-se.bam_bqsr.bam.cov.bed", 
+                    "UnselectedC.aln-se.bam_bqsr.bam.cov.bed")
+
+coverage_df <- data.frame()
+
+for (curr_file in coverage_files){
+  curr_strain <- gsub(".aln-se.bam_bqsr.bam.cov.bed","", curr_file)
+  curr_df <- read_tsv(
+    file.path(coverage_dir,curr_file),
+    col_names = c('CHROM','start','end','coverage')
+    )
+  curr_df$strain <- curr_strain
+  coverage_df <- bind_rows(coverage_df, curr_df)
+}
+
+rm(curr_df)
+
+strainkey <- data.frame(strain = c("SelectedA", "SelectedC", "UnselectedA", "UnselectedC"),
+                        Bulk = c("WineChrI_Selected", "OakChrI_Selected", "WineChrI_Unselected", "OakChrI_Unselected"))
+coverage_df2 <- merge(coverage_df, strainkey)
+coverage_df <- coverage_df2
+rm(coverage_df2)
+coverage_df$width <- coverage_df$end - coverage_df$start
+
+head(coverage_df)
+
+coverage_by_strain <-
+  coverage_df %>%
+  dplyr::filter(CHROM != "NC_001224.1") %>%
+  group_by(Bulk) %>%
+  summarize(strain_coverage = sum(coverage*width)/sum(width))
+
+coverage_by_strain_by_chrom <-
+  coverage_df %>%
+  group_by(Bulk, CHROM) %>%
+  summarize(chrom_coverage = sum(coverage*width)/sum(width)) %>%
+  ungroup() %>%
+  merge(coverage_by_strain) %>%
+  mutate(fold_dev = chrom_coverage/strain_coverage)
+
+segment_size = 50000
+
+coverage_by_segment <-
+  coverage_df %>%
+  mutate(pos = (start+end)/2,
+         segment = round(pos/segment_size)*segment_size+segment_size/2) %>%
+  group_by(segment, CHROM, Bulk) %>%
+  summarize(segment_coverage = sum(coverage*width)/sum(width)) %>%
+  ungroup() %>%
+  merge(coverage_by_strain)
+
+save(coverage_by_segment, file = "coverage_by_segment_OakWineICuSO4.Rdata")
+save(coverage_by_strain, file = "coverage_by_strain_OakWineICuSO4.Rdata")
+save(coverage_by_strain_by_chrom, file = "coverage_by_strain_by_chrom_OakWineICuSO4.Rdata")
+save(coverage_df, file = "coverage_df_OakWineICuSO4.Rdata")
+  
+```
+
+```{r}
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+coverage_by_segment <- merge(coverage_by_segment, ChromKey)
+coverage_by_segment$chromosomes <- factor(coverage_by_segment$chromosomes,
+                                          levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"))
+
+cov_plot <-
+  coverage_by_segment %>%
+  #filter(! CHROM %in% c("Mito","XII")) %>%
+  filter(chromosomes != "M", chromosomes != "XII") %>%
+  ggplot()+
+  geom_line(aes(x = segment, y = segment_coverage, color = chromosomes)) +
+  scale_color_manual(values =CBchromPalette) +
+  facet_grid(rows = vars(Bulk), scales = 'free')
+  #facet_wrap(facets = vars(chromosomes)) + theme_classic()
+
+cov_plot
+
+coverage_by_segment %>%
+  #filter(! CHROM %in% c("Mito","XII")) %>%
+  filter(chromosomes != "M", chromosomes != "XII") %>%
+  ggplot()+
+  geom_line(aes(x = segment, y = segment_coverage, color = chromosomes)) +
+  scale_color_manual(values =CBchromPalette) +
+  #facet_grid(rows = vars(strain), scales = 'free')
+  facet_grid(cols = vars(chromosomes), rows = vars(Bulk), scales = 'free') + theme_classic()
+
+coverage_by_segment %>%
+  #filter(! CHROM %in% c("Mito","XII")) %>%
+  filter(chromosomes != "M", chromosomes != "XII") %>%
+  ggplot()+
+  geom_line(aes(x = segment, y = segment_coverage, color = chromosomes)) +
+  scale_color_manual(values =CBchromPalette) +
+  #facet_grid(row = vars(strain), scales = 'free')
+  facet_grid(rows = vars(chromosomes), cols = vars(Bulk), scales = 'free') + theme_classic()
+
+coverage_by_segment %>%
+  #filter(! CHROM %in% c("Mito","XII")) %>%
+  filter(chromosomes != "M", chromosomes != "XII") %>%
+  #filter(chromosomes != "M") %>%
+  ggplot()+
+  geom_line(aes(x = segment, y = segment_coverage, color = chromosomes)) +
+  scale_color_manual(values =CBchromPalette) +
+  facet_grid(rows = vars(Bulk))
+
+## New plot for each bulk on the same line but then each chromosome different
+
+coverage_by_segment %>%
+  filter(chromosomes != "M", chromosomes != "XII") -> covplotdata
+
+ggplot(covplotdata)+
+  geom_line(aes(x = segment, y = segment_coverage, color = Bulk)) +
+  scale_color_manual(values =CBchromPalette) +
+  theme(axis.text.x = element_blank()) +
+  facet_wrap(~chromosomes, scales = "free_x") + ggtitle("Coverage by Chromosome")
+
+
+```
+```{r}
+chrom_dens_plot <-
+  ggplot(subset(coverage_df, CHROM != "NC_001224.1"))+
+  geom_density(aes(x = coverage, color = CHROM))+
+  scale_color_manual(values =CBchromPalette) +
+  facet_grid(rows = vars(Bulk))+
+  scale_x_log10()
+
+chrom_dens_plot
+#ggsave('/home/yp19/Yuan_chrom_cov.png',chrom_dens_plot, height = 70, width = 6, limitsize = F)
+```
+
+Fluconazole Experiment
+
+```{r}
+coverage_dir <- "Data/"
+
+coverage_files <- c("SelectedA.aln-se.bam_bqsr.bam.cov.bed", 
+                    "SelectedC.aln-se.bam_bqsr.bam.cov.bed", 
+                    "UnselectedA.aln-se.bam_bqsr.bam.cov.bed", 
+                    "UnselectedC.aln-se.bam_bqsr.bam.cov.bed")
+
+coverage_df <- data.frame()
+
+for (curr_file in coverage_files){
+  curr_strain <- gsub(".aln-se.bam_bqsr.bam.cov.bed","", curr_file)
+  curr_df <- read_tsv(
+    file.path(coverage_dir,curr_file),
+    col_names = c('CHROM','start','end','coverage')
+    )
+  curr_df$strain <- curr_strain
+  coverage_df <- bind_rows(coverage_df, curr_df)
+}
+
+rm(curr_df)
+
+strainkey <- data.frame(strain = c("SelectedA", "SelectedC", "UnselectedA", "UnselectedC"),
+                        Bulk = c("WineChrI_Selected", "OakChrI_Selected", "WineChrI_Unselected", "OakChrI_Unselected"))
+coverage_df2 <- merge(coverage_df, strainkey)
+coverage_df <- coverage_df2
+rm(coverage_df2)
+coverage_df$width <- coverage_df$end - coverage_df$start
+
+head(coverage_df)
+
+coverage_by_strain <-
+  coverage_df %>%
+  dplyr::filter(CHROM != "NC_001224.1") %>%
+  group_by(Bulk) %>%
+  summarize(strain_coverage = sum(coverage*width)/sum(width))
+
+coverage_by_strain_by_chrom <-
+  coverage_df %>%
+  group_by(Bulk, CHROM) %>%
+  summarize(chrom_coverage = sum(coverage*width)/sum(width)) %>%
+  ungroup() %>%
+  merge(coverage_by_strain) %>%
+  mutate(fold_dev = chrom_coverage/strain_coverage)
+
+segment_size = 50000
+
+coverage_by_segment <-
+  coverage_df %>%
+  mutate(pos = (start+end)/2,
+         segment = round(pos/segment_size)*segment_size+segment_size/2) %>%
+  group_by(segment, CHROM, Bulk) %>%
+  summarize(segment_coverage = sum(coverage*width)/sum(width)) %>%
+  ungroup() %>%
+  merge(coverage_by_strain)
+
+save(coverage_by_segment, file = "coverage_by_segment_OakWineICuSO4.Rdata")
+save(coverage_by_strain, file = "coverage_by_strain_OakWineICuSO4.Rdata")
+save(coverage_by_strain_by_chrom, file = "coverage_by_strain_by_chrom_OakWineICuSO4.Rdata")
+save(coverage_df, file = "coverage_df_OakWineICuSO4.Rdata")
+```
+

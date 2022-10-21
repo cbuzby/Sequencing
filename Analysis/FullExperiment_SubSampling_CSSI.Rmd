@@ -75,6 +75,7 @@ CSSIF_lowsample$ReadCount <- CSSIF_lowsample$n
 
 ```
 
+# Fluconazole Only
 
 ## Running analysis for sub-sample
 
@@ -358,9 +359,438 @@ CSSI_F_qsample_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) +
 
   scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_F_qsample_GLM$POS), by = 1e5), name = "Genomic Position") +
   facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-  ggtitle("CSSI Fluconazole 1/4 Sample | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+  ggtitle("CSSI Fluconazole 1/2 Sample | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) + 
   #ylim(-5, 5) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+```
+
+## Testing if switching Oak I and Wine I in Fluconazole section will reverse the effects
+
+```{r}
+load("CSSI_Fluc_Pivot_2.Rdata")
+
+CSSI_F_reverseOW <- CSSI_Fluc_Pivot %>% select(CHROM, POS, Dataset, Parent, Bulk, Day, Allele, ReadCount)
+CSSI_F_reverseOW$NewParent[CSSI_F_reverseOW$Bulk == "Fluconazole" & CSSI_F_reverseOW$Parent == "Oak"] <- "Wine"
+CSSI_F_reverseOW$NewParent[CSSI_F_reverseOW$Parent == "Wine" & CSSI_F_reverseOW$Bulk == "Fluconazole"] <- "Oak"
+
+CSSI_F_reverseOW$Parent[CSSI_F_reverseOW$NewParent == "Oak" & CSSI_F_reverseOW$Bulk == "Fluconazole"] <- "Oak"
+CSSI_F_reverseOW$Parent[CSSI_F_reverseOW$NewParent == "Wine" & CSSI_F_reverseOW$Bulk == "Fluconazole"] <- "Wine"
+
+CSSI_F_reverseOW$ReadCount <- CSSI_F_reverseOW$ReadCount + 1
+head(CSSI_F_reverseOW)
+
+unique(CSSI_F_reverseOW$Bulk)
+unique(table(CSSI_F_reverseOW$POS))
+
+unique(CSSI_F_reverseOW$Parent)
+
+CSSI_F_reverseOW[is.na(CSSI_F_reverseOW$Parent),]
+```
+
+```{r}
+lrP <- CSSI_F_reverseOW
+i <- 925
+chr <- "I"
+
+#function
+BSA_GLM_CSSIF <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent+Day, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[11:15])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkFluconazole", "parentWine", "Day2", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+    Results[,7] <- as.numeric(Results[,7])
+    
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+                res_day <- mean(Results$Day2[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i], 
+                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], Results$Day2[i],
+                  res_bulk, res_parent, res_day, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", 
+                         "Bulk_Z", "Parent_Z", "Interaction_Z", "Day_Z",
+                         "Bulk_Zprime", "Parent_Zprime", "Day_Zprime","Interaction_Zprime")
+  
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  WResult[,10] <- as.numeric(WResult[,10])
+  WResult[,11] <- as.numeric(WResult[,11])
+  
+  return(WResult)
+  }
+
+```
+
+Run the thing:
+
+```{r}
+
+zscore_1 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "I")
+zscore_2 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "II")
+zscore_3 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "III")
+zscore_4 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "IV")
+Sys.sleep(5)
+zscore_5 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "V")
+zscore_6 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "VI")
+zscore_7 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "VII")
+zscore_8 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "VIII")
+Sys.sleep(5)
+zscore_9 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "IX")
+zscore_10 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "X")
+zscore_11 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XI")
+zscore_12 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XII")
+Sys.sleep(5)
+zscore_13 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XIII")
+zscore_14 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XIV")
+zscore_15 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XV")
+zscore_16 <- BSA_GLM_CSSIF(CSSI_F_reverseOW, "XVI")
+Sys.sleep(5)
+
+CSSI_revOW_ZScores_GLM <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_revOW_ZScores_GLM$CHROM <- factor(CSSI_revOW_ZScores_GLM$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_revOW_ZScores_GLM, file = "CSSI_revOW_ZScores_GLM.Rdata")
+```
+
+
+Plot the data
+
+```{r}
+load("CSSI_revOW_ZScores_GLM.Rdata")
+
+CSSI_revOW_ZScores_GLM %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_line(color = "#345F6F", size = 0.5, alpha = 0.8) + 
+  geom_line(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.5) +
+  geom_line(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.5) +
+  geom_line(aes(x = POS, y = Day_Zprime), color = "gray", alpha= 0.8, size = 0.5) +
+  #change this for each new dataset:
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_revOW_ZScores_GLM$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  geom_hline(yintercept = c(-1.96, 1.96), color = "gray")+  geom_hline(yintercept = c(-1, 1), color = "black")+
+  ggtitle("CSSI Fluconazole | Comparison of Smoothed Z scores with bulks reversed") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+```
+
+
+# Sub-Sampling Without Day term for CuSO4 and Fluconazole
+
+```{r}
+#FUNCTION
+BSA_GLM_CSSIF_noDay <-  function(lrP, chr = "II", windowsize = 100){
+  
+  lrP <- subset(lrP, CHROM == chr)
+  
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      res <- glm(Allele ~ Bulk*Parent, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
+      c(c, i, summary(res)$coefficients[9:12])
+    }
+  
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", "Intercept", "bulkFluconazole", "parentWine", "Interaction")
+    Results[,2] <- as.numeric(Results[,2])
+    Results[,3] <- as.numeric(Results[,3])
+    Results[,4] <- as.numeric(Results[,4])
+    Results[,5] <- as.numeric(Results[,5])
+    Results[,6] <- as.numeric(Results[,6])
+
+    Results %>% arrange(POS) %>% select(-Intercept) -> Results
+  }
+  
+ 
+  #Run the windows on that chromosome
+  WResult <- foreach(i=windowsize+1:(length(Results$POS) - (2*windowsize)), .combine=rbind) %dopar% {
+            #save the median value from original index 1 to original end index
+                res_int <- mean(Results$Interaction[(i-windowsize):(i+windowsize)])
+                res_bulk <- mean(Results$bulkFluconazole[(i-windowsize):(i+windowsize)])
+                res_parent <- mean(Results$parentWine[(i-windowsize):(i+windowsize)])
+
+                #print CHROM, index, POS, and mean
+                c(chr, i, Results$POS[i], 
+                  Results$bulkFluconazole[i], Results$parentWine[i],Results$Interaction[i], 
+                  res_bulk, res_parent, res_int)}
+  
+  WResult <- as.data.frame(WResult)
+  
+  colnames(WResult) <- c("CHROM", "Index", "POS", 
+                         "Bulk_Z", "Parent_Z", "Interaction_Z", 
+                         "Bulk_Zprime", "Parent_Zprime", "Interaction_Zprime")
+  
+  WResult[,2] <- as.numeric(WResult[,2])
+  WResult[,3] <- as.numeric(WResult[,3])
+  WResult[,4] <- as.numeric(WResult[,4])
+  WResult[,5] <- as.numeric(WResult[,5])
+  WResult[,6] <- as.numeric(WResult[,6])
+  WResult[,7] <- as.numeric(WResult[,7])
+  WResult[,8] <- as.numeric(WResult[,8])
+  WResult[,9] <- as.numeric(WResult[,9])
+  
+  
+  return(WResult)
+}
+```
+
+```{r, eval = FALSE}
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+
+tableinv <- function(x, COL = "value"){
+      y <- x[rep(rownames(x),x[[COL]]),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+CSSI_Fluc_Pivot %>% group_by(Dataset) %>% summarise(TotalCoverage = sum(ReadCount)) -> TotalCounts
+
+samplenum <- min(TotalCounts$TotalCoverage)/2
+
+
+resultlist <- foreach(i=unique(CSSI_Fluc_Pivot$Dataset), .combine=rbind) %dopar% {
+  data_inv <- tableinv(subset(CSSI_Fluc_Pivot, Dataset == i), "ReadCount") #takes a while
+  thatdataset <- subset(data_inv, Dataset == i)
+  newdataset <- thatdataset[sample(x = 1:length(thatdataset$Dataset), size = samplenum),]
+  newdataset %>% group_by(Dataset, CHROM, POS, Parent, Bulk, Day, Allele) %>% count() -> result
+  
+  result
+}
+
+CSSIF_qsample <- bind_rows(resultlist)
+CSSIF_qsample$ReadCount <- CSSIF_qsample$n
+
+save(CSSIF_qsample, file = "RdataFiles/CSSIF_qsample_10-10-22.Rdata")
+
+rm(resultlist)
+rm(samplenum)
+rm(TotalCounts)
+```
+
+```{r, eval = FALSE}
+rm(CSSIF_qsample)
+load("RdataFiles/CSSIF_qsample_10-10-22.Rdata")
+
+zscore_1 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "I")
+zscore_2 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "II")
+Sys.sleep(5)
+
+zscore_3 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "III")
+zscore_4 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "IV")
+Sys.sleep(5)
+
+zscore_5 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "V")
+zscore_6 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "VI")
+Sys.sleep(5)
+
+zscore_7 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "VII")
+zscore_8 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "VIII")
+Sys.sleep(5)
+
+zscore_9 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "IX")
+zscore_10 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "X")
+Sys.sleep(5)
+
+zscore_11 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XI")
+zscore_12 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XII")
+Sys.sleep(5)
+
+zscore_13 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XIII")
+zscore_14 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XIV")
+Sys.sleep(5)
+
+zscore_15 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XV")
+zscore_16 <- BSA_GLM_CSSIF_noDay(CSSIF_qsample, "XVI")
+Sys.sleep(5)
+
+CSSI_F_qsample_GLM_noday <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_F_qsample_GLM_noday$CHROM <- factor(CSSI_F_qsample_GLM_noday$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_F_qsample_GLM_noday, file = "RdataFiles/CSSI_F_qsample_GLM_noday.Rdata")
+```
+
+
+```{r, eval = FALSE}
+#Using cutoff from Fluconazole
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+
+tableinv <- function(x, COL = "value"){
+      y <- x[rep(rownames(x),x[[COL]]),1:(ncol(x))]
+      rownames(y) <- c(1:nrow(y))
+      return(y)}
+
+tableforcount <- function(x, value){
+        y <- x[rep(rownames(x),1),1:(ncol(x))]
+        rownames(y) <- c(1:nrow(y))
+        return(y)}
+
+CSSI_Fluc_Pivot %>% group_by(Dataset) %>% summarise(TotalCoverage = sum(ReadCount)) -> TotalCounts
+
+samplenum <- min(TotalCounts$TotalCoverage)/2
+
+#Load CuSO4 Data
+load("RdataFiles/CSSI_CuSO4_Pivot.Rdata")
+
+rm(resultlist)
+
+resultlist <- foreach(i=unique(CSSI_CuSO4_Pivot$Dataset), .combine=rbind) %dopar% {
+  addinv <- tableforcount(subset(CSSI_CuSO4_Pivot, Dataset == i), 1)
+  
+  data_inv <- tableinv(subset(CSSI_CuSO4_Pivot, Dataset == i), "ReadCount") #takes a while
+  thatdataset <- subset(data_inv, Dataset == i)
+  
+  newdataset <- thatdataset[sample(x = 1:length(thatdataset$Dataset), size = samplenum),]
+  newdataset <- rbind(newdataset, addinv)
+
+  newdataset %>% group_by(Dataset, CHROM, POS, Parent, Bulk, Allele) %>% count() -> result
+  
+  result
+}
+
+CSSIC_qsample <- bind_rows(resultlist)
+CSSIC_qsample$ReadCount <- CSSIC_qsample$n
+
+save(CSSIC_qsample, file = "RdataFiles/CSSIC_qsample_10-10-22.Rdata")
+
+rm(resultlist)
+rm(samplenum)
+rm(TotalCounts)
+```
+
+```{r, eval = FALSE}
+
+load("RdataFiles/CSSIC_qsample_10-10-22.Rdata")
+
+# unique(CSSIC_qsample$Dataset)
+# table(table(CSSIC_qsample$POS))
+
+
+zscore_1 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "I")
+zscore_2 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "II")
+Sys.sleep(5)
+
+zscore_3 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "III")
+zscore_4 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "IV")
+Sys.sleep(5)
+
+zscore_5 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "V")
+zscore_6 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "VI")
+Sys.sleep(5)
+
+zscore_7 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "VII")
+zscore_8 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "VIII")
+Sys.sleep(5)
+
+zscore_9 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "IX")
+zscore_10 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "X")
+Sys.sleep(5)
+
+zscore_11 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XI")
+zscore_12 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XII")
+Sys.sleep(5)
+
+zscore_13 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XIII")
+zscore_14 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XIV")
+Sys.sleep(5)
+
+zscore_15 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XV")
+zscore_16 <- BSA_GLM_CSSIF_noDay(CSSIC_qsample, "XVI")
+Sys.sleep(5)
+
+CSSI_C_qsample_GLM_noday <- rbind(zscore_1, zscore_2, zscore_3, zscore_4, zscore_5, zscore_6, 
+                     zscore_7, zscore_8, zscore_9, zscore_10, zscore_11, 
+                     zscore_12, zscore_13, zscore_14, zscore_15, zscore_16)
+
+CSSI_C_qsample_GLM_noday$CHROM <- factor(CSSI_C_qsample_GLM_noday$CHROM, levels = ChromKey$chromosomes)
+
+save(CSSI_C_qsample_GLM_noday, file = "RdataFiles/CSSI_C_qsample_GLM_noday.Rdata")
+```
+
+
+Plotting both
+
+```{r}
+load("RdataFiles/CSSI_F_qsample_GLM_noday.Rdata")
+load("RdataFiles/CSSI_C_qsample_GLM_noday.Rdata")
+
+#Get Cutoff
+WineIDilute_BD <- readRDS("RdataFiles/WineIDilute_BD.rds")
+WineIDilute_BD %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975),
+                                                 group = "between",
+                                                 bulk = "dilute",
+                                                 Sample = "WineD_BD_Max")-> WineD_BD_Max
+intercept <- mean(WineD_BD_Max$absmax)
+
+#Plot CuSO4
+CSSI_C_qsample_GLM_noday %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+ geom_line(color = "#345F6F", alpha = 0.8, size = 1) + 
+  geom_line(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 1) +
+  geom_line(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 1) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_qsample_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  
+  geom_hline(yintercept = c(-intercept, intercept), linetype = "dashed", size = 0.5) +
+  
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI CuSO4 Subsampled | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+#Plot Fluconazole
+CSSI_F_qsample_GLM_noday %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+ geom_line(color = "#345F6F", alpha = 0.8, size = 1) + 
+  geom_line(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 1) +
+  geom_line(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 1) +
+  
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_qsample_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  
+  geom_hline(yintercept = c(-intercept, intercept), linetype = "dashed", size = 0.5) +
+  
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI Fluconazole Subsampled | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 
 ```

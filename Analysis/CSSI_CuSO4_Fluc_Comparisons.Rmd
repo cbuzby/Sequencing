@@ -1278,3 +1278,104 @@ CSSI_F_ZScores_GLM %>% #filter(CHROM != "I") %>%
   xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
 ```
 
+## Make the individual plots for CuSO4
+
+```{r}
+
+load("RdataFiles/CSSI_CuSO4_Pivot_exclmD.Rdata")
+CSSI_CuSO4_Pivot_exclmD
+
+CSSI_CuSO4_Pivot_exclmD$Bulk <- factor(CSSI_CuSO4_Pivot_exclmD$Bulk, levels = c("Control", "Dilute", "CuSO4", "Fluconazole"))
+CSSI_CuSO4_Pivot_exclmD$Bulk[CSSI_CuSO4_Pivot_exclmD$Bulk == "Dilute"] <- "Control"
+unique(CSSI_CuSO4_Pivot_exclmD$Bulk)
+
+for(i in unique(CSSI_CuSO4_Pivot_exclmD$CHROM)){
+  plot <- CSSI_CuSO4_Pivot_exclmD %>% filter(CHROM == i) %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.4) + 
+    #geom_line(alpha = 0.2) +
+    scale_color_manual(values = c("navyblue", "blue", "firebrick", "red")) +
+    ggtitle(i) + theme(legend.position = "blank") +
+    facet_grid(~Bulk+Parent) 
+  print(plot)
+}
+
+plot_c <- CSSI_CuSO4_Pivot_exclmD %>% filter(CHROM == "VII") %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.4) + 
+    #geom_line(alpha = 0.2) +
+    scale_color_manual(values = c("navyblue", "blue", "firebrick", "red")) +
+    ggtitle("CuSO4 Experiment Chr VII") + theme(legend.position = "blank") +
+    facet_grid(~Bulk+Parent)
+
+plot_c
+
+```
+Make this plot for Fluconazole
+
+```{r}
+load("RdataFiles/CSSI_Fluc_Pivot_exclmD.Rdata")
+CSSI_Fluc_Pivot_exclmD
+
+CSSI_Fluc_Pivot_exclmD$Bulk <- factor(CSSI_Fluc_Pivot_exclmD$Bulk, levels = c("Control", "Dilute", "CuSO4", "Fluconazole"))
+CSSI_Fluc_Pivot_exclmD$Bulk[CSSI_Fluc_Pivot_exclmD$Bulk == "Dilute"] <- "Control"
+
+unique(CSSI_Fluc_Pivot_exclmD$Dataset)
+
+for(i in unique(CSSI_Fluc_Pivot_exclmD$CHROM)){
+  plot <- CSSI_Fluc_Pivot_exclmD %>% filter(Dataset == "OakI_Dilute_B" | Dataset == "OakI_Fluc_B" | Dataset == "WineI_Dilute_B" | Dataset == "WineI_Fluc_D") %>% filter(CHROM == i) %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.4) + 
+    #geom_line(alpha = 0.2) +
+    scale_color_manual(values = c("blue", "navyblue", "red", "firebrick")) +
+    ggtitle(i) + 
+    facet_grid(~Bulk+Parent) 
+  print(plot)
+}
+
+plot_f <- CSSI_Fluc_Pivot_exclmD %>% filter(Dataset == "OakI_Dilute_B" | Dataset == "OakI_Fluc_B" | Dataset == "WineI_Dilute_B" | Dataset == "WineI_Fluc_D") %>% filter(CHROM == "VII") %>% select(-ALT_REF) %>% 
+    pivot_wider(names_from = Allele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Dataset)) + 
+    geom_point(size = 1, alpha = 0.4) + 
+    #geom_line(alpha = 0.2) +
+    scale_color_manual(values = c("blue", "navyblue", "red", "firebrick")) +
+    ggtitle("Fluconazole Experiment Chr VII") + theme(legend.position = "blank") +
+    facet_grid(~Bulk+Parent) 
+
+plot_f
+```
+
+Finding a good example of the table
+
+```{r}
+CSSI_Fluc_Pivot_exclmD[CSSI_Fluc_Pivot_exclmD$POS > 3000 & CSSI_Fluc_Pivot_exclmD$POS < 5000 & CSSI_Fluc_Pivot_exclmD$CHROM == "VII",]
+```
+
+Find Peaks for Interactions
+
+```{r}
+load("RdataFiles/CSSI_C_ZScores_GLM_noday.Rdata")
+load("RdataFiles/CSSI_F_ZScores_GLM_allexcl.Rdata")
+
+CSSI_F_ZScores_GLM %>% #filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Bulk_Zprime)) + 
+  geom_point(color = "#345F6F", size = 0.2, alpha = 0.8) + 
+  geom_point(aes(x = POS, y = Parent_Zprime), color = "#FFB05C", alpha= 0.8, size = 0.2) +
+  geom_point(aes(x = POS, y = Interaction_Zprime), color = "#D7335C", alpha= 0.8, size = 0.2) +
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_C_ZScores_GLM_noday$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ggtitle("CSSI CuSO4 | Comparison of Smoothed Z scores") + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ylim(-10, 10) + 
+  xlab("Genomic Position") + ylab("Oak  <--    Z Score  -->  Wine")
+
+CSSI_F_ZScores_GLM %>% filter(CHROM == "VII") -> ChrVII_Peaks_F
+
+ChrVII_Peaks_F[ChrVII_Peaks_F$Bulk_Zprime == max(ChrVII_Peaks_F$Bulk_Zprime),]
+ChrVII_Peaks_F[ChrVII_Peaks_F$Bulk_Zprime == min(ChrVII_Peaks_F$Bulk_Zprime),]
+
+```
+

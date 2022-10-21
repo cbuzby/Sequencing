@@ -75,6 +75,63 @@ gatk VariantsToTable \
 
 ## Convert GATK table to Data Frame
 
+Make a better way to do this that doesn't use QTLseqR
+
+```{r}
+rawData = "HGV.SortedCat.vcf.output.table"
+
+cybrInputGATKTable <- function(rawData){
+  
+  require(dplyr)
+  require(doParallel)
+  require(foreach)
+  
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+  
+  #Identify the unique values besides AD/DP/GQ/PL
+  gsub(".AD", "", 
+       gsub(".GQ", "", 
+            gsub(".DP","",
+                 gsub(".PL","",
+                      colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+  i <- Samples[1]
+
+  resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+    mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+    AD <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("AD"))
+    GQ <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("GQ"))
+    DP <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("DP"))
+    PL <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("PL")) 
+    cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+    colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+    
+    mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='drop') %>% 
+      separate(PL, c('PL.REF','PL.ALT'), extra='drop') -> mycdf
+    
+    mycdf
+  }
+  
+  ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+  
+  resultscdf %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> results
+  return(results)
+  
+}
+
+```
+
+Filter by quality
+
+```{r}
+
+```
+
+
 ```{r, eval = FALSE}
 library("QTLseqr")
 

@@ -1042,6 +1042,7 @@ if(Folder == "None"){
 ### Remaking the function to sample without replacement for the two from the same sample
 
 ```{r}
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
 dataset <- subset(CSSI_Fluc_Pivot, POS < 2000)
 
 SubSample_Halves <- function(dataset){
@@ -1072,6 +1073,53 @@ SubSample_Halves <- function(dataset){
 }
 
 test <- SubSample_Halves(dataset)
+```
+
+
+```{r}
+load("RdataFiles/CSSI_Fluc_Pivot_2.Rdata")
+dataset <- subset(CSSI_Fluc_Pivot, POS < 2000)
+
+#New Functions
+tableforcount <- function(x, value){
+        y <- x[rep(rownames(x),1),1:(ncol(x))]
+        rownames(y) <- c(1:nrow(y))
+        return(y)}
+
+SubSample_Halves_FIXED <- function(dataset){
+  iterativelist <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
+  #split everything into the table
+  datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
+  
+  #sample half the data and then the other half without replacement
+  indices <- data.frame(index = 1:dim(datainv)[1], samples = NA)
+  indices$samples <- sample(x = c(1,2), size = length(indices$samples), replace = TRUE)
+  
+  #New Code
+  addinv <- tableforcount(subset(dataset, POS == i), 1)
+
+  SampleA <- rbind(datainv[indices$samples == 1,], addinv)
+  SampleA$IDcol <- "A"
+  
+  SampleB <- rbind(datainv[indices$samples == 2,], addinv)
+  SampleB$IDcol <- "B"
+  
+  SampleA %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultA
+  SampleB %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultB
+  
+  result <- rbind(resultA, resultB)
+  
+  }
+  
+  finalresult <- bind_rows(iterativelist)
+  finalresult$ReadCount <- finalresult$n
+      
+  return(finalresult)
+
+}
+
+SubSample_Halves_FIXED(dataset)
+
 ```
 
 ## New HPC Script for single samples
@@ -1168,7 +1216,7 @@ tableinv <- function(x, COL = "value"){
       return(y)}
 
 SubSample_Halves <- function(dataset){
-  iterativelist[[i]] <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
+  iterativelist <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
   #split everything into the table
   datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
   
@@ -1195,42 +1243,7 @@ SubSample_Halves <- function(dataset){
 
 }
 
-#New Functions
-tableforcount <- function(x, value){
-        y <- x[rep(rownames(x),1),1:(ncol(x))]
-        rownames(y) <- c(1:nrow(y))
-        return(y)}
 
-SubSample_Halves_FIXED <- function(dataset){
-  iterativelist[[i]] <- foreach (i=unique(dataset$POS), .combine=rbind) %dopar% {
-  #split everything into the table
-  datainv <- tableinv(subset(dataset, POS == i), COL = "ReadCount")
-  
-  #sample half the data and then the other half without replacement
-  indices <- data.frame(index = 1:dim(datainv)[1], samples = NA)
-  indices$samples <- sample(x = c(1,2), size = length(indices$samples), replace = TRUE)
-  
-  #New Code
-  addinv <- tableforcount(subset(dataset, POS == i), 1)
-
-  SampleA <- datainv[indices$samples == 1,]
-  SampleA$IDcol <- "A"
-  SampleB <- datainv[indices$samples == 2,]
-  SampleB$IDcol <- "B"
-  
-  SampleA %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultA
-  SampleB %>% group_by(CHROM, POS, Allele, IDcol) %>% count() -> resultB
-  
-  result <- rbind(resultA, resultB)
-  
-  }
-  
-  finalresult <- bind_rows(iterativelist)
-  finalresult$ReadCount <- finalresult$n + 1
-      
-  return(finalresult)
-
-}
 
 SubSample <- function(GLM_VIII, SubProportion = 0.5, BulkName = unique(GLM_VIII$Dataset)[1]){
       iterativelist <- foreach (i=unique(GLM_VIII$POS), .combine=rbind) %dopar% {
@@ -1359,6 +1372,69 @@ between_95 <- mean(Wine_BD_Max$abs_95)
 within_max <- mean(Wine_B_Max$absmax)
 within_95 <- mean(Wine_B_Max$abs_95)
 
+
+```
+
+
+# Doing this without replacing half of the samples
+
+```{r}
+# WineIFluc_D <- readRDS("RdataFiles/WineIFluc_D.rds")
+# OakIDilute_B <- readRDS("RdataFiles/OakIDilute_B.rds")
+# WineIDilute_BD <- readRDS("RdataFiles/WineIDilute_BD.rds")
+
+WineIDilute_B <- readRDS("RdataFiles/WineDiluteB.rds")
+OakIFluc_B <- readRDS("RdataFiles/OakFlucB.rds")
+WineIDilute_C <- readRDS("RdataFiles/WineDiluteC.rds")
+
+WineIDilute_C %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> WineDilute_C_Max
+WineIDilute_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> WineDilute_B_Max
+OakIFluc_B %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> OakIFluc_B_Max
+WineIDilute_BD <- readRDS("RdataFiles/WineIDilute_BD.rds")
+WineIDilute_BD %>% group_by(Index) %>% summarize(absmax = max(abs(bulk_Zprime)),
+                                                 abs_95 = quantile(abs(bulk_Zprime), 0.975))-> Wine_BD_Max
+```
+
+```{r}
+WineIDilute_C %>% ggplot(aes(x = bulk_Zprime))  +
+  geom_density(data = OakIFluc_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  # geom_density(data = OakIDilute_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  # geom_density(data = WineIFluc_D, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  # geom_density(data = WineIDilute_C, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) +
+  # geom_density(data = WineIDilute_B, aes(x = bulk_Zprime), fill = "blue", alpha = 0.2, size = 1) + 
+  geom_density(fill = "red", alpha = 0.2, size = 1)
+
+WineIDilute_C %>% ggplot(aes(x = POS, y = bulk_Zprime, color = Index)) + geom_line(alpha = 0.2) + scale_x_continuous(breaks = seq(from = 0, to = max(WineIDilute_C$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() + theme(legend.position = "none", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + ggtitle("SubSampled Wine Dilute C")
+
+
+# Wine_BD_Max %>% ggplot(aes(x = absmax)) + geom_density(fill = "red", alpha = 0.2, size = 1) + 
+#   geom_density(aes(x = abs_95), fill = "gray", alpha = 0.2, size = 1) +
+#   geom_density(data = WineDilute_C_Max, aes(x = absmax), fill = "navyblue", 
+#                alpha = 0.2, size = 1, linetype = "dashed") +
+#   geom_density(data = WineDilute_C_Max, aes(x = abs_95), fill = "gray", 
+#                alpha = 0.2, size = 1, linetype = "dashed")+
+#   ggtitle("Comparison of Max (colored) and 95% (gray) of C vs BxD")
+
+Wine_BD_Max %>% ggplot(aes(x = absmax)) + geom_density(linetype = "solid", alpha = 0.2, size = 1) + 
+  geom_density(aes(x = abs_95), linetype = "dashed", alpha = 0.2, size = 1) +
+  geom_density(data = WineDilute_C_Max, aes(x = absmax), linetype = "solid", 
+               alpha = 0.2, size = 1, color = "gray") +
+  geom_density(data = WineDilute_C_Max, aes(x = abs_95), linetype = "dashed", 
+               alpha = 0.2, size = 1, color = "gray")+
+  geom_density(data = WineDilute_B_Max, aes(x = absmax), linetype = "solid", 
+               alpha = 0.2, size = 1, color = "lightgray") +
+  geom_density(data = WineDilute_B_Max, aes(x = abs_95), linetype = "dashed", 
+               alpha = 0.2, size = 1, color = "lightgray")+
+   geom_density(data = OakIFluc_B_Max, aes(x = absmax), linetype = "solid", 
+               alpha = 0.2, size = 1, color = "lightblue") +
+  geom_density(data = OakIFluc_B_Max, aes(x = abs_95), linetype = "dashed", 
+               alpha = 0.2, size = 1, color = "lightblue")+
+  ggtitle("Comparison of Max (solid) and 95% (dashed) of C (gray) vs BxD (black)")
 
 ```
 
