@@ -87,14 +87,14 @@ cybrInputGATKTable <- function(rawData, yeast = TRUE){
             gsub(".DP","",
                  gsub(".PL","",
                       colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
-  i <- Samples[1]
+  #i <- Samples[1]
 
   resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
     mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
-    AD <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("AD"))
-    GQ <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("GQ"))
-    DP <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("DP"))
-    PL <- select(HNGLCDRXY,contains(c(i))) %>% select(., contains("PL")) 
+    AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD"))
+    GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ"))
+    DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP"))
+    PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL")) 
     cbind(mydf, AD , GQ , DP, PL) -> mydftotal
     colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
     
@@ -250,7 +250,9 @@ cybrIDAlleles <- function(BSAdfstart = finaldf, Parentdf = test, yeast = TRUE){
 
 ### Running Pipeline of Functions
 
-```{r, warning=FALSE, message=FALSE}
+The original way to do it with each script
+
+```{r, eval = FALSE, warning=FALSE, message=FALSE}
 mydatatotest = "HGV.SortedCat.vcf.output.table"
 
 mydf <- cybrInputGATKTable(mydatatotest)
@@ -267,7 +269,23 @@ head(testmerge)
 
 ```
 
+Piping
+
+```{r, warning=FALSE, message=FALSE}
+mydatatotest = "HGV.SortedCat.vcf.output.table"
+
+parentSNPids <- cybrConvertParentalAlleles(Truncate = TRUE)
+
+testmerge <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% 
+  cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
+  na.omit()
+
+```
+
 #### Reformat data so that it has bulk etc included
+
+This part needs to be done manually to ensure that the formula matches the data. The two factors added here (Bulk and Parent) are then the inputs in the formula for the GLM.
 
 ```{r}
 unique(testmerge$Dataset)
@@ -315,9 +333,9 @@ cybrBSA_GLM <-  function(lrP, chr = "II", windowsize = 100, formula = "PAllele ~
     lrP <- subset(lrP, CHROM == c)
     #Run the glm on that chromosome
     Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
-      #res <- glm(Allele ~ Bulk*Parent+Day, weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
-      res <- glm(as.formula(formula), weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,])
-
+       res <- suppressWarnings(glm(as.formula(formula), weights = ReadCount, family = binomial, data = lrP[lrP$POS == i,]))
+ 
+       #Output of foreach automatically binds rows of what is printed
       c(c, i, summary(res)$coefficients[(length(summary(res)$coefficients)/2+1):(length(summary(res)$coefficients) - length(summary(res)$coefficients)/4)])
     }
   
@@ -375,18 +393,15 @@ cybrSmoothBSAWindows <- function(Results, windowsize = 100, chr = unique(Results
 
 Testing new cybr scripts
 
-```{r}
-# testbsa <- cybrBSA_GLM(testmerge, chr = "I")
-# anothertest <- cybrSmoothBSAWindows(testbsa)
+```{r, warning=FALSE, message=FALSE}
 
 #Running the entire genome in a loop instead of just chr II
 wholegenomeBSA <- foreach(i=unique(testmerge$CHROM), .combine=rbind) %dopar%{
   cybrBSA_GLM(testmerge, chr = i) %>% cybrSmoothBSAWindows()
 }
 
-# length(unique(wholegenomeBSA$Parent_Zprime))
-# dim(wholegenomeBSA)
 ```
+
 ## Plot to confirm
 
 ```{r}
@@ -425,4 +440,220 @@ wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
 
   
 ```
+
+Trying this with the CuSO4 data
+
+```{r}
+CuSO4gatk <- "Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+
+parentSNPids <- cybrConvertParentalAlleles(Truncate = TRUE)
+
+CuSO4df <- cybrInputGATKTable(CuSO4gatk)
+head(CuSO4df)
+
+CuSO4qualitydf <- cybrQualityFilter(CuSO4df)
+head(CuSO4qualitydf)
+
+CuSO4data <- cybrIDAlleles(BSAdfstart = CuSO4qualitydf, Parentdf = parentSNPids, yeast = TRUE) %>% na.omit()
+head(CuSO4data)
+
+read.table(CuSO4gatk, header = TRUE)
+
+```
+
+```{r}
+unique(CuSO4data$Dataset)
+
+CuSO4data$Bulk <- NA
+CuSO4data$Bulk[CuSO4data$Dataset == "SelectedA" |
+              CuSO4data$Dataset == "SelectedC"] <- "CuSO4"
+
+CuSO4data$Bulk[CuSO4data$Dataset == "UnselectedA" |
+              CuSO4data$Dataset == "UnselectedC"] <- "Dilute"
+
+CuSO4data$Parent <- NA
+CuSO4data$Parent[CuSO4data$Dataset == "SelectedA" |
+              CuSO4data$Dataset == "UnselectedA"] <- "OakI"
+
+CuSO4data$Parent[CuSO4data$Dataset == "SelectedC" |
+              CuSO4data$Dataset == "UnselectedC"] <- "WineI"
+
+CuSO4data$Parent <- factor(CuSO4data$Parent)
+CuSO4data$Bulk <- factor(CuSO4data$Bulk)
+CuSO4data$ReadCount <- as.numeric(CuSO4data$ReadCount)
+
+head(CuSO4data)
+```
+```{r}
+#Running the entire genome in a loop instead of just chr II
+CuSO4_wholegenomeBSA <- foreach(i=unique(CuSO4data$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CuSO4data, chr = i) %>% cybrSmoothBSAWindows()
+}
+```
+Plot this shit
+
+```{r}
+CuSO4_wholegenomeBSA$CHROM <- factor(CuSO4_wholegenomeBSA$CHROM, levels = ChromKey$chromosomes)
+
+CuSO4_wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
+  pivot_longer(c(Bulk_Zprime, Parent_Zprime, Interaction_Zprime), names_to = "Factor", values_to = "Zprime") %>% 
+  ggplot(aes(x = POS, y = Zprime, color = Factor)) + 
+  
+  #Add Bulk, Parent, Day, and Interaction Traces
+  geom_line(size = 0.75) + 
+  scale_color_manual(values = c("#345F6F", "#D7335C", "#FFB05C")) + 
+  
+  #Add the breaks for the facets
+  scale_x_continuous(breaks = seq(from = 0, to = max(wholegenomeBSA$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--  Zprime  -->  Wine")+
+  ggtitle("Functionalized Trace for CSS I CuSO4")
+  
+CuSO4_wholegenomeBSA %>% filter(CHROM != "I", CHROM != "M") %>%
+  ggplot(aes(x = POS, y = Bulk_Z)) + 
+  
+  #Add Bulk, Parent, Day, and Interaction Traces
+  geom_point(size = 0.5, alpha = 0.08) + 
+  scale_color_manual(values = c("#345F6F", "#D7335C", "#FFB05C")) + 
+  
+  #Add the breaks for the facets
+  scale_x_continuous(breaks = seq(from = 0, to = max(wholegenomeBSA$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + ylab("Oak  <--   Zscore  -->  Wine") +
+    ggtitle("Functionalized Plot for Bulk CSSI CuSO4")
+```
+
+## Make function for plotting
+
+```{r}
+
+cybrPlotZPrime <- function(zprimedf, 
+                       columns = c("Bulk_Zprime", "Parent_Zprime", "Interaction_Zprime"), 
+                       chromosomes = "All", 
+                       title = "Smoothed Z Scores",
+                       yeast = TRUE,
+                       colvalues = c("#345F6F", "#D7335C", "#FFB05C")){
+  
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+  
+    zprimedf$CHROM <- factor(zprimedf$CHROM, levels = ChromKey$chromosomes)
+  }
+  
+
+  if(chromosomes == "All"){
+    zprimedf %>% filter(CHROM != "M") %>%
+    pivot_longer(columns, names_to = "Factor", values_to = "Zprime") %>% 
+    ggplot(aes(x = POS, y = Zprime, color = Factor)) + 
+    
+    #Add Bulk, Parent, Day, and Interaction Traces
+    geom_line(size = 0.75) + 
+    scale_color_manual(values = colvalues) + 
+    
+    #Add the breaks for the facets
+    scale_x_continuous(breaks = seq(from = 0, to = max(zprimedf$POS), by = 1e5), name = "Genomic Position") +
+    facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+    theme(legend.position = "bottom", axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()) + 
+    xlab("Genomic Position") + ylab("Zprime")+
+    ggtitle(paste("Whole Genome ", title, sep = "")) -> finalplot
+    
+  }else{
+    
+    zprimedf %>% filter(CHROM %in% chromosomes) %>%
+    pivot_longer(columns, names_to = "Factor", values_to = "Zprime") %>% 
+    ggplot(aes(x = POS, y = Zprime, color = Factor)) + 
+    
+    #Add Bulk, Parent, Day, and Interaction Traces
+    geom_line(size = 0.75) + 
+    scale_color_manual(values = colvalues) + 
+    
+    #Add the breaks for the facets
+    scale_x_continuous(breaks = seq(from = 0, to = max(zprimedf$POS), by = 1e5), name = "Genomic Position") +
+    facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+    theme(legend.position = "bottom", axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()) + 
+    xlab("Genomic Position") + ylab("Zprime")+
+    ggtitle(title) -> finalplot
+  }
+  return(finalplot)
+}
+
+```
+
+```{r}
+cybrPlotZScore <- function(zprimedf = CuSO4_wholegenomeBSA, 
+                       column = "Bulk_Z", 
+                       chromosomes = "All", 
+                       title = "Z Scores by Position",
+                       yeast = TRUE,
+                       dotcolor = "black"){
+  
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+  
+    zprimedf$CHROM <- factor(zprimedf$CHROM, levels = ChromKey$chromosomes)
+  }
+  
+
+  if(chromosomes == "All"){
+    
+    zprimedf %>% pivot_longer(column, names_to = "Factor", values_to = "Zscore") %>% 
+filter(CHROM != "M") %>% filter(Factor == column) %>%
+    ggplot(aes(x = POS, y = Zscore)) + 
+      geom_point(size = 0.5, alpha = 0.08, color = dotcolor) + 
+    #Add the breaks for the facets
+    scale_x_continuous(breaks = seq(from = 0, to = max(zprimedf$POS), by = 1e5), name = "Genomic Position") +
+    facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+    theme(legend.position = "bottom", axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()) + 
+    xlab("Genomic Position") + ylab("Zscore") +
+      ggtitle(title) -> finalplot
+    
+  }else{
+    
+    zprimedf %>% pivot_longer(column, names_to = "Factor", values_to = "Zscore") %>% 
+filter(CHROM %in% chromosomes) %>% filter(Factor == column) %>%
+    ggplot(aes(x = POS, y = Zscore)) + 
+      geom_point(size = 1, alpha = 0.08, color = dotcolor) + 
+    #Add the breaks for the facets
+    scale_x_continuous(breaks = seq(from = 0, to = max(zprimedf$POS), by = 1e5), name = "Genomic Position") +
+    facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+    theme(legend.position = "bottom", axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()) + 
+    xlab("Genomic Position") + ylab("Zscore") +
+      ggtitle(title) -> finalplot
+  }
+  return(finalplot)
+}
+
+```
+
+Testing plot functions
+
+```{r}
+cybrPlotZPrime(CuSO4_wholegenomeBSA, columns = c("Bulk_Zprime"))
+
+cybrPlotZScore(CuSO4_wholegenomeBSA)
+
+cybrPlotZPrime(wholegenomeBSA, chromosomes = ChromKey$chromosomes[2:16])
+
+cybrPlotZScore(wholegenomeBSA)
+
+```
+
 
