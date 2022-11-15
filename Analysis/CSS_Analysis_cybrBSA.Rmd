@@ -1,0 +1,455 @@
+---
+title: "CSS Analysis"
+author: "Cassandra Buzby"
+date: "10/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+# load("RdataFiles/SAUA_4-13-22.Rdata")
+# load("RdataFiles/SCUC_4-13-22.Rdata")
+# load("RdataFiles/bsa_glm_results.Rdata")
+
+#rawData = "HGV.SortedCat.vcf.output.table"
+```
+
+## Convert Parental Alleles
+
+```{r, eval = FALSE}
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+
+head(parentSNPids)
+```
+
+## Using cybrBSA package
+
+CSS I Fluconazole
+
+```{r, eval = FALSE}
+mydatatotest = "HGV.SortedCat.vcf.output.table"
+
+CSSI_Fluc <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% 
+  cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
+  na.omit()
+
+unique(CSSI_Fluc$Dataset)
+
+CSSI_Fluc$Bulk <- NA
+CSSI_Fluc$Bulk[CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Dilute_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_C.fastq" | 
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_D.fastq"] <- "Dilute"
+
+CSSI_Fluc$Bulk[CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_C.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_D.fastq" | 
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Fluc_C.fastq"] <- "Fluconazole"
+
+CSSI_Fluc$Parent <- NA
+CSSI_Fluc$Parent[CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Dilute_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_C.fastq" | 
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_OakI_Fluc_D.fastq"] <- "OakI"
+
+CSSI_Fluc$Parent[CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_B.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_C.fastq" |
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Dilute_D.fastq" | 
+              CSSI_Fluc$Dataset == "HGVMVDRX2_n01_WineI_Fluc_C.fastq"] <- "WineI"
+
+CSSI_Fluc$Parent <- factor(CSSI_Fluc$Parent)
+CSSI_Fluc$Bulk <- factor(CSSI_Fluc$Bulk)
+CSSI_Fluc$ReadCount <- as.numeric(CSSI_Fluc$ReadCount)
+
+head(CSSI_Fluc)
+
+CSSI_Fluc_BSA <- foreach(i=unique(CSSI_Fluc$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Fluc, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Fluc_BSA, file = "CSSI_Fluc_BSA.Rdata")
+```
+
+
+CSS I CuSO4
+
+```{r, eval = FALSE}
+CuSO4gatk <- "Data\\TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+
+CuSO4data <- cybrInputGATKTable(CuSO4gatk) %>% 
+  cybrQualityFilter() %>% 
+  cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
+  na.omit()
+
+unique(CuSO4data$Dataset)
+
+CuSO4data$Bulk <- NA
+CuSO4data$Bulk[CuSO4data$Dataset == "SelectedA" |
+              CuSO4data$Dataset == "SelectedC"] <- "CuSO4"
+
+CuSO4data$Bulk[CuSO4data$Dataset == "UnselectedA" |
+              CuSO4data$Dataset == "UnselectedC"] <- "Dilute"
+
+CuSO4data$Parent <- NA
+CuSO4data$Parent[CuSO4data$Dataset == "SelectedA" |
+              CuSO4data$Dataset == "UnselectedA"] <- "OakI"
+
+CuSO4data$Parent[CuSO4data$Dataset == "SelectedC" |
+              CuSO4data$Dataset == "UnselectedC"] <- "WineI"
+
+CuSO4data$Parent <- factor(CuSO4data$Parent)
+CuSO4data$Bulk <- factor(CuSO4data$Bulk)
+CuSO4data$ReadCount <- as.numeric(CuSO4data$ReadCount)
+
+head(CuSO4data)
+
+CSSI_CuSO4_BSA <- foreach(i=unique(CuSO4data$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CuSO4data, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_CuSO4_BSA, file = "CSSI_CuSO4_BSA.Rdata")
+
+```
+
+
+##Cycloheximide / Zeocin Data
+
+```{r, eval = FALSE}
+mydatatotest = "HKTMZDRX2.SortedCat.vcf.output.table"
+
+CSSI_CycZeo <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% 
+  cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
+  na.omit()
+
+unique(CSSI_CycZeo$Dataset)
+
+CSSI_CycZeo$Bulk <- NA
+CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCA.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCB.fastq"] <- "Cycloheximide"
+
+CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODA.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDB.fastq"] <- "Dilute"
+
+CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZA.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZB.fastq"] <- "Zeocin"
+
+CSSI_CycZeo$Parent <- NA
+CSSI_CycZeo$Parent[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZA.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODB.fastq"] <- "OakI"
+
+CSSI_CycZeo$Parent[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZA.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCB.fastq" |
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDA.fastq" | 
+              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDB.fastq"] <- "WineI"
+
+CSSI_CycZeo$Parent <- factor(CSSI_CycZeo$Parent)
+CSSI_CycZeo$Bulk <- factor(CSSI_CycZeo$Bulk)
+CSSI_CycZeo$ReadCount <- as.numeric(CSSI_CycZeo$ReadCount)
+
+head(CSSI_CycZeo)
+
+#Separate into different datasets, since the subsequent steps will break if not
+CSSI_Cycloheximide <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Zeocin",]
+CSSI_Zeocin <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Cycloheximide",]
+
+#Run BSA_GLM() and SmoothBSAWindows() for each
+CSSI_Cyc_BSA <- foreach(i=unique(CSSI_Cycloheximide$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Cycloheximide, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Cyc_BSA, file = "CSSI_Cyc_BSA.Rdata")
+
+CSSI_Zeo_BSA <- foreach(i=unique(CSSI_Zeocin$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Zeocin, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Zeo_BSA, file = "CSSI_Zeo_BSA.Rdata")
+```
+
+## Redoing Zeocin with replicates
+
+```{r, eval = FALSE}
+
+CSSI_Zeocin_A <- CSSI_Zeocin[grep("A.fastq", CSSI_Zeocin$Dataset),]
+CSSI_Zeocin_B <- CSSI_Zeocin[grep("B.fastq", CSSI_Zeocin$Dataset),]
+
+CSSI_Zeo_BSA_A <- foreach(i=unique(CSSI_Zeocin_A$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Zeocin_A, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Zeo_BSA_A, file = "CSSI_Zeo_BSA_A.Rdata")
+
+CSSI_Zeo_BSA_B <- foreach(i=unique(CSSI_Zeocin_B$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Zeocin_B, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Zeo_BSA_B, file = "CSSI_Zeo_BSA_B.Rdata")
+```
+
+Checking these
+
+```{r}
+
+load("CSSI_Zeo_BSA_A.Rdata")
+load("CSSI_Zeo_BSA_B.Rdata")
+```
+
+
+## Plotting
+
+Load in Data
+
+```{r}
+load("CSSI_Fluc_BSA.Rdata")
+load("CSSI_CuSO4_BSA.Rdata")
+
+load("CSSI_Zeo_BSA.Rdata")
+load("CSSI_Cyc_BSA.Rdata")
+```
+
+
+Plotting CSS I Fluconazole
+
+```{r}
+cybrPlotZPrime(CSSI_Fluc_BSA, columns = c("Bulk_Zprime"))
+
+cybrPlotZScore(CSSI_Fluc_BSA)
+
+cybrPlotZPrime(CSSI_Fluc_BSA, chromosomes = ChromKey$chromosomes[2:16])
+
+cybrPlotZScore(CSSI_Fluc_BSA)
+```
+ 
+ Plotting CSS I CuSO4
+ 
+```{r}
+cybrPlotZPrime(CSSI_CuSO4_BSA, columns = c("Bulk_Zprime"))
+
+cybrPlotZScore(CSSI_CuSO4_BSA)
+
+cybrPlotZPrime(CSSI_CuSO4_BSA, chromosomes = ChromKey$chromosomes[2:16])
+
+cybrPlotZScore(CSSI_CuSO4_BSA)
+```
+
+Plotting Zeocin
+
+```{r}
+cybrPlotZPrime(CSSI_Zeo_BSA, columns = "Bulk_Zprime")
+
+cybrPlotZScore(CSSI_Zeo_BSA)
+
+cybrPlotZPrime(CSSI_Zeo_BSA, chromosomes = ChromKey$chromosomes[2:16], title = "Zeocin Smoothed Z Scores")
+
+cybrPlotZScore(CSSI_Zeo_BSA)
+
+```
+
+Plotting Cycloheximide
+
+```{r}
+cybrPlotZPrime(CSSI_Cyc_BSA, columns = "Bulk_Zprime")
+
+cybrPlotZScore(CSSI_Cyc_BSA)
+
+cybrPlotZPrime(CSSI_Cyc_BSA, chromosomes = ChromKey$chromosomes[2:16], title = "Cycloheximide Smoothed Z Scores")
+
+cybrPlotZScore(CSSI_Cyc_BSA)
+
+```
+
+Identify locations of peaks
+
+```{r}
+CSSI_CuSO4_Peaks <- data.frame(CHROM = unique(CSSI_CuSO4_BSA$CHROM),
+                               peak.Bulk = NA)
+
+for(i in 1:length(unique(CSSI_CuSO4_BSA$CHROM))){
+  subsetdata <- subset(CSSI_CuSO4_BSA, CHROM == unique(CSSI_CuSO4_BSA$CHROM)[i])
+  CSSI_CuSO4_Peaks$peak.Bulk[i] <- subsetdata$POS[abs(subsetdata$Bulk_Zprime) == max(abs(subsetdata$Bulk_Zprime))]
+}
+
+CSSI_CuSO4_Peaks
+
+cybrPlotZPrime(CSSI_CuSO4_BSA, chromosomes = ChromKey$chromosomes[2:16]) + 
+  geom_vline(data = CSSI_CuSO4_Peaks, aes(xintercept = peak.Bulk), color = "black", alpha = 0.5, size = 0.7, linetype = "dashed")
+
+
+```
+
+```{r}
+CSSI_Fluc_peaks <- data.frame(CHROM = unique(CSSI_Fluc_BSA$CHROM),
+                               peak.Bulk = NA,
+                              peak.Interaction = NA,
+                              peak.Parent = NA)
+
+for(i in 1:length(unique(CSSI_Fluc_BSA$CHROM))){
+  subsetdata <- subset(CSSI_Fluc_BSA, CHROM == unique(CSSI_Fluc_BSA$CHROM)[i])
+  
+  CSSI_Fluc_peaks$peak.Bulk[i] <- subsetdata$POS[abs(subsetdata$Bulk_Zprime) == max(abs(subsetdata$Bulk_Zprime))]
+  CSSI_Fluc_peaks$peak.Interaction[i] <- subsetdata$POS[abs(subsetdata$Interaction_Zprime) == max(abs(subsetdata$Interaction_Zprime))]
+  CSSI_Fluc_peaks$peak.Parent[i] <- subsetdata$POS[abs(subsetdata$Parent_Zprime) == max(abs(subsetdata$Parent_Zprime))]
+
+}
+
+CSSI_Fluc_peaks
+
+cybrPlotZPrime(CSSI_Fluc_BSA, chromosomes = ChromKey$chromosomes[2:16]) + 
+  geom_vline(data = CSSI_Fluc_peaks, aes(xintercept = peak.Bulk), color = "black", alpha = 0.5, size = 0.7, linetype = "dashed")
+
+
+```
+
+Find the genes nearest to each point
+
+```{r}
+
+colvalues = c("#345F6F", "#D7335C", "#FFB05C")
+
+CSSI_Fluc_peaks %>% pivot_longer(c(peak.Bulk, peak.Interaction, peak.Parent), names_to = "Type", values_to = "POS") %>% mutate(Experiment = "CSSI_Fluc") %>% left_join(CSSI_Fluc_BSA, by = c("CHROM", "POS")) %>% select(-Index, -Bulk_Z, -Parent_Z, -Interaction_Z) -> CF
+
+CSSI_CuSO4_Peaks %>% pivot_longer(c(peak.Bulk), names_to = "Type", values_to = "POS") %>% mutate(Experiment = "CSSI_CuSO4") %>% left_join(CSSI_CuSO4_BSA, by = c("CHROM", "POS")) %>% select(-Index, -Bulk_Z, -Parent_Z, -Interaction_Z) -> CC
+
+rbind(CC, CF) -> Peaks_Combined
+
+Peaks_Combined$Mag = NA
+Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Bulk"] <- Peaks_Combined$Bulk_Zprime[Peaks_Combined$Type == "peak.Bulk"] 
+Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Parent"] <- Peaks_Combined$Parent_Zprime[Peaks_Combined$Type == "peak.Parent"] 
+Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Interaction"] <- Peaks_Combined$Interaction_Zprime[Peaks_Combined$Type == "peak.Interaction"] 
+
+cutoff <- max(na.omit(abs(Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Parent"])))
+
+Peaks_Combined %>% filter(CHROM != "M") %>% filter(abs(Mag) > cutoff) -> Shortlist
+
+Shortlist %>% ggplot(aes(x = POS, y = Mag, shape = Experiment, color = Type)) + geom_point(size = 2) + scale_color_manual(values = c("#345F6F", "#D7335C", "#FFB05C")
+) + facet_grid(~CHROM) + theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+Shortlist %>% arrange(-abs(Mag)) %>% select(-Bulk_Zprime, -Parent_Zprime, -Interaction_Zprime) -> ShortlistArranged
+
+write.csv(ShortlistArranged, file = "Genes_CSSI_Experiments.csv")
+getwd()
+```
+
+
+Picking out the actual SNPs from peak regions
+
+```{r}
+
+Shortlist %>% mutate(Lower = POS - 5000, Upper = POS + 5000) -> FilterPositions
+
+
+# WindowPeaks <- foreach(i=1:length(FilterPositions$CHROM), .combine=rbind)%dopar%{
+#   if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
+#     stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+#     
+#   }else{
+#     stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+#   }
+#   stuff$Experiment <- FilterPositions$Experiment[i]
+#   stuff
+# }
+# 
+# WindowPeaks <- as.data.frame(WindowPeaks)
+
+#WindowPeaks %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Experiment)) + geom_point(size = 2) + facet_wrap(~CHROM, scales = "free")
+
+for(i in 1:length(FilterPositions$CHROM)){
+  if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
+    stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+  }else{
+    stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+  }
+  
+  if(FilterPositions$Type[i] == "peak.Bulk"){
+    mycolor <- "blue"
+    plot <- ggplot(stuff, aes(x = POS, y = Bulk_Z)) + 
+    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
+    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
+  }else{
+    mycolor <- "red"
+    plot <- ggplot(stuff, aes(x = POS, y = Interaction_Z)) + 
+    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
+    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
+  }
+  
+
+  print(plot)
+}
+
+```
+
+```{r}
+Shortlist %>% mutate(Lower = POS - 50000, Upper = POS + 50000) -> FilterPositions
+
+for(i in 1:length(FilterPositions$CHROM)){
+  if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
+    stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+  }else{
+    stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
+  }
+  
+  if(FilterPositions$Type[i] == "peak.Bulk"){
+    mycolor <- "blue"
+    plot <- ggplot(stuff, aes(x = POS, y = Bulk_Z)) + 
+    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
+    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
+  }else{
+    mycolor <- "red"
+    plot <- ggplot(stuff, aes(x = POS, y = Interaction_Z)) + 
+    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
+    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
+  }
+  
+
+  print(plot)
+}
+
+```
+

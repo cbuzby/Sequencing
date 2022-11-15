@@ -490,6 +490,7 @@ CuSO4_wholegenomeBSA <- foreach(i=unique(CuSO4data$CHROM), .combine=rbind) %dopa
   cybrBSA_GLM(CuSO4data, chr = i) %>% cybrSmoothBSAWindows()
 }
 ```
+
 Plot this shit
 
 ```{r}
