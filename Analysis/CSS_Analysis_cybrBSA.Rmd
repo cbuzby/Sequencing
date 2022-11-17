@@ -2,7 +2,10 @@
 title: "CSS Analysis"
 author: "Cassandra Buzby"
 date: "10/27/2022"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -17,6 +20,7 @@ library(cowplot)
 library(dplyr)
 library(foreach)
 library(doParallel)
+library(RColorBrewer)
 
 library(cybrBSA)
 
@@ -96,6 +100,8 @@ CSSI_Fluc$ReadCount <- as.numeric(CSSI_Fluc$ReadCount)
 
 head(CSSI_Fluc)
 
+save(CSSI_Fluc, file ="CSSI_Fluc_counts.Rdata")
+
 CSSI_Fluc_BSA <- foreach(i=unique(CSSI_Fluc$CHROM), .combine=rbind) %dopar%{
   cybrBSA_GLM(CSSI_Fluc, chr = i) %>% cybrSmoothBSAWindows()
 }
@@ -135,6 +141,8 @@ CuSO4data$Bulk <- factor(CuSO4data$Bulk)
 CuSO4data$ReadCount <- as.numeric(CuSO4data$ReadCount)
 
 head(CuSO4data)
+
+save(CuSO4data, file = "CuSO4data_counts.Rdata")
 
 CSSI_CuSO4_BSA <- foreach(i=unique(CuSO4data$CHROM), .combine=rbind) %dopar%{
   cybrBSA_GLM(CuSO4data, chr = i) %>% cybrSmoothBSAWindows()
@@ -194,6 +202,8 @@ CSSI_CycZeo$ReadCount <- as.numeric(CSSI_CycZeo$ReadCount)
 
 head(CSSI_CycZeo)
 
+save(CSSI_CycZeo, file = "CSSI_CycZeo_counts.Rdata")
+
 #Separate into different datasets, since the subsequent steps will break if not
 CSSI_Cycloheximide <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Zeocin",]
 CSSI_Zeocin <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Cycloheximide",]
@@ -213,6 +223,8 @@ save(CSSI_Zeo_BSA, file = "CSSI_Zeo_BSA.Rdata")
 ```
 
 ## Redoing Zeocin with replicates
+
+Run Analysis
 
 ```{r, eval = FALSE}
 
@@ -235,9 +247,99 @@ save(CSSI_Zeo_BSA_B, file = "CSSI_Zeo_BSA_B.Rdata")
 Checking these
 
 ```{r}
+colvalues = c("#345F6F", "#D7335C", "#FFB05C")
 
 load("CSSI_Zeo_BSA_A.Rdata")
 load("CSSI_Zeo_BSA_B.Rdata")
+
+CSSI_Zeo_BSA_A$Rep = "A"
+CSSI_Zeo_BSA_B$Rep = "B"
+
+combined_Zeo <- rbind(CSSI_Zeo_BSA_A,CSSI_Zeo_BSA_B) 
+
+combined_Zeo %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Bulk Zprime Zeocin")
+
+combined_Zeo %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Interaction Zprime Zeocin")
+
+combined_Zeo %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Zeocin")
+
+combined_Zeo %>% pivot_longer(c(Bulk_Zprime, Interaction_Zprime, Parent_Zprime), names_to = "Effect", values_to = "Zprime") %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Effect, linetype = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + scale_color_manual(values = colvalues) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Zeocin")
+```
+
+## Redoing Cycloheximide with replicates
+
+Run Analysis
+
+```{r, eval = FALSE}
+
+CSSI_Cycloheximide_A <- CSSI_Cycloheximide[grep("A.fastq", CSSI_Cycloheximide$Dataset),]
+CSSI_Cycloheximide_B <- CSSI_Cycloheximide[grep("B.fastq", CSSI_Cycloheximide$Dataset),]
+
+CSSI_Cyc_BSA_A <- foreach(i=unique(CSSI_Cycloheximide_A$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Cycloheximide_A, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Cyc_BSA_A, file = "CSSI_Cyc_BSA_A.Rdata")
+
+CSSI_Cyc_BSA_B <- foreach(i=unique(CSSI_Cycloheximide_B$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Cycloheximide_B, chr = i) %>% cybrSmoothBSAWindows()
+}
+
+save(CSSI_Cyc_BSA_B, file = "CSSI_Cyc_BSA_B.Rdata")
+```
+
+Checking these
+
+```{r}
+colvalues = c("#345F6F", "#D7335C", "#FFB05C")
+
+load("CSSI_Cyc_BSA_A.Rdata")
+load("CSSI_Cyc_BSA_B.Rdata")
+
+CSSI_Cyc_BSA_A$Rep = "A"
+CSSI_Cyc_BSA_B$Rep = "B"
+
+combined_Cyc <- rbind(CSSI_Cyc_BSA_A,CSSI_Cyc_BSA_B) 
+
+combined_Cyc %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Bulk Zprime Cycloheximide")
+
+combined_Cyc %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Interaction Zprime Cycloheximide")
+
+combined_Cyc %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Cycloheximide")
+
+combined_Cyc %>% pivot_longer(c(Bulk_Zprime, Interaction_Zprime, Parent_Zprime), names_to = "Effect", values_to = "Zprime") %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Effect, linetype = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + scale_color_manual(values = colvalues) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Cycloheximide")
 ```
 
 
@@ -304,7 +406,7 @@ cybrPlotZScore(CSSI_Cyc_BSA)
 
 ```
 
-Identify locations of peaks
+## Identify locations of peaks
 
 ```{r}
 CSSI_CuSO4_Peaks <- data.frame(CHROM = unique(CSSI_CuSO4_BSA$CHROM),
@@ -323,7 +425,7 @@ cybrPlotZPrime(CSSI_CuSO4_BSA, chromosomes = ChromKey$chromosomes[2:16]) +
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 CSSI_Fluc_peaks <- data.frame(CHROM = unique(CSSI_Fluc_BSA$CHROM),
                                peak.Bulk = NA,
                               peak.Interaction = NA,
@@ -348,7 +450,7 @@ cybrPlotZPrime(CSSI_Fluc_BSA, chromosomes = ChromKey$chromosomes[2:16]) +
 
 Find the genes nearest to each point
 
-```{r}
+```{r, eval = FALSE}
 
 colvalues = c("#345F6F", "#D7335C", "#FFB05C")
 
@@ -373,14 +475,14 @@ Shortlist %>% ggplot(aes(x = POS, y = Mag, shape = Experiment, color = Type)) + 
 
 Shortlist %>% arrange(-abs(Mag)) %>% select(-Bulk_Zprime, -Parent_Zprime, -Interaction_Zprime) -> ShortlistArranged
 
-write.csv(ShortlistArranged, file = "Genes_CSSI_Experiments.csv")
+#write.csv(ShortlistArranged, file = "Genes_CSSI_Experiments.csv")
 getwd()
 ```
 
 
 Picking out the actual SNPs from peak regions
 
-```{r}
+```{r, eval = FALSE}
 
 Shortlist %>% mutate(Lower = POS - 5000, Upper = POS + 5000) -> FilterPositions
 
@@ -425,7 +527,7 @@ for(i in 1:length(FilterPositions$CHROM)){
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 Shortlist %>% mutate(Lower = POS - 50000, Upper = POS + 50000) -> FilterPositions
 
 for(i in 1:length(FilterPositions$CHROM)){
@@ -451,5 +553,236 @@ for(i in 1:length(FilterPositions$CHROM)){
   print(plot)
 }
 
+```
+
+## Compare dilute samples for all combinations
+
+We would expect the "dilute" group for each to not have a strong effect, so (1) find the difference in the four for the CycZeo experiment, and then (2) find the overall effect for each replicate and (3) find the overall effect for all groups at once.
+
+```{r}
+load("CSSI_CycZeo_counts.Rdata")
+load("CSSI_Fluc_counts.Rdata")
+load("CuSO4data_counts.Rdata")
+
+CSSI_CycZeo %>% filter(Bulk == "Dilute") %>% mutate(Study = "CycZeo") -> CZCounts
+CSSI_Fluc %>% filter(Bulk == "Dilute") %>% mutate(Study = "Fluc") -> FCounts
+CuSO4data %>% filter(Bulk == "Dilute") %>% mutate(Study = "CuSO4") -> CuCounts
+
+DiluteData <- rbind(CZCounts,FCounts,CuCounts)
+DiluteData %>% group_by(CHROM, POS) %>% 
+  summarise(CHROM = CHROM, POS = POS, studies = length(unique(Study))) %>% 
+  distinct() %>% ungroup() -> DiluteDataCounts
+
+DiluteDataCounts %>% filter(studies < 3) -> DiluteData_nonOverlaps
+
+# ~8% of positions are not represented in ALL groups
+dim(DiluteData_nonOverlaps)[1]/dim(DiluteData)[1]
+
+#Filter out those which don't have all three
+DiluteDataCounts %>% filter(studies == 3) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_filtered
+
+```
+
+```{r, eval = FALSE}
+################################################################################
+#Rewrote functions to accommodate
+#unique(DiluteData$Study)
+CSSI_Dilute_BSA <- foreach(i=unique(DiluteData_filtered$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_filtered, chr = i, formula = "PAllele ~ Study") 
+}
+
+#CSSI_Dilute_BSA %>% cybrSmoothBSAWindows(chr = "VIX")
+CSSI_Dilute_BSA_s <- foreach(i=unique(CSSI_Dilute_BSA$CHROM), .combine=rbind) %dopar%{
+  cybrSmoothBSAWindows(CSSI_Dilute_BSA, chr = i) 
+}
+
+i <- "I"
+
+mylist <- list()
+#Chromosomes 6 and 9 don't work for some reason?
+for(i in unique(CSSI_Dilute_BSA$CHROM)){
+  mylist[[i]] <- cybrSmoothBSAWindows(CSSI_Dilute_BSA, chr = i) 
+}
+
+CSSI_Dilute_BSA_s <- bind_rows(mylist)
+CSSI_Dilute_BSA_s$CHROM <- factor(CSSI_Dilute_BSA_s$CHROM, levels = ChromKey$chromosomes)
+save(CSSI_Dilute_BSA_s, file = "CSSI_Dilute_BSA_s.Rdata")
+
+################################################################################
+CZDilute_BSA <- foreach(i=unique(CZCounts$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CZCounts, chr = i, formula = "PAllele ~ Dataset") %>% cybrSmoothBSAWindows()
+}
+
+save(CZDilute_BSA, file = "CZDilute_BSA.Rdata")
+
+```
+
+
+Plot these results
+
+```{r}
+load("CSSI_Dilute_BSA_s.Rdata")
+DiluteData_nonOverlaps %>% select(-studies) %>% mutate('(Intercept)_Zprime' = NA, StudyCycZeo_Zprime = NA, StudyFluc_Zprime = NA, MissingData = 0) -> fillingindata
+CSSI_Dilute_BSA_s %>% select(CHROM, POS, '(Intercept)_Zprime', StudyCycZeo_Zprime, StudyFluc_Zprime) %>% mutate(MissingData = NA) %>% rbind(fillingindata) -> CSSI_Dilute_BSA_u
+
+CSSI_Dilute_BSA_u %>% pivot_longer(c('(Intercept)_Zprime', StudyCycZeo_Zprime, StudyFluc_Zprime, MissingData), names_to = "Factor", values_to = "Zprime") %>% 
+  filter(Factor != "(Intercept)_Zprime") %>% 
+  filter(CHROM != "I") %>%
+  ggplot(aes(x = POS, y = Zprime, color = Factor)) + geom_point(alpha = 0.4, size = 0.5) + facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + scale_color_manual(values = c("black", "violet", "red")) +
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("All Studies Compared (Dilute)")
+```
+
+
+```{r}
+load("CZDilute_BSA.Rdata")
+
+CZDilute_BSA %>% filter(CHROM != "I") %>% pivot_longer(c('(Intercept)_Zprime', 
+                                DatasetHKTMWDRX2_n01_ODB.fastq_Zprime,
+                                DatasetHKTMWDRX2_n01_WDA.fastq_Zprime,
+                                DatasetHKTMWDRX2_n01_WDB.fastq_Zprime), names_to = "Factor", values_to = "Zprime") %>%
+  mutate(FactorName = gsub("DatasetHKTMWDRX2_n01_", "", .$Factor)) %>%
+  filter(FactorName != "(Intercept)_Zprime") %>%
+  ggplot(aes(x = POS, y = Zprime, color = FactorName)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Zprime") + ggtitle("CycZeo Dilute Samples Compared")
+```
+
+
+## Plotting actual allele frequencies for each
+
+I need to know what the logistic regression is doing here, so I'm going to plot each of the dilute samples in a different color and see if there's a weird trend there. That should help separate the effects of replicates as well as batches.
+
+Load in just in case:
+```{r}
+load("CSSI_CycZeo_counts.Rdata")
+load("CSSI_Fluc_counts.Rdata")
+load("CuSO4data_counts.Rdata")
+
+####################### Dilute #################################################
+CSSI_CycZeo %>% filter(Bulk == "Dilute") %>% mutate(Study = "CycZeo") -> CZCounts
+CSSI_Fluc %>% filter(Bulk == "Dilute") %>% mutate(Study = "Fluc") -> FCounts
+CuSO4data %>% filter(Bulk == "Dilute") %>% mutate(Study = "CuSO4") -> CuCounts
+
+DiluteData <- rbind(CZCounts,FCounts,CuCounts)
+
+DatasetKey <- data.frame(Dataset = unique(DiluteData$Dataset),
+                         DataName = c("CZ_ODA", "CZ_ODB", "CZ_WDA", "CZ_WDB", "F_ODB", "F_WDB", "F_WDC", "F_WDD", "Cu_DA", "Cu_DC"))
+
+DiluteData$Dataset <- as.character(DiluteData$Dataset)
+DiluteData %>% left_join(DatasetKey, by = "Dataset") -> DiluteLabeled
+
+####################### Selected ###############################################
+
+CSSI_CycZeo %>% filter(Bulk != "Dilute") %>% mutate(Study = "CycZeo") -> CZCounts_s
+CSSI_Fluc %>% filter(Bulk != "Dilute") %>% mutate(Study = "Fluc") -> FCounts_s
+CuSO4data %>% filter(Bulk != "Dilute") %>% mutate(Study = "CuSO4") -> CuCounts_s
+
+SelectedData <- rbind(CZCounts_s,FCounts_s,CuCounts_s)
+
+DatasetKey_s <- data.frame(Dataset = unique(SelectedData$Dataset),
+                         DataName = c("CZ_OCA", "CZ_OCB", "CZ_OZA", "CZ_OZB","CZ_WCA", "CZ_WCB","CZ_WZA", "CZ_WZB", "F_OFB", "F_OFC", "F_OFD", "F_WFC", "Cu_SA", "Cu_SC"))
+
+SelectedData$Dataset <- as.character(SelectedData$Dataset)
+SelectedData %>% left_join(DatasetKey_s, by = "Dataset") -> SelectedLabeled
+
+####################### Colors #################################################
+
+```
+
+Pull out the allele frequency of each
+
+```{r}
+DatasetKey <- data.frame(Dataset = unique(DiluteData$Dataset),
+                         DataName = c("CZ_ODA", "CZ_ODB", "CZ_WDA", "CZ_WDB", "F_ODB", "F_WDB", "F_WDC", "F_WDD", "Cu_DA", "Cu_DC"))
+
+DiluteData$Dataset <- as.character(DiluteData$Dataset)
+DiluteData %>% left_join(DatasetKey, by = "Dataset") -> DiluteLabeled
+
+DiluteLabeled$DataName <- factor(DiluteLabeled$DataName, 
+                                   levels = c("CZ_ODA", "CZ_ODB", "CZ_WDA", "CZ_WDB", "F_ODB", "F_WDB", "F_WDC", "F_WDD", "Cu_DA", "Cu_DC"))
+
+mylabelcolorsd <- c("#91171F","#5C95FF",
+                     "black", "#966B9D", "#A94C4C", "#2E1C2B", 
+                     "#F2B880", "#46B1C9", "#3E517A", "#CBBAED",
+                     "#8C2155", "#F87060", "#183059", "lightblue")
+names(mylabelcolorsd) <- levels(DiluteLabeled$DataName)
+
+DiluteLabeled %>% select(-AltRef_Allele) %>% 
+    pivot_wider(names_from = PAllele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = DataName)) + geom_point(alpha = 0.2, size = 0.2) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Read Ratio by Dilute Dataset")
+
+DiluteLabeled %>% filter(CHROM == "VII")  %>% select(-AltRef_Allele) %>% 
+    pivot_wider(names_from = PAllele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = Study, group = DataName)) + geom_point(alpha = 0.2) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() + scale_color_manual(values = c("skyblue", "violet", "red")) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Read Ratio by Dilute Dataset")
+
+DiluteLabeled %>% filter(CHROM == "VII") %>% select(-AltRef_Allele) %>% 
+    pivot_wider(names_from = PAllele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = DataName)) + geom_point(alpha = 0.2, size = 0.8) + 
+  facet_grid(~Study, scales = "free_x", space = "free_x") + 
+  theme_minimal() + scale_color_manual(values = mylabelcolorsd) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Chr VII Read Ratio by Dilute Dataset")
+```
+
+
+```{r}
+load("CSSI_CycZeo_counts.Rdata")
+load("CSSI_Fluc_counts.Rdata")
+load("CuSO4data_counts.Rdata")
+
+CSSI_CycZeo %>% filter(Bulk != "Dilute") %>% mutate(Study = "CycZeo") -> CZCounts_s
+CSSI_Fluc %>% filter(Bulk != "Dilute") %>% mutate(Study = "Fluc") -> FCounts_s
+CuSO4data %>% filter(Bulk != "Dilute") %>% mutate(Study = "CuSO4") -> CuCounts_s
+
+SelectedData <- rbind(CZCounts_s,FCounts_s,CuCounts_s)
+
+DatasetKey_s <- data.frame(Dataset = unique(SelectedData$Dataset),
+                         DataName = c("CZ_OCA", "CZ_OCB", "CZ_OZA", "CZ_OZB","CZ_WCA", "CZ_WCB","CZ_WZA", "CZ_WZB", "F_OFB", "F_OFC", "F_OFD", "F_WFC", "Cu_SA", "Cu_SC"))
+
+SelectedData$Dataset <- as.character(SelectedData$Dataset)
+SelectedData %>% left_join(DatasetKey_s, by = "Dataset") -> SelectedLabeled
+
+SelectedLabeled$DataName <- factor(SelectedLabeled$DataName, 
+                                   levels = c("CZ_OCA", "CZ_OCB", "CZ_OZA", "CZ_OZB","CZ_WCA", "CZ_WCB","CZ_WZA", "CZ_WZB", "F_OFB", "F_OFC", "F_OFD", "F_WFC", "Cu_SA", "Cu_SC"))
+
+mylabelcolors <- c("#91171F","#5C95FF",
+                     "black", "#966B9D", "#A94C4C", "#2E1C2B", 
+                     "#F2B880", "#46B1C9", "#3E517A", "#CBBAED",
+                     "#8C2155", "#F87060", "#183059", "lightblue")
+names(mylabelcolors) <- levels(SelectedLabeled$DataName)
+
+SelectedLabeled %>% select(-AltRef_Allele) %>% 
+    pivot_wider(names_from = PAllele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = DataName)) + geom_point(alpha = 0.2, size = 0.2) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Read Ratio by Selected Dataset")
+
+SelectedLabeled %>% filter(CHROM == "VII") %>% select(-AltRef_Allele) %>% 
+    pivot_wider(names_from = PAllele, values_from = ReadCount) %>% 
+    ggplot(aes(x = POS, y = log(Wine/Oak), color = DataName)) + geom_point(alpha = 0.2, size = 0.8) + 
+  facet_grid(~Bulk) + ylim(-2,2) +
+  theme_minimal() + scale_color_manual(name = "", values = mylabelcolors) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Chr VII Read Ratio by Selected Dataset")
 ```
 
