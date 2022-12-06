@@ -204,355 +204,6 @@ head(CSSI_CycZeo)
 
 save(CSSI_CycZeo, file = "CSSI_CycZeo_counts.Rdata")
 
-#Separate into different datasets, since the subsequent steps will break if not
-CSSI_Cycloheximide <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Zeocin",]
-CSSI_Zeocin <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Cycloheximide",]
-
-#Run BSA_GLM() and SmoothBSAWindows() for each
-CSSI_Cyc_BSA <- foreach(i=unique(CSSI_Cycloheximide$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Cycloheximide, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Cyc_BSA, file = "CSSI_Cyc_BSA.Rdata")
-
-CSSI_Zeo_BSA <- foreach(i=unique(CSSI_Zeocin$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Zeocin, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Zeo_BSA, file = "CSSI_Zeo_BSA.Rdata")
-```
-
-## Redoing Zeocin with replicates
-
-Run Analysis
-
-```{r, eval = FALSE}
-
-CSSI_Zeocin_A <- CSSI_Zeocin[grep("A.fastq", CSSI_Zeocin$Dataset),]
-CSSI_Zeocin_B <- CSSI_Zeocin[grep("B.fastq", CSSI_Zeocin$Dataset),]
-
-CSSI_Zeo_BSA_A <- foreach(i=unique(CSSI_Zeocin_A$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Zeocin_A, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Zeo_BSA_A, file = "CSSI_Zeo_BSA_A.Rdata")
-
-CSSI_Zeo_BSA_B <- foreach(i=unique(CSSI_Zeocin_B$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Zeocin_B, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Zeo_BSA_B, file = "CSSI_Zeo_BSA_B.Rdata")
-```
-
-Checking these
-
-```{r}
-colvalues = c("#345F6F", "#D7335C", "#FFB05C")
-
-load("CSSI_Zeo_BSA_A.Rdata")
-load("CSSI_Zeo_BSA_B.Rdata")
-
-CSSI_Zeo_BSA_A$Rep = "A"
-CSSI_Zeo_BSA_B$Rep = "B"
-
-combined_Zeo <- rbind(CSSI_Zeo_BSA_A,CSSI_Zeo_BSA_B) 
-
-combined_Zeo %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Bulk Zprime Zeocin")
-
-combined_Zeo %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Interaction Zprime Zeocin")
-
-combined_Zeo %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Zeocin")
-
-combined_Zeo %>% pivot_longer(c(Bulk_Zprime, Interaction_Zprime, Parent_Zprime), names_to = "Effect", values_to = "Zprime") %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Effect, linetype = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Zeo$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + scale_color_manual(values = colvalues) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Zeocin")
-```
-
-## Redoing Cycloheximide with replicates
-
-Run Analysis
-
-```{r, eval = FALSE}
-
-CSSI_Cycloheximide_A <- CSSI_Cycloheximide[grep("A.fastq", CSSI_Cycloheximide$Dataset),]
-CSSI_Cycloheximide_B <- CSSI_Cycloheximide[grep("B.fastq", CSSI_Cycloheximide$Dataset),]
-
-CSSI_Cyc_BSA_A <- foreach(i=unique(CSSI_Cycloheximide_A$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Cycloheximide_A, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Cyc_BSA_A, file = "CSSI_Cyc_BSA_A.Rdata")
-
-CSSI_Cyc_BSA_B <- foreach(i=unique(CSSI_Cycloheximide_B$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Cycloheximide_B, chr = i) %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Cyc_BSA_B, file = "CSSI_Cyc_BSA_B.Rdata")
-```
-
-Checking these
-
-```{r}
-colvalues = c("#345F6F", "#D7335C", "#FFB05C")
-
-load("CSSI_Cyc_BSA_A.Rdata")
-load("CSSI_Cyc_BSA_B.Rdata")
-
-CSSI_Cyc_BSA_A$Rep = "A"
-CSSI_Cyc_BSA_B$Rep = "B"
-
-combined_Cyc <- rbind(CSSI_Cyc_BSA_A,CSSI_Cyc_BSA_B) 
-
-combined_Cyc %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Bulk Zprime Cycloheximide")
-
-combined_Cyc %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Interaction_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Interaction Zprime Cycloheximide")
-
-combined_Cyc %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Parent_Zprime, color = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Cycloheximide")
-
-combined_Cyc %>% pivot_longer(c(Bulk_Zprime, Interaction_Zprime, Parent_Zprime), names_to = "Effect", values_to = "Zprime") %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Effect, linetype = Rep)) + geom_line() + scale_x_continuous(breaks = seq(from = 0, to = max(combined_Cyc$POS), by = 1e5), name = "Genomic Position") +
-      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + scale_color_manual(values = colvalues) + 
-      xlab("Genomic Position") + ylab("Zprime") + ggtitle("Parent Zprime Cycloheximide")
-```
-
-
-## Plotting
-
-Load in Data
-
-```{r}
-load("CSSI_Fluc_BSA.Rdata")
-load("CSSI_CuSO4_BSA.Rdata")
-
-load("CSSI_Zeo_BSA.Rdata")
-load("CSSI_Cyc_BSA.Rdata")
-```
-
-
-Plotting CSS I Fluconazole
-
-```{r}
-cybrPlotZPrime(CSSI_Fluc_BSA, columns = c("Bulk_Zprime"))
-
-cybrPlotZScore(CSSI_Fluc_BSA)
-
-cybrPlotZPrime(CSSI_Fluc_BSA, chromosomes = ChromKey$chromosomes[2:16])
-
-cybrPlotZScore(CSSI_Fluc_BSA)
-```
- 
- Plotting CSS I CuSO4
- 
-```{r}
-cybrPlotZPrime(CSSI_CuSO4_BSA, columns = c("Bulk_Zprime"))
-
-cybrPlotZScore(CSSI_CuSO4_BSA)
-
-cybrPlotZPrime(CSSI_CuSO4_BSA, chromosomes = ChromKey$chromosomes[2:16])
-
-cybrPlotZScore(CSSI_CuSO4_BSA)
-```
-
-Plotting Zeocin
-
-```{r}
-cybrPlotZPrime(CSSI_Zeo_BSA, columns = "Bulk_Zprime")
-
-cybrPlotZScore(CSSI_Zeo_BSA)
-
-cybrPlotZPrime(CSSI_Zeo_BSA, chromosomes = ChromKey$chromosomes[2:16], title = "Zeocin Smoothed Z Scores")
-
-cybrPlotZScore(CSSI_Zeo_BSA)
-
-```
-
-Plotting Cycloheximide
-
-```{r}
-cybrPlotZPrime(CSSI_Cyc_BSA, columns = "Bulk_Zprime")
-
-cybrPlotZScore(CSSI_Cyc_BSA)
-
-cybrPlotZPrime(CSSI_Cyc_BSA, chromosomes = ChromKey$chromosomes[2:16], title = "Cycloheximide Smoothed Z Scores")
-
-cybrPlotZScore(CSSI_Cyc_BSA)
-
-```
-
-## Identify locations of peaks
-
-```{r}
-CSSI_CuSO4_Peaks <- data.frame(CHROM = unique(CSSI_CuSO4_BSA$CHROM),
-                               peak.Bulk = NA)
-
-for(i in 1:length(unique(CSSI_CuSO4_BSA$CHROM))){
-  subsetdata <- subset(CSSI_CuSO4_BSA, CHROM == unique(CSSI_CuSO4_BSA$CHROM)[i])
-  CSSI_CuSO4_Peaks$peak.Bulk[i] <- subsetdata$POS[abs(subsetdata$Bulk_Zprime) == max(abs(subsetdata$Bulk_Zprime))]
-}
-
-CSSI_CuSO4_Peaks
-
-cybrPlotZPrime(CSSI_CuSO4_BSA, chromosomes = ChromKey$chromosomes[2:16]) + 
-  geom_vline(data = CSSI_CuSO4_Peaks, aes(xintercept = peak.Bulk), color = "black", alpha = 0.5, size = 0.7, linetype = "dashed")
-
-
-```
-
-```{r, eval = FALSE}
-CSSI_Fluc_peaks <- data.frame(CHROM = unique(CSSI_Fluc_BSA$CHROM),
-                               peak.Bulk = NA,
-                              peak.Interaction = NA,
-                              peak.Parent = NA)
-
-for(i in 1:length(unique(CSSI_Fluc_BSA$CHROM))){
-  subsetdata <- subset(CSSI_Fluc_BSA, CHROM == unique(CSSI_Fluc_BSA$CHROM)[i])
-  
-  CSSI_Fluc_peaks$peak.Bulk[i] <- subsetdata$POS[abs(subsetdata$Bulk_Zprime) == max(abs(subsetdata$Bulk_Zprime))]
-  CSSI_Fluc_peaks$peak.Interaction[i] <- subsetdata$POS[abs(subsetdata$Interaction_Zprime) == max(abs(subsetdata$Interaction_Zprime))]
-  CSSI_Fluc_peaks$peak.Parent[i] <- subsetdata$POS[abs(subsetdata$Parent_Zprime) == max(abs(subsetdata$Parent_Zprime))]
-
-}
-
-CSSI_Fluc_peaks
-
-cybrPlotZPrime(CSSI_Fluc_BSA, chromosomes = ChromKey$chromosomes[2:16]) + 
-  geom_vline(data = CSSI_Fluc_peaks, aes(xintercept = peak.Bulk), color = "black", alpha = 0.5, size = 0.7, linetype = "dashed")
-
-
-```
-
-Find the genes nearest to each point
-
-```{r, eval = FALSE}
-
-colvalues = c("#345F6F", "#D7335C", "#FFB05C")
-
-CSSI_Fluc_peaks %>% pivot_longer(c(peak.Bulk, peak.Interaction, peak.Parent), names_to = "Type", values_to = "POS") %>% mutate(Experiment = "CSSI_Fluc") %>% left_join(CSSI_Fluc_BSA, by = c("CHROM", "POS")) %>% select(-Index, -Bulk_Z, -Parent_Z, -Interaction_Z) -> CF
-
-CSSI_CuSO4_Peaks %>% pivot_longer(c(peak.Bulk), names_to = "Type", values_to = "POS") %>% mutate(Experiment = "CSSI_CuSO4") %>% left_join(CSSI_CuSO4_BSA, by = c("CHROM", "POS")) %>% select(-Index, -Bulk_Z, -Parent_Z, -Interaction_Z) -> CC
-
-rbind(CC, CF) -> Peaks_Combined
-
-Peaks_Combined$Mag = NA
-Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Bulk"] <- Peaks_Combined$Bulk_Zprime[Peaks_Combined$Type == "peak.Bulk"] 
-Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Parent"] <- Peaks_Combined$Parent_Zprime[Peaks_Combined$Type == "peak.Parent"] 
-Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Interaction"] <- Peaks_Combined$Interaction_Zprime[Peaks_Combined$Type == "peak.Interaction"] 
-
-cutoff <- max(na.omit(abs(Peaks_Combined$Mag[Peaks_Combined$Type == "peak.Parent"])))
-
-Peaks_Combined %>% filter(CHROM != "M") %>% filter(abs(Mag) > cutoff) -> Shortlist
-
-Shortlist %>% ggplot(aes(x = POS, y = Mag, shape = Experiment, color = Type)) + geom_point(size = 2) + scale_color_manual(values = c("#345F6F", "#D7335C", "#FFB05C")
-) + facet_grid(~CHROM) + theme(axis.text.x=element_blank(),
-            axis.ticks.x=element_blank())
-
-Shortlist %>% arrange(-abs(Mag)) %>% select(-Bulk_Zprime, -Parent_Zprime, -Interaction_Zprime) -> ShortlistArranged
-
-#write.csv(ShortlistArranged, file = "Genes_CSSI_Experiments.csv")
-getwd()
-```
-
-
-Picking out the actual SNPs from peak regions
-
-```{r, eval = FALSE}
-
-Shortlist %>% mutate(Lower = POS - 5000, Upper = POS + 5000) -> FilterPositions
-
-
-# WindowPeaks <- foreach(i=1:length(FilterPositions$CHROM), .combine=rbind)%dopar%{
-#   if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
-#     stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-#     
-#   }else{
-#     stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-#   }
-#   stuff$Experiment <- FilterPositions$Experiment[i]
-#   stuff
-# }
-# 
-# WindowPeaks <- as.data.frame(WindowPeaks)
-
-#WindowPeaks %>% ggplot(aes(x = POS, y = Bulk_Zprime, color = Experiment)) + geom_point(size = 2) + facet_wrap(~CHROM, scales = "free")
-
-for(i in 1:length(FilterPositions$CHROM)){
-  if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
-    stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-  }else{
-    stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-  }
-  
-  if(FilterPositions$Type[i] == "peak.Bulk"){
-    mycolor <- "blue"
-    plot <- ggplot(stuff, aes(x = POS, y = Bulk_Z)) + 
-    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
-    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
-  }else{
-    mycolor <- "red"
-    plot <- ggplot(stuff, aes(x = POS, y = Interaction_Z)) + 
-    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
-    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
-  }
-  
-
-  print(plot)
-}
-
-```
-
-```{r, eval = FALSE}
-Shortlist %>% mutate(Lower = POS - 50000, Upper = POS + 50000) -> FilterPositions
-
-for(i in 1:length(FilterPositions$CHROM)){
-  if(FilterPositions$Experiment[i] == "CSSI_CuSO4"){
-    stuff <- subset(CSSI_CuSO4_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-  }else{
-    stuff <- subset(CSSI_Fluc_BSA, CHROM == FilterPositions$CHROM[i] & POS > FilterPositions$Lower[i] & POS < FilterPositions$Upper[i])
-  }
-  
-  if(FilterPositions$Type[i] == "peak.Bulk"){
-    mycolor <- "blue"
-    plot <- ggplot(stuff, aes(x = POS, y = Bulk_Z)) + 
-    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
-    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
-  }else{
-    mycolor <- "red"
-    plot <- ggplot(stuff, aes(x = POS, y = Interaction_Z)) + 
-    geom_vline(xintercept = FilterPositions$POS[i], alpha = 0.5, size = 2) + ylim(-10.5,10.5) +
-    geom_point(size = 2, alpha = 0.5, color = mycolor) + ggtitle(paste(FilterPositions$Experiment[i], FilterPositions$CHROM[i]))
-  }
-  
-
-  print(plot)
-}
-
 ```
 
 ## Compare dilute samples for all combinations
@@ -775,7 +426,7 @@ DiluteLogRatio$logRatio[DiluteLogRatio$logRatio == "Inf" | DiluteLogRatio$logRat
 save(DiluteLogRatio, file = "DiluteLogRatio.Rdata")
 ```
 
-```{r}
+```{r, eval = FALSE}
 #DiluteLogRatio %>% na.omit() %>% select(-Study, -Oak, -Wine) -> DiluteLogRatio
 
 # smoothedlist <- list()
@@ -906,7 +557,7 @@ DiluteLogRatio_ZSmooth_p1 %>% filter(CHROM == "V") %>%
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 DiluteLogRatio_ZSmooth_p1 %>% filter(CHROM == "VII") %>% filter(logRatio_Zprime > 0.3) -> VII_Peak
 
 ggplot(VII_Peak, aes(x = POS)) + geom_density()
@@ -974,6 +625,389 @@ SelectedLabeled %>% filter(CHROM == "VII") %>% select(-AltRef_Allele) %>%
             axis.ticks.x=element_blank()) + 
       xlab("Genomic Position") + ylab("log(Wine/Oak) Reads") + ggtitle("Chr VII Read Ratio by Selected Dataset")
 ```
+
+
+
+# Doing actual pairwise comparisons rather than all or nothing
+
+Z scores for pairwise comparisons of dilute data from each experiment
+
+```{r, eval = FALSE}
+#Load in data
+load("DiluteData.Rdata")
+
+#USE DIFFERENT DATASETS
+DiluteData$CycZeo = ifelse(DiluteData$Study == "CycZeo", "CycZeo", NA)
+DiluteData$CuSO4 = ifelse(DiluteData$Study == "CuSO4", "CuSO4", NA)
+DiluteData$Fluc = ifelse(DiluteData$Study == "Fluc", "Fluc", NA)
+
+#Make the column to compare
+CuZeo_Compare <- DiluteData %>% pivot_longer(c(CycZeo, CuSO4), names_to = "Experiment", values_to = "Binary") %>% 
+  filter(Binary == "CycZeo" | Binary == "CuSO4")
+CuFlu_Compare <- DiluteData %>% pivot_longer(c(Fluc, CuSO4), names_to = "Experiment", values_to = "Binary") %>% 
+  filter(Binary == "Fluc" | Binary == "CuSO4")
+FluZeo_Compare <- DiluteData %>% pivot_longer(c(Fluc, CycZeo), names_to = "Experiment", values_to = "Binary") %>% 
+  filter(Binary == "Fluc" | Binary == "CycZeo")
+
+#Find only the rows with both
+CuZeo_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(CuZeo_Compare) -> CuZeo
+CuFlu_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(CuFlu_Compare) -> CuFlu
+FluZeo_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(FluZeo_Compare) -> FluZeo
+
+#Run the analysis
+#Run BSA_GLM() and SmoothBSAWindows() for each
+CSSI_FluZeo <- foreach(i=unique(FluZeo$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(FluZeo, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
+}
+save(CSSI_FluZeo, file = "CSSI_FluZeo.Rdata")
+
+CSSI_CuFlu <- foreach(i=unique(CuFlu$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CuFlu, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
+}
+save(CSSI_CuFlu, file = "CSSI_CuFlu.Rdata")
+
+CSSI_CuZeo <- foreach(i=unique(CuZeo$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CuZeo, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
+}
+save(CSSI_CuZeo, file = "CSSI_CuZeo.Rdata")
+
+```
+
+Plotting
+
+```{r}
+
+load("CSSI_CuZeo.Rdata") 
+load("CSSI_CuFlu.Rdata")
+load("CSSI_FluZeo.Rdata")
+
+CSSI_CuZeo %>% ggplot(aes(x = POS, y = ExperimentCycZeo_Zprime)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("CycZeo vs CuSO4 Unselected")
+
+CSSI_CuFlu %>% ggplot(aes(x = POS, y = ExperimentFluc_Zprime)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Fluconazole vs CuSO4 Unselected")
+
+CSSI_FluZeo %>% ggplot(aes(x = POS, y = ExperimentFluc_Zprime)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Fluconazole vs CycZeo Unselected")
+
+## View These Together
+################################################################################
+CSSI_CuZeo %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentCycZeo_Z, 
+                         Zprime = ExperimentCycZeo_Zprime, 
+                         Parent_Z = ParentWineI_Z, 
+                         Parent_Zprime = ParentWineI_Zprime,
+                         Label = "CycZeo_CuSO4") -> CSSI_CuZeo_t
+
+CSSI_CuFlu %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentFluc_Z, 
+                         Zprime = ExperimentFluc_Zprime, 
+                         Parent_Z = ParentWineI_Z, 
+                         Parent_Zprime = ParentWineI_Zprime,
+                         Label = "Fluc_CuSO4") -> CSSI_CuFlu_t
+
+CSSI_FluZeo %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentFluc_Z, 
+                         Zprime = ExperimentFluc_Zprime, 
+                         Parent_Z = ParentWineI_Z, 
+                         Parent_Zprime = ParentWineI_Zprime,
+                         Label = "Fluc_CycZeo") -> CSSI_FluZeo_t
+
+PairwiseDilute <- rbind(CSSI_CuZeo_t,CSSI_CuFlu_t,CSSI_FluZeo_t)
+PairwiseDilute$CHROM <- factor(PairwiseDilute$CHROM, levels = ChromKey$chromosomes)
+
+PairwiseDilute %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Label)) + 
+  geom_line() +
+  #geom_line(aes(x = POS, y = Parent_Zprime, color = Label),linetype = "dashed", alpha = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + scale_color_manual(values = c("brown", "#0DAD8d", "violet")) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Pairwise Unselected")
+
+PairwiseDilute %>% filter(CHROM == "V") %>% ggplot(aes(x = POS, y = Zprime, color = Label)) + 
+  geom_line(size = 1) +
+  #geom_line(aes(x = POS, y = Parent_Zprime, color = Label),linetype = "dashed", alpha = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + scale_color_manual(values = c("brown", "#0DAD8d", "violet")) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Pairwise Unselected")
+
+```
+
+
+# DEPRECATED | Binary Dilute Samples with less filtering of data
+
+Old code is commented out, but some has just been replaced
+
+```{r, eval = FALSE}
+#Load in data
+load("DiluteData.Rdata")
+
+#USE DIFFERENT DATASETS
+DiluteData$CycZeo = ifelse(DiluteData$Study == "CycZeo", "CycZeo", "NotCycZeo")
+DiluteData$CuSO4 = ifelse(DiluteData$Study == "CuSO4", "CuSO4", "NotCuSO4")
+DiluteData$Fluc = ifelse(DiluteData$Study == "Fluc", "Fluc", "NotFluc")
+
+DiluteData$Rep <- NA
+DiluteData$Rep[grep("A.fastq", CSSI_CycZeo$Dataset)] <- "A"
+DiluteData$Rep[grep("B.fastq", CSSI_CycZeo$Dataset)] <- "B"
+DiluteData$Rep <- factor(DiluteData$Rep)
+
+DiluteData %>% group_by(CHROM, POS) %>% 
+  summarise(CHROM = CHROM, POS = POS, 
+            cz_length = length(unique(CycZeo)),
+            cu_length = length(unique(CuSO4)),
+            f_length = length(unique(Fluc))) %>% 
+  distinct() %>% ungroup() -> DiluteDataCounts_2
+
+DiluteDataCounts_2r %>% pivot_longer(c(cz_length, cu_length, f_length), names_to = "Type", values_to = "Counts") %>%
+  filter(Counts < 2) %>% select(CHROM, POS) %>% mutate(MissingData = 0) -> dc2
+
+################################################################################
+
+#Filter out those which don't have all three
+DiluteDataCounts_2 %>% filter(cz_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_cz
+DiluteDataCounts_2 %>% filter(cu_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_cu
+DiluteDataCounts_2 %>% filter(f_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_f
+
+################################################################################
+# Without covariates
+################################################################################
+
+Dilute_BSA_CycZeo2 <- foreach(i=unique(DiluteData_cz$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_cz, chr = i, formula = "PAllele ~ CycZeo") %>% cybrSmoothBSAWindows2()
+}
+
+Dilute_BSA_CuSO42 <- foreach(i=unique(DiluteData_cu$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_cu, chr = i, formula = "PAllele ~ CuSO4") %>% cybrSmoothBSAWindows2()
+}
+
+Dilute_BSA_Fluc2 <- foreach(i=unique(DiluteData_f$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_f, chr = i, formula = "PAllele ~ Fluc") %>% cybrSmoothBSAWindows2() 
+}
+# Merging instead once cybrSmoothBSAWindows2 is run
+Dilute_BSA_CuSO42r %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(Dilute_BSA_Fluc2) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(Dilute_BSA_CycZeo2) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(dc2) %>% 
+  pivot_longer(c(CycZeoNotCycZeo_Zprime, FlucNotFluc_Zprime, CuSO4NotCuSO4_Zprime), names_to = "Experiment", values_to = "Z_Prime") %>%
+  pivot_longer(c(CycZeoNotCycZeo_Z, FlucNotFluc_Z, CuSO4NotCuSO4_Z), names_to = "ExperimentZ", values_to = "Z_Score") %>%
+  distinct() -> DiluteBSA_smoothed_2_char
+
+
+DiluteBSA_smoothed_2_char$CHROM <- factor(DiluteBSA_smoothed_2_char$CHROM, levels = ChromKey$chromosomes)
+
+save(DiluteBSA_smoothed_2_char, file = "DiluteBSA_smoothed_2_char.Rdata")
+
+################################################################################
+# Including Parent as covariate
+################################################################################
+Dilute_BSA_CycZeo2r <- foreach(i=unique(DiluteData_cz$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_cz, chr = i, formula = "PAllele ~ CycZeo*Parent") %>% cybrSmoothBSAWindows2()
+}
+
+Dilute_BSA_CuSO42r <- foreach(i=unique(DiluteData_cu$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_cu, chr = i, formula = "PAllele ~ CuSO4*Parent") %>% cybrSmoothBSAWindows2()
+}
+
+Dilute_BSA_Fluc2r <- foreach(i=unique(DiluteData_f$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(DiluteData_f, chr = i, formula = "PAllele ~ Fluc*Parent") %>% cybrSmoothBSAWindows2() 
+}
+
+
+# Merging instead once cybrSmoothBSAWindows2 is run
+Dilute_BSA_CuSO42r %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(Dilute_BSA_Fluc2r) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(Dilute_BSA_CycZeo2r) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
+  full_join(dc2) -> DB_rep
+
+save(DB_rep, file = "DB_rep.Rdata")
+
+ colnames(DB_rep)[grep("Zprime", colnames(DB_rep))]
+
+# FIX THIS BEFORE RUNNING
+DB_rep %>% pivot_longer(colnames(DB_rep)[grep("Zprime", colnames(DB_rep))], 
+                        names_to = "Experiment", 
+                        values_to = "Z_Prime") -> DB_rep_intermediate
+DB_rep_intermediate %>% pivot_longer(colnames(DB_rep_intermediate)[grep("_Z", colnames(DB_rep_intermediate))], 
+               names_to = "ExperimentZ", values_to = "Z_Score") %>%
+  distinct() -> DiluteBSA_smoothed_2_char_r
+
+
+DiluteBSA_smoothed_2_char_r$CHROM <- factor(DiluteBSA_smoothed_2_char_r$CHROM, levels = ChromKey$chromosomes)
+
+save(DiluteBSA_smoothed_2_char_r, file = "DiluteBSA_smoothed_2_char_r.Rdata")
+
+```
+
+Plotting the same (deprecated)
+
+```{r, eval = FALSE}
+load("DiluteBSA_smoothed_2.Rdata")
+
+# DiluteDataCounts_2 %>% transmute(CHROM = CHROM, Index = NA, POS = POS,
+#                                  CycZeo_Z = NA, CuSO4_Z = NA, Fluc_Z = NA,
+#                                   CycZeo_Zprime = NA, CuSO4_Zprime = NA, Fluc_Zprime = NA,
+#                                  MissingData = 0) -> MD2
+# 
+# DiluteBSA_smoothed_2$MissingData <- NA
+# DiluteBSA_smoothed_2 %>% mutate(MissingData = NA) %>% rbind(MD2) -> DiluteBSA_smoothed2_u
+
+DiluteBSA_smoothed_2 %>% 
+  # pivot_longer(c(CycZeo_Zprime, CuSO4_Zprime, Fluc_Zprime), 
+  #              names_to = "Experiment", 
+  #              values_to = "Z_Prime") %>%
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  ylim(-5,5) +
+  theme_minimal() + 
+  theme(legend.position = "bottom", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + 
+  ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2 %>% filter(CHROM != "I", CHROM != "VI") %>% 
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2 %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Truncated")
+
+DiluteBSA_smoothed_2 %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Full Range")
+```
+
+Plotting the relabeled version
+
+```{r}
+load("DiluteBSA_smoothed_2_char.Rdata")
+load("DiluteBSA_smoothed_2.Rdata")
+ 
+
+DiluteBSA_smoothed_2_char %>% 
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  ylim(-5,5) +
+  theme_minimal() + 
+  theme(legend.position = "bottom", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + 
+  ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2_char %>% filter(CHROM != "I", CHROM != "VI") %>% 
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2_char %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Truncated")
+
+DiluteBSA_smoothed_2 %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Full Range")
+```
+
+
+Doing this with the full dataframe
+
+```{r}
+load("DiluteBSA_smoothed_2_char_r.Rdata")
+
+DiluteBSA_smoothed_2_char_r %>% 
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  ylim(-5,5) +
+  theme_minimal() + 
+  theme(legend.position = "bottom", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  xlab("Genomic Position") + 
+  ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2_char_r %>% filter(CHROM != "I", CHROM != "VI") %>% 
+  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
+  ggtitle("Effects of Dilute Samples")
+
+DiluteBSA_smoothed_2_char_r %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Truncated")
+
+DiluteBSA_smoothed_2_char_r %>% 
+  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Effects of Dilute Samples | Full Range")
+```
+
 
 ## Redoing analysis of each bulk together
 
@@ -1170,489 +1204,3 @@ cybrSmoothBSAWindows2 <- function(Results, windowsize = 100, chr = unique(Result
   return(WResult)
 }
 ```
-
-## Binary Dilute Samples with less filtering of data
-
-Old code is commented out, but some has just been replaced
-
-```{r, eval = FALSE}
-#Load in data
-load("DiluteData.Rdata")
-
-#USE DIFFERENT DATASETS
-DiluteData$CycZeo = ifelse(DiluteData$Study == "CycZeo", "CycZeo", "NotCycZeo")
-DiluteData$CuSO4 = ifelse(DiluteData$Study == "CuSO4", "CuSO4", "NotCuSO4")
-DiluteData$Fluc = ifelse(DiluteData$Study == "Fluc", "Fluc", "NotFluc")
-
-DiluteData$Rep <- NA
-DiluteData$Rep[grep("A.fastq", CSSI_CycZeo$Dataset)] <- "A"
-DiluteData$Rep[grep("B.fastq", CSSI_CycZeo$Dataset)] <- "B"
-DiluteData$Rep <- factor(DiluteData$Rep)
-
-DiluteData %>% group_by(CHROM, POS) %>% 
-  summarise(CHROM = CHROM, POS = POS, 
-            cz_length = length(unique(CycZeo)),
-            cu_length = length(unique(CuSO4)),
-            f_length = length(unique(Fluc))) %>% 
-  distinct() %>% ungroup() -> DiluteDataCounts_2
-
-DiluteDataCounts_2r %>% pivot_longer(c(cz_length, cu_length, f_length), names_to = "Type", values_to = "Counts") %>%
-  filter(Counts < 2) %>% select(CHROM, POS) %>% mutate(MissingData = 0) -> dc2
-
-################################################################################
-
-#Filter out those which don't have all three
-DiluteDataCounts_2 %>% filter(cz_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_cz
-DiluteDataCounts_2 %>% filter(cu_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_cu
-DiluteDataCounts_2 %>% filter(f_length > 1) %>% left_join(DiluteData) %>% ungroup() -> DiluteData_f
-
-################################################################################
-# Without covariates
-################################################################################
-
-Dilute_BSA_CycZeo2 <- foreach(i=unique(DiluteData_cz$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_cz, chr = i, formula = "PAllele ~ CycZeo") %>% cybrSmoothBSAWindows2()
-}
-
-Dilute_BSA_CuSO42 <- foreach(i=unique(DiluteData_cu$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_cu, chr = i, formula = "PAllele ~ CuSO4") %>% cybrSmoothBSAWindows2()
-}
-
-Dilute_BSA_Fluc2 <- foreach(i=unique(DiluteData_f$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_f, chr = i, formula = "PAllele ~ Fluc") %>% cybrSmoothBSAWindows2() 
-}
-# Merging instead once cybrSmoothBSAWindows2 is run
-Dilute_BSA_CuSO42r %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(Dilute_BSA_Fluc2) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(Dilute_BSA_CycZeo2) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(dc2) %>% 
-  pivot_longer(c(CycZeoNotCycZeo_Zprime, FlucNotFluc_Zprime, CuSO4NotCuSO4_Zprime), names_to = "Experiment", values_to = "Z_Prime") %>%
-  pivot_longer(c(CycZeoNotCycZeo_Z, FlucNotFluc_Z, CuSO4NotCuSO4_Z), names_to = "ExperimentZ", values_to = "Z_Score") %>%
-  distinct() -> DiluteBSA_smoothed_2_char
-
-
-DiluteBSA_smoothed_2_char$CHROM <- factor(DiluteBSA_smoothed_2_char$CHROM, levels = ChromKey$chromosomes)
-
-save(DiluteBSA_smoothed_2_char, file = "DiluteBSA_smoothed_2_char.Rdata")
-
-################################################################################
-# Including Parent as covariate
-################################################################################
-Dilute_BSA_CycZeo2r <- foreach(i=unique(DiluteData_cz$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_cz, chr = i, formula = "PAllele ~ CycZeo*Parent") %>% cybrSmoothBSAWindows2()
-}
-
-Dilute_BSA_CuSO42r <- foreach(i=unique(DiluteData_cu$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_cu, chr = i, formula = "PAllele ~ CuSO4*Parent") %>% cybrSmoothBSAWindows2()
-}
-
-Dilute_BSA_Fluc2r <- foreach(i=unique(DiluteData_f$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(DiluteData_f, chr = i, formula = "PAllele ~ Fluc*Parent") %>% cybrSmoothBSAWindows2() 
-}
-
-
-# Merging instead once cybrSmoothBSAWindows2 is run
-Dilute_BSA_CuSO42r %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(Dilute_BSA_Fluc2r) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(Dilute_BSA_CycZeo2r) %>% select(-'(Intercept)_Z', -'(Intercept)_Zprime', -Index) %>% 
-  full_join(dc2) -> DB_rep
-
-save(DB_rep, file = "DB_rep.Rdata")
-
- colnames(DB_rep)[grep("Zprime", colnames(DB_rep))]
-
-# FIX THIS BEFORE RUNNING
-DB_rep %>% pivot_longer(colnames(DB_rep)[grep("Zprime", colnames(DB_rep))], 
-                        names_to = "Experiment", 
-                        values_to = "Z_Prime") -> DB_rep_intermediate
-DB_rep_intermediate %>% pivot_longer(colnames(DB_rep_intermediate)[grep("_Z", colnames(DB_rep_intermediate))], 
-               names_to = "ExperimentZ", values_to = "Z_Score") %>%
-  distinct() -> DiluteBSA_smoothed_2_char_r
-
-
-DiluteBSA_smoothed_2_char_r$CHROM <- factor(DiluteBSA_smoothed_2_char_r$CHROM, levels = ChromKey$chromosomes)
-
-save(DiluteBSA_smoothed_2_char_r, file = "DiluteBSA_smoothed_2_char_r.Rdata")
-
-```
-
-Plotting the same (deprecated)
-
-```{r, eval = FALSE}
-load("DiluteBSA_smoothed_2.Rdata")
-
-# DiluteDataCounts_2 %>% transmute(CHROM = CHROM, Index = NA, POS = POS,
-#                                  CycZeo_Z = NA, CuSO4_Z = NA, Fluc_Z = NA,
-#                                   CycZeo_Zprime = NA, CuSO4_Zprime = NA, Fluc_Zprime = NA,
-#                                  MissingData = 0) -> MD2
-# 
-# DiluteBSA_smoothed_2$MissingData <- NA
-# DiluteBSA_smoothed_2 %>% mutate(MissingData = NA) %>% rbind(MD2) -> DiluteBSA_smoothed2_u
-
-DiluteBSA_smoothed_2 %>% 
-  # pivot_longer(c(CycZeo_Zprime, CuSO4_Zprime, Fluc_Zprime), 
-  #              names_to = "Experiment", 
-  #              values_to = "Z_Prime") %>%
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
-  geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
-  ylim(-5,5) +
-  theme_minimal() + 
-  theme(legend.position = "bottom", 
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + 
-  ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2 %>% filter(CHROM != "I", CHROM != "VI") %>% 
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2 %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Truncated")
-
-DiluteBSA_smoothed_2 %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() + #scale_color_manual(values = mylabelcolorsd) + 
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Full Range")
-```
-
-Plotting the relabeled version
-
-```{r}
-load("DiluteBSA_smoothed_2_char.Rdata")
-
-DiluteBSA_smoothed_2_char %>% 
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
-  geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
-  ylim(-5,5) +
-  theme_minimal() + 
-  theme(legend.position = "bottom", 
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + 
-  ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2_char %>% filter(CHROM != "I", CHROM != "VI") %>% 
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2_char %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Truncated")
-
-DiluteBSA_smoothed_2 %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Full Range")
-```
-
-
-Doing this with the full dataframe
-```{r}
-load("DiluteBSA_smoothed_2_char_r.Rdata")
-
-DiluteBSA_smoothed_2_char_r %>% 
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + 
-  geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
-  ylim(-5,5) +
-  theme_minimal() + 
-  theme(legend.position = "bottom", 
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) + 
-  xlab("Genomic Position") + 
-  ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2_char_r %>% filter(CHROM != "I", CHROM != "VI") %>% 
-  ggplot(aes(x = POS, y = Z_Prime, color = Experiment)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Smoothed Z Score") + 
-  ggtitle("Effects of Dilute Samples")
-
-DiluteBSA_smoothed_2_char_r %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") + ylim(-5,5) +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Truncated")
-
-DiluteBSA_smoothed_2_char_r %>% 
-  ggplot(aes(x = POS, y = Z_Score, color = ExperimentZ)) + geom_point(alpha = 0.2, size = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Effects of Dilute Samples | Full Range")
-```
-
-## Doing actual pairwise comparisons rather than all or nothing
-
-```{r}
-#Load in data
-load("DiluteData.Rdata")
-
-#USE DIFFERENT DATASETS
-DiluteData$CycZeo = ifelse(DiluteData$Study == "CycZeo", "CycZeo", NA)
-DiluteData$CuSO4 = ifelse(DiluteData$Study == "CuSO4", "CuSO4", NA)
-DiluteData$Fluc = ifelse(DiluteData$Study == "Fluc", "Fluc", NA)
-
-#Make the column to compare
-CuZeo_Compare <- DiluteData %>% pivot_longer(c(CycZeo, CuSO4), names_to = "Experiment", values_to = "Binary") %>% 
-  filter(Binary == "CycZeo" | Binary == "CuSO4")
-CuFlu_Compare <- DiluteData %>% pivot_longer(c(Fluc, CuSO4), names_to = "Experiment", values_to = "Binary") %>% 
-  filter(Binary == "Fluc" | Binary == "CuSO4")
-FluZeo_Compare <- DiluteData %>% pivot_longer(c(Fluc, CycZeo), names_to = "Experiment", values_to = "Binary") %>% 
-  filter(Binary == "Fluc" | Binary == "CycZeo")
-
-#Find only the rows with both
-CuZeo_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(CuZeo_Compare) -> CuZeo
-CuFlu_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(CuFlu_Compare) -> CuFlu
-FluZeo_Compare %>% group_by(CHROM, POS) %>% summarize(CHROM = CHROM, POS = POS, Count = length(unique(Binary))) %>% distinct() %>% filter(Count == 2) %>% select(-Count) %>% left_join(FluZeo_Compare) -> FluZeo
-
-#Run the analysis
-#Run BSA_GLM() and SmoothBSAWindows() for each
-CSSI_FluZeo <- foreach(i=unique(FluZeo$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(FluZeo, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
-}
-save(CSSI_FluZeo, file = "CSSI_FluZeo.Rdata")
-
-CSSI_CuFlu <- foreach(i=unique(CuFlu$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CuFlu, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
-}
-save(CSSI_CuFlu, file = "CSSI_CuFlu.Rdata")
-
-CSSI_CuZeo <- foreach(i=unique(CuZeo$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CuZeo, chr = i, formula = "PAllele ~ Experiment+Parent") %>% cybrSmoothBSAWindows()
-}
-save(CSSI_CuZeo, file = "CSSI_CuZeo.Rdata")
-
-```
-
-Plotting
-
-```{r}
-
-load("CSSI_CuZeo.Rdata") 
-load("CSSI_CuFlu.Rdata")
-load("CSSI_FluZeo.Rdata")
-
-CSSI_CuZeo %>% ggplot(aes(x = POS, y = ExperimentCycZeo_Zprime)) + geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("CycZeo vs CuSO4 Unselected")
-
-CSSI_CuFlu %>% ggplot(aes(x = POS, y = ExperimentFluc_Zprime)) + geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Fluconazole vs CuSO4 Unselected")
-
-CSSI_FluZeo %>% ggplot(aes(x = POS, y = ExperimentFluc_Zprime)) + geom_line() + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Fluconazole vs CycZeo Unselected")
-
-## View These Together
-################################################################################
-CSSI_CuZeo %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentCycZeo_Z, 
-                         Zprime = ExperimentCycZeo_Zprime, 
-                         Parent_Z = ParentWineI_Z, 
-                         Parent_Zprime = ParentWineI_Zprime,
-                         Label = "CycZeo_CuSO4") -> CSSI_CuZeo_t
-
-CSSI_CuFlu %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentFluc_Z, 
-                         Zprime = ExperimentFluc_Zprime, 
-                         Parent_Z = ParentWineI_Z, 
-                         Parent_Zprime = ParentWineI_Zprime,
-                         Label = "Fluc_CuSO4") -> CSSI_CuFlu_t
-
-CSSI_FluZeo %>% transmute(CHROM = CHROM, POS = POS, Z = ExperimentFluc_Z, 
-                         Zprime = ExperimentFluc_Zprime, 
-                         Parent_Z = ParentWineI_Z, 
-                         Parent_Zprime = ParentWineI_Zprime,
-                         Label = "Fluc_CycZeo") -> CSSI_FluZeo_t
-
-PairwiseDilute <- rbind(CSSI_CuZeo_t,CSSI_CuFlu_t,CSSI_FluZeo_t)
-PairwiseDilute$CHROM <- factor(PairwiseDilute$CHROM, levels = ChromKey$chromosomes)
-
-PairwiseDilute %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = Zprime, color = Label)) + 
-  geom_line() +
-  #geom_line(aes(x = POS, y = Parent_Zprime, color = Label),linetype = "dashed", alpha = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Pairwise Unselected")
-
-PairwiseDilute %>% filter(CHROM == "VII") %>% ggplot(aes(x = POS, y = Zprime, color = Label)) + 
-  geom_line(size = 1) +
-  #geom_line(aes(x = POS, y = Parent_Zprime, color = Label),linetype = "dashed", alpha = 0.5) + 
-  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
-  theme_minimal() +
-      theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + 
-      xlab("Genomic Position") + ylab("Z Score") + 
-  ggtitle("Pairwise Unselected")
-```
-
-
-# Adding in the covariate
-
-## Redoing Analysis
-
-```{r}
-mydatatotest = "HKTMZDRX2.SortedCat.vcf.output.table"
-
-CSSI_CycZeo <- cybrInputGATKTable(mydatatotest) %>% 
-  cybrQualityFilter() %>% 
-  cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
-  na.omit()
-
-unique(CSSI_CycZeo$Dataset)
-
-CSSI_CycZeo$Bulk <- NA
-CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCA.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCB.fastq"] <- "Cycloheximide"
-
-CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODA.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDB.fastq"] <- "Dilute"
-
-CSSI_CycZeo$Bulk[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZA.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZB.fastq"] <- "Zeocin"
-
-CSSI_CycZeo$Parent <- NA
-CSSI_CycZeo$Parent[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZA.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OZB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_OCB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_ODB.fastq"] <- "OakI"
-
-CSSI_CycZeo$Parent[CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZA.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WZB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WCB.fastq" |
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDA.fastq" | 
-              CSSI_CycZeo$Dataset == "HKTMWDRX2_n01_WDB.fastq"] <- "WineI"
-
-CSSI_CycZeo$Rep <- NA
-CSSI_CycZeo$Rep[grep("A.fastq", CSSI_CycZeo$Dataset)] <- "A"
-CSSI_CycZeo$Rep[grep("B.fastq", CSSI_CycZeo$Dataset)] <- "B"
-
-CSSI_CycZeo$Parent <- factor(CSSI_CycZeo$Parent)
-CSSI_CycZeo$Bulk <- factor(CSSI_CycZeo$Bulk)
-CSSI_CycZeo$ReadCount <- as.numeric(CSSI_CycZeo$ReadCount)
-CSSI_CycZeo$Rep <- factor(CSSI_CycZeo$Rep)
-
-head(CSSI_CycZeo)
-CSSI_CycZeo_rep <- CSSI_CycZeo
-
-save(CSSI_CycZeo_rep, file = "CSSI_CycZeo_rep_counts.Rdata")
-```
-
-```{r}
-load("CSSI_CycZeo_rep_counts.Rdata")
-
-#Separate into different CSSI_CycZeo_rep, since the subsequent steps will break if not
-CSSI_Cycloheximide_r <- CSSI_CycZeo_rep[CSSI_CycZeo_rep$Bulk != "Zeocin",]
-CSSI_Zeocin_r <- CSSI_CycZeo_rep[CSSI_CycZeo_rep$Bulk != "Cycloheximide",]
-
-#Run BSA_GLM() and SmoothBSAWindows() for each
-CSSI_Cyc_BSA_r <- foreach(i=unique(CSSI_Cycloheximide_r$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Cycloheximide_r, chr = i, formula = "PAllele ~ Bulk*Parent+Rep") %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Cyc_BSA_r, file = "CSSI_Cyc_BSA_r.Rdata")
-
-CSSI_Zeo_BSA_r <- foreach(i=unique(CSSI_Zeocin_r$CHROM), .combine=rbind) %dopar%{
-  cybrBSA_GLM(CSSI_Zeocin_r, chr = i, formula = "PAllele ~ Bulk*Parent+Rep") %>% cybrSmoothBSAWindows()
-}
-
-save(CSSI_Zeo_BSA_r, file = "CSSI_Zeo_BSA_r.Rdata")
-```
-
-Plotting
-
-```{r}
-#Load in data
-load("CSSI_Zeo_BSA_r.Rdata")
-load("CSSI_Cyc_BSA_r.Rdata")
-
-#Plot for Zeocin
-cybrPlotZPrime(CSSI_Zeo_BSA_r, 
-               chromosomes = ChromKey$chromosomes[2:16],
-               columns = colnames(CSSI_Zeo_BSA_r)[10:13], 
-               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
-               title = "Zeocin Smoothed Z scores with Replicate Covariate") + 
-  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")
-
-#Plot for Cycloheximide
-cybrPlotZPrime(CSSI_Cyc_BSA_r, 
-               chromosomes = ChromKey$chromosomes[2:16],
-               columns = colnames(CSSI_Cyc_BSA_r)[10:13], 
-               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
-               title = "Cycloheximide Smoothed Z scores with Replicate Covariate") + 
-  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")
-```
-
-Looking just at the raw data
-```{r}
-load("CSSI_CycZeo_rep_counts.Rdata")
-CSSI_CycZeo_rep
-```
-
