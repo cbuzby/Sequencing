@@ -1,0 +1,448 @@
+---
+title: "CSS Analysis | Medians"
+author: "Cassandra Buzby"
+date: "12/2/2022"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_bw())
+
+
+CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
+                   "#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47",
+                  "#F26430", "#0A369D", "#7EA3CC")
+
+
+library("QTLseqr")
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+# load("RdataFiles/SAUA_4-13-22.Rdata")
+# load("RdataFiles/SCUC_4-13-22.Rdata")
+# load("RdataFiles/bsa_glm_results.Rdata")
+
+#rawData = "HGV.SortedCat.vcf.output.table"
+```
+
+## Means
+
+Use the mean for windows to compare with later medians
+
+### Zeocin Data without covariate
+
+```{r}
+load("CSSI_Zeo_BSA.Rdata")
+
+cybrPlotZPrime(CSSI_Zeo_BSA, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               # columns = colnames(CSSI_Zeo_BSA)[10:13], 
+               colvalues = c("#345F6F", "#D7335C", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed") + ylim(c(-3,7))
+
+#rm(CSSI_Zeo_BSA)
+```
+
+
+### Zeocin Data with replicate as covariate
+
+```{r}
+#Load in data
+load("CSSI_Zeo_BSA_r.Rdata")
+
+#Plot for Zeocin
+cybrPlotZPrime(CSSI_Zeo_BSA_r, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               columns = colnames(CSSI_Zeo_BSA_r)[10:13], 
+               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores with Replicate Covariate") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")+ ylim(c(-3,7))
+
+#rm(CSSI_Zeo_BSA_r)
+```
+
+## Compare magnitude of variance that goes into this overall?
+
+```{r}
+CSSI_Zeo_BSA %>% mutate(Analysis = "NoCovariate") %>% select(CHROM, POS, Bulk_Z, Parent_Z, Interaction_Z, Analysis) -> tempbsa
+
+colnames(CSSI_Zeo_BSA_r)[8] <- "Interaction_Z"
+
+CSSI_Zeo_BSA_r %>% transmute(CHROM = CHROM, POS = POS, 
+                             Bulk_Z = BulkZeocin_Z,
+                             Parent_Z = ParentWineI_Z,
+                             Interaction_Z = Interaction_Z) %>% mutate(Analysis = "RepCovariate") %>% rbind(tempbsa) -> CSSI_Zeo_BSA_comparison
+CSSI_Zeo_BSA_comparison$CHROM <- factor(CSSI_Zeo_BSA_comparison$CHROM, levels = c(as.character(as.roman(1:16)), "M"))
+
+CSSI_Zeo_BSA_comparison %>% ggplot(aes(x = Bulk_Z, color = Analysis)) + geom_density(size = 1) + scale_color_manual(values = c("firebrick", "black")) 
+
+CSSI_Zeo_BSA_comparison %>% ggplot(aes(x = POS, y = abs(Bulk_Z), color = Analysis)) + geom_point(alpha = 0.1) +  
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + scale_color_manual(values = c("firebrick", "black")) + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Comparison of points with and without covariate")
+
+CSSI_Zeo_BSA_comparison %>% filter(CHROM == "XV") %>% ggplot(aes(x = POS, y = abs(Bulk_Z), color = Analysis)) + geom_point() +  
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + scale_color_manual(values = c("firebrick", "black")) + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+      xlab("Genomic Position") + ylab("Z Score") + 
+  ggtitle("Comparison of points with and without covariate")
+
+```
+
+Looking at correlations
+
+```{r}
+CSSI_Zeo_BSA_comparison  %>%  filter(CHROM != "M") %>% 
+  pivot_wider(id_cols = c("POS", "CHROM"), names_from = "Analysis", values_from = "Bulk_Z") %>%
+  ggplot(aes(y = RepCovariate, x = NoCovariate)) + geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "firebrick", size = 1, linetype = "dashed") + 
+  geom_smooth(method = "lm") + facet_wrap(~CHROM, scales = "free") +
+  ggtitle("Replicate Addition Correlation")
+
+CSSI_Zeo_BSA_comparison  %>% filter(CHROM != "M") %>% 
+  pivot_wider(id_cols = c("POS", "CHROM"), names_from = "Analysis", values_from = "Bulk_Z") %>%
+  ggplot(aes(y = RepCovariate, x = NoCovariate)) + geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "firebrick", size = 1, linetype = "dashed") + 
+  geom_smooth(method = "lm") +  ggtitle("All CHROM Correlation")
+
+CSSI_Zeo_BSA_comparison  %>% filter(CHROM == "XV") %>% 
+  pivot_wider(id_cols = c("POS", "CHROM"), names_from = "Analysis", values_from = "Bulk_Z") %>%
+  ggplot(aes(y = RepCovariate, x = NoCovariate)) + geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "firebrick", size = 1, linetype = "dashed") + 
+  geom_smooth(method = "lm") +  ggtitle("Chrom XV Correlation")
+
+CSSI_Zeo_BSA_comparison  %>% filter(CHROM == "XV") %>% 
+  pivot_wider(id_cols = c("POS", "CHROM"), names_from = "Analysis", values_from = "Bulk_Z") %>%
+  ggplot(aes(y = abs(RepCovariate), x = abs(NoCovariate))) + geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "firebrick", size = 1)+ 
+  geom_smooth(method = "lm") + ggtitle("Chrom XV Correlation")
+```
+
+## Using replicates as the cutoff
+
+```{r}
+#Load in data
+#load("CSSI_Zeo_BSA_r.Rdata")
+
+colnames(CSSI_Zeo_BSA_r)[13] <- "Interaction_Zprime"
+CSSI_Zeo_BSA_r$CHROM <- factor(CSSI_Zeo_BSA_r$CHROM, levels = c(as.character(as.roman(1:16)), "M"))
+
+#Plot for Zeocin
+cybrPlotZPrime(CSSI_Zeo_BSA_r, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               columns = colnames(CSSI_Zeo_BSA_r)[10:13], 
+               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores with Replicate Covariate") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")+ ylim(c(-3,7))
+
+CSSI_Zeo_BSA_r %>% filter(CHROM != "I", CHROM != "M") %>% ggplot(aes(x = POS, y = c(RepB_Zprime))) + 
+  geom_area(color = "gray", fill = "gray") + geom_area(aes(y = -1*RepB_Zprime), color = "gray", fill = "gray") +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_line(aes(y = BulkZeocin_Zprime), color = "#345F6F") + 
+  geom_line(aes(y = ParentWineI_Zprime), color = "#FFB05C") +
+  geom_line(aes(y = Interaction_Zprime), color = "#D7335C") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+  ylab(label = "Smoothed Z Score") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("Zeocin BSA | Filled Replicate Effect as Cutoff")
+```
+
+### Try this for Fluconazole to test if that's a thing too?
+
+The problem is that Fluconazole doesn't have consistent replicates, so it would just be the effect... sometimes? OR we can just look at the bulk effect or the parent effect and see if those actually replicate with the total (but without replicates).
+
+```{r}
+load("CSSI_Fluc_counts.Rdata")
+
+
+CSSI_Fluc
+```
+
+Use formula allele * replicate rather than + replicate
+
+```{r, eval = FALSE}
+load("CSSI_CycZeo_counts.Rdata")
+
+CSSI_CycZeo
+CSSI_Zeocin <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Cycloheximide",]
+CSSI_Zeocin$Rep <- "C"
+CSSI_Zeocin$Rep[grep("A.fastq", CSSI_Zeocin$Dataset)] <- "A"
+CSSI_Zeocin$Rep[grep("B.fastq", CSSI_Zeocin$Dataset)] <- "B"
+CSSI_Zeocin$Rep <- factor(CSSI_Zeocin$Rep)
+
+CSSI_Zeo_BSA_xR <- foreach(i=unique(CSSI_Zeocin$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Zeocin, chr = i, formula = "PAllele ~ Bulk*Parent*Rep")
+}
+
+
+CSSI_Zeo_BSA_xRw <- foreach(i=unique(CSSI_Zeo_BSA_xR$CHROM)[2], .combine=rbind) %dopar%{
+    cybrSmoothBSAWindows_b(CSSI_Zeo_BSA_xR[CSSI_Zeo_BSA_xR$CHROM == i,])
+}
+
+window <- list()
+for(i in unique(CSSI_Zeo_BSA_xR$CHROM)){
+  window[[i]] <- cybrSmoothBSAWindows_b(CSSI_Zeo_BSA_xR[CSSI_Zeo_BSA_xR$CHROM == i,])
+}
+CSSI_Zeo_BSA_xRw <- bind_rows(window)
+
+save(CSSI_Zeo_BSA_xRw, file = "CSSI_Zeo_BSA_xRw.Rdata")
+
+length(unique(CSSI_Zeo_BSA_xRw$CHROM))
+```
+
+```{r}
+load("CSSI_Zeo_BSA_xRw.Rdata")
+
+cybrPlotZPrime(CSSI_Zeo_BSA_xRw, chromosomes = as.character(as.roman(2:16)), 
+               columns = colnames(CSSI_Zeo_BSA_xRw)[13:19], title = "Zeocin with Replicate Interactions", 
+               colvalues = c("cyan", "#D7335C", "gray", "#345F6F", "gray", "#FFB05C", "black")) 
+
+colnames(CSSI_Zeo_BSA_xRw)[13:19]
+```
+
+
+Do the same thing for cycloheximide to see if the effect is erased?
+
+```{r, eval = FALSE}
+rm(window)
+rm(CSSI_Zeocin)
+rm(CSSI_Zeo_BSA_xR)
+
+load("CSSI_CycZeo_counts.Rdata")
+
+CSSI_CycZeo
+CSSI_Zeocin <- CSSI_CycZeo[CSSI_CycZeo$Bulk != "Zeocin",]
+CSSI_Zeocin$Rep <- "C"
+CSSI_Zeocin$Rep[grep("A.fastq", CSSI_Zeocin$Dataset)] <- "A"
+CSSI_Zeocin$Rep[grep("B.fastq", CSSI_Zeocin$Dataset)] <- "B"
+CSSI_Zeocin$Rep <- factor(CSSI_Zeocin$Rep)
+
+CSSI_Zeo_BSA_xR <- foreach(i=unique(CSSI_Zeocin$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM(CSSI_Zeocin, chr = i, formula = "PAllele ~ Bulk*Parent*Rep")
+}
+
+window <- list()
+for(i in unique(CSSI_Zeo_BSA_xR$CHROM)){
+  window[[i]] <- cybrSmoothBSAWindows_b(CSSI_Zeo_BSA_xR[CSSI_Zeo_BSA_xR$CHROM == i,])
+}
+CSSI_Cyc_BSA_xRw <- bind_rows(window)
+
+save(CSSI_Cyc_BSA_xRw, file = "CSSI_Cyc_BSA_xRw.Rdata")
+
+length(unique(CSSI_Cyc_BSA_xRw$CHROM))
+
+rm(window)
+rm(CSSI_Zeocin)
+rm(CSSI_Zeo_BSA_xR)
+```
+```{r}
+load("CSSI_Cyc_BSA_xRw.Rdata")
+
+cybrPlotZPrime(CSSI_Cyc_BSA_xRw, chromosomes = as.character(as.roman(2:16)), 
+               columns = colnames(CSSI_Cyc_BSA_xRw)[13:19], title = "Zeocin with Replicate Interactions", 
+               colvalues = c("cyan", "#D7335C", "gray", "#345F6F", "gray", "#FFB05C", "black")) 
+
+colnames(CSSI_Cyc_BSA_xRw)[13:19]
+```
+
+### Sanity check: are the peaks for cycloheximide and zeocin actually the same?
+
+```{r}
+subset(CSSI_Cyc_BSA_xRw, CHROM == "VII") %>% mutate(Bulk = BulkDilute_Zprime) %>% select(CHROM, POS, Bulk) %>% mutate(Experiment = "Cycloheximide") -> CycTemp2
+
+subset(CSSI_Zeo_BSA_xRw, CHROM == "VII") %>% mutate(Bulk = BulkZeocin_Zprime) %>% select(CHROM, POS, Bulk) %>% mutate(Experiment = "Zeocin") %>% rbind(CycTemp2) -> tempcombination
+
+tempcombination %>%  ggplot(aes(x = POS, y = Bulk, color = Experiment)) + geom_line(size = 1) + 
+  geom_vline(xintercept = tempcombination$POS[which.max(tempcombination$Bulk[tempcombination$Experiment == "Zeocin"])], color = "cyan", size = 1) +
+  geom_vline(xintercept = tempcombination$POS[which.max(tempcombination$Bulk[tempcombination$Experiment == "Cycloheximide"])], color = "red", size = 1)
+
+
+```
+
+### Distribution of Replicate Effects
+
+```{r}
+colnames(CSSI_Cyc_BSA_xRw)[17:19] <- c("BulkXRep_Zprime", "ParentXRep_Zprime", "BulkXParentXRep_Zprime")
+colnames(CSSI_Zeo_BSA_xRw)[17:19] <- c("BulkXRep_Zprime", "ParentXRep_Zprime", "BulkXParentXRep_Zprime")
+
+CSSI_Cyc_BSA_xRw[c(1,3,15, 17:19)] %>% pivot_longer(cols = -names(.)[1:2]) %>% mutate(Experiment = "Cycloheximide") -> Cyc
+CSSI_Zeo_BSA_xRw[c(1,3,15, 17:19)] %>% pivot_longer(cols = -names(.)[1:2]) %>% mutate(Experiment = "Zeocin") %>% rbind(Cyc) -> CompRep
+
+CompRep %>% filter(CHROM != "I", CHROM != "M") %>% ggplot(aes(x = value, y = name, color = name)) + 
+  geom_boxplot() + geom_point(position = position_jitterdodge(), alpha = 0.01)+
+  ylab("") +
+  theme(axis.text.y = element_blank()) +
+  facet_grid(rows = "Experiment") + ggtitle("Distribution of Replicate Effects")
+```
+
+```{r}
+load("CSSI_Cyc_BSA_r.Rdata")
+load("CSSI_Zeo_BSA_r.Rdata")
+
+CSSI_Cyc_BSA_r %>% mutate(Experiment = "Cycloheximide") %>% select(CHROM, POS, RepB_Zprime, Experiment) -> CycTemp
+
+CSSI_Zeo_BSA_r %>% mutate(Experiment = "Zeocin") %>% select(CHROM, POS, RepB_Zprime, Experiment) %>% rbind(CycTemp) %>% 
+  filter(CHROM != "I", CHROM != "M") %>% 
+  ggplot(aes(x = RepB_Zprime, y = Experiment, color = Experiment)) + 
+  geom_boxplot() + geom_jitter(alpha = 0.01) +
+  ylab("") + ggtitle("Distribution of Rep Effect without Interactions")
+  theme(axis.text.y = element_blank())
+
+ 
+```
+
+
+## What is the 95% quantile for the replicate zprime for each interaction term?
+
+```{r}
+# quantile(CompRep$value, na.rm = TRUE)
+# 
+# quantile(CompRep$value[CompRep$Experiment == "Cycloheximide"], na.rm = TRUE)
+# quantile(CompRep$value[CompRep$Experiment != "Cycloheximide"], na.rm = TRUE)
+
+quantile(CompRep$value, probs = c(0.025, 0.975), na.rm = TRUE)
+
+quantile(CompRep$value[CompRep$Experiment == "Cycloheximide"],probs = c(0.025, 0.975), na.rm = TRUE)
+quantile(CompRep$value[CompRep$Experiment != "Cycloheximide"], probs = c(0.025, 0.975), na.rm = TRUE)
+```
+
+#### But really we want to know how the overall compares to when more of the interactions are removed
+
+Cutoffs for each Cycloheximide and Zeocin Experiments with replicates removed
+
+```{r}
+#
+quantile(abs(CSSI_Cyc_BSA_xRw$RepB_Zprime), probs = 0.95, na.rm = TRUE)
+quantile(abs(CSSI_Zeo_BSA_xRw$RepB_Zprime), probs = 0.95, na.rm = TRUE)
+
+```
+
+Cutoffs for each Cycloheximide and Zeocin Experiments withOUT replicates removed
+
+```{r}
+load("CSSI_Cyc_BSA_r.Rdata")
+load("CSSI_Zeo_BSA_r.Rdata")
+
+quantile(abs(CSSI_Cyc_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE)
+quantile(abs(CSSI_Zeo_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE)
+
+```
+
+
+### Plotting with margins
+
+```{r}
+cycrepq <- quantile(abs(CSSI_Cyc_BSA_r$RepB_Zprime[CSSI_Cyc_BSA_r$CHROM != "I" & CSSI_Cyc_BSA_r$CHROM != "M"]), probs = c(0.95), na.rm = TRUE)
+zeorepq <- quantile(abs(CSSI_Zeo_BSA_r$RepB_Zprime[CSSI_Zeo_BSA_r$CHROM != "I" & CSSI_Zeo_BSA_r$CHROM != "M"]), probs = c(0.95), na.rm = TRUE)
+
+med_salary_df <- CompRep %>%
+  group_by(name, Experiment) %>%
+  summarize(quant=quantile(value, prob = 0.95, na.rm = TRUE))
+
+CompRep %>% filter(CHROM != "I", CHROM != "M") %>% ggplot(aes(x = value, color = name)) + 
+  geom_density(size = 1) + 
+  geom_vline(xintercept = c(-cycrepq, cycrepq), color = "gray", size = 1, linetype = "dashed")+
+  geom_vline(xintercept = c(-zeorepq, zeorepq), color = "black", size = 1, linetype = "dashed")+
+  geom_vline(data = med_salary_df, aes(xintercept = c(quant), color = name), size=1, alpha = 0.4) +
+  geom_vline(data = med_salary_df, aes(xintercept = c(-1*quant), color = name), size=1, alpha = 0.4) +
+
+  facet_grid(rows = "Experiment", scales = "free") +
+  theme(axis.text.y = element_blank()) 
+
+load("CSSI_Zeo_BSA_xRw.Rdata")
+
+cybrPlotZPrime(CSSI_Zeo_BSA_xRw, chromosomes = as.character(as.roman(2:16)), 
+               columns = colnames(CSSI_Zeo_BSA_xRw)[13:19], title = "Zeocin with Replicate Interactions", 
+               colvalues = c("cyan", "gray", "#D7335C", "#345F6F",  "#FFB05C", "gray","black")) +  
+  geom_hline(data = subset(med_salary_df, name == "RepB_Zprime" & Experiment == "Zeocin"), aes(yintercept = c(quant), group = name), 
+             size=1, color = "#C77CFF")+
+  geom_hline(data = subset(med_salary_df, name == "RepB_Zprime" & Experiment == "Zeocin"), aes(yintercept = c(-1*quant), group = name), 
+             size=1, color = "#C77CFF")+
+  geom_hline(yintercept = quantile(abs(CSSI_Zeo_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE), size = 1, color = "black", linetype = "dashed") +
+    geom_hline(yintercept = -1*quantile(abs(CSSI_Zeo_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE), size = 1, color = "black", linetype = "dashed") +
+  theme(legend.title = element_blank())
+
+
+
+```
+
+```{r}
+CompRep %>% filter(CHROM != "I", CHROM != "M", Experiment == "Cycloheximide") %>% ggplot(aes(x = value, color = name)) + 
+  geom_density(size = 1) + 
+  facet_wrap(~CHROM, scales = "free_y") +
+  theme(axis.text.y = element_blank()) +ggtitle("Cycloheximide Experiment Distribution")
+ 
+CompRep %>% filter(CHROM != "I", CHROM != "M", Experiment != "Cycloheximide") %>% ggplot(aes(x = value, color = name)) + 
+  geom_density(size = 1) + 
+  facet_wrap(~CHROM, scales = "free_y") +
+  theme(axis.text.y = element_blank()) +ggtitle("Zeocin Experiment Distribution")
+
+```
+
+```{r}
+# quantile(CompRep$value, na.rm = TRUE)
+# 
+# quantile(CompRep$value[CompRep$Experiment == "Cycloheximide"], na.rm = TRUE)
+# quantile(CompRep$value[CompRep$Experiment != "Cycloheximide"], na.rm = TRUE)
+
+quantile(CompRep$value, probs = c(0.025, 0.975), na.rm = TRUE)
+
+quantile(CompRep$value[CompRep$Experiment == "Cycloheximide"],probs = c(0.025, 0.975), na.rm = TRUE)
+quantile(CompRep$value[CompRep$Experiment != "Cycloheximide"], probs = c(0.025, 0.975), na.rm = TRUE)
+```
+
+#### But really we want to know how the overall compares to when more of the interactions are removed
+
+Cutoffs for each Cycloheximide and Zeocin Experiments with replicates removed
+
+```{r}
+#
+quantile(abs(CSSI_Cyc_BSA_xRw$RepB_Zprime), probs = 0.95, na.rm = TRUE)
+quantile(abs(CSSI_Zeo_BSA_xRw$RepB_Zprime), probs = 0.95, na.rm = TRUE)
+
+```
+
+Cutoffs for each Cycloheximide and Zeocin Experiments withOUT replicates removed
+
+```{r}
+load("CSSI_Cyc_BSA_r.Rdata")
+load("CSSI_Zeo_BSA_r.Rdata")
+
+quantile(abs(CSSI_Cyc_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE)
+quantile(abs(CSSI_Zeo_BSA_r$RepB_Zprime), probs = c(0.95), na.rm = TRUE)
+
+```
+

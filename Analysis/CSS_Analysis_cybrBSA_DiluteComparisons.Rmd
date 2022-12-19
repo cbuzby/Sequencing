@@ -673,7 +673,9 @@ save(CSSI_CuZeo, file = "CSSI_CuZeo.Rdata")
 
 ```
 
-Plotting
+## Plotting
+
+Trying this next: library(patchwork)
 
 ```{r}
 
@@ -748,7 +750,138 @@ PairwiseDilute %>% filter(CHROM == "V") %>% ggplot(aes(x = POS, y = Zprime, colo
       xlab("Genomic Position") + ylab("Z Score") + 
   ggtitle("Pairwise Unselected")
 
+save(PairwiseDilute, file = "PairwiseDilute.Rdata")
 ```
+
+Using colorpatch
+
+```{r}
+library(patchwork)
+
+StatColorPath <- ggproto("StatColorPath", Stat,
+                         compute_group = function(data, scales, params,
+                                                  n_seg = 20, n = 100, cols = c("black", "white")) {
+                           # interpolate
+                           d <- approx(data$x, data$y, n = n)
+                           # create start and end points for segments
+                           d2 <- data.frame(
+                             x = head(d$x, -1), xend = d$x[-1],
+                             y = head(d$y, -1), yend = d$y[-1]
+                           )
+                           # create vector of segment colors
+                           d2$color <- rep(cols, each = ceiling((n - 1) / n_seg), length.out = n - 1)
+                           d2
+                         },
+                         required_aes = c("x", "y")
+)
+
+geom_colorpath <- function(mapping = NULL, data = NULL, geom = "segment",
+                           position = "identity", na.rm = FALSE, show.legend = NA,
+                           inherit.aes = TRUE, cols = c("black", "white"),
+                           n_seg = 20, n = 100, ...) {
+  layer(
+    stat = StatColorPath, data = data, mapping = mapping, geom = geom,
+    position = position, show.legend = show.legend, inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, cols = cols, n = n, n_seg = n_seg,...)
+  )
+}
+
+dat <- data.frame(x = seq(2,10, 2), y = seq(4,20, 4))
+
+# p1 <- ggplot(dat, aes(x = x, y = y)) +
+#   geom_colorpath()+
+#   ggtitle("Default colors")
+ggplot(dat, aes(x, y)) +
+  geom_colorpath(cols = c("#F8766D", "#619CFF"), size = 1)+
+  ggtitle("Two colors")
+
+ggplot(dat, aes(x, y)) +
+  geom_colorpath(cols = c("#F8766D", "#00BA38"), size = 1)+
+  ggtitle("Two colors")
+
+ggplot(dat, aes(x, y)) +
+  geom_colorpath(cols = c("#00BA38", "#619CFF"), size = 1)+
+  ggtitle("Two colors")
+
+# p3 <- ggplot(dat, aes(x, y)) +
+#   geom_colorpath(cols = c("red", "blue", "green"))+
+#   ggtitle("Three colors")
+# 
+# p4 <- ggplot(dat, aes(x, y)) +
+#   geom_colorpath(cols = c("red", "blue", "green", "white"))+
+#   ggtitle("Four colors")
+# 
+# wrap_plots(mget(ls(pattern = "p[1-9]")))
+
+#Red is F
+#Green is 00
+#Blue is 619
+
+ggplot(PairwiseDilute, aes(x = POS, y = Zprime)) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "CycZeo_CuSO4",], #red green
+                 cols = c("#00BA38", "#F8766D"), size = 1, alpha = 0.5) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CuSO4",], #red blue
+                 cols = c("#F8766D", "#619CFF"), size = 1) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CycZeo",], #blue green
+                 cols = c("#00BA38", "#619CFF"), size = 1, alpha = 0.1) +
+facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  ggtitle("Pairwise Dilute Z Scores | Fluc vs CuSO4")
+
+ggplot(PairwiseDilute, aes(x = POS, y = Zprime)) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "CycZeo_CuSO4",], #red green
+                 cols = c("#00BA38", "#F8766D"), size = 1, alpha = 0.5) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CuSO4",], #red blue
+                 cols = c("#F8766D", "#619CFF"), size = 1, alpha = 0.1) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CycZeo",], #blue green
+                 cols = c("#00BA38", "#619CFF"), size = 1) +
+facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  ggtitle("Pairwise Dilute Z Scores | Fluc vs CycZeo")
+
+ggplot(PairwiseDilute, aes(x = POS, y = Zprime)) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "CycZeo_CuSO4",], #red green
+                 cols = c("#00BA38", "#F8766D"), size = 1) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CuSO4",], #red blue
+                 cols = c("#F8766D", "#619CFF"), size = 1, alpha = 0.5) +
+  geom_colorpath(data = PairwiseDilute[PairwiseDilute$Label == "Fluc_CycZeo",], #blue green
+                 cols = c("#00BA38", "#619CFF"), size = 1, alpha = 0.1) +
+facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  ggtitle("Pairwise Dilute Z Scores | CycZeo vs CuSO4")
+
+#CHROMOSOME VII HIGHLIGHT
+PairwiseDilute_VII <- subset(PairwiseDilute, CHROM == "VII")
+ggplot(PairwiseDilute_VII, aes(x = POS, y = Zprime)) +
+  geom_colorpath(data = PairwiseDilute_VII[PairwiseDilute_VII$Label == "CycZeo_CuSO4",], #red green
+                 cols = c("#00BA38", "#F8766D"), size = 2, alpha = 0.5) +
+  geom_colorpath(data = PairwiseDilute_VII[PairwiseDilute_VII$Label == "Fluc_CuSO4",], #red blue
+                 cols = c("#F8766D", "#619CFF"), size = 2) +
+  geom_colorpath(data = PairwiseDilute_VII[PairwiseDilute_VII$Label == "Fluc_CycZeo",], #blue green
+                 cols = c("#00BA38", "#619CFF"), size = 2, alpha = 0.1) +
+facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  ggtitle("Pairwise Dilute Z Scores | Fluc vs CuSO4")
+
+#CHROMOSOME V HIGHLIGHT
+PairwiseDilute_V <- subset(PairwiseDilute, CHROM == "V")
+ggplot(PairwiseDilute_V, aes(x = POS, y = Zprime)) +
+  geom_colorpath(data = PairwiseDilute_V[PairwiseDilute_V$Label == "CycZeo_CuSO4",], #red green
+                 cols = c("#00BA38", "#F8766D"), size = 2, alpha = 0.5) +
+  geom_colorpath(data = PairwiseDilute_V[PairwiseDilute_V$Label == "Fluc_CuSO4",], #red blue
+                 cols = c("#F8766D", "#619CFF"), size = 2) +
+  geom_colorpath(data = PairwiseDilute_V[PairwiseDilute_V$Label == "Fluc_CycZeo",], #blue green
+                 cols = c("#00BA38", "#619CFF"), size = 2, alpha = 0.1) +
+facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  ggtitle("Pairwise Dilute Z Scores | Fluc vs CuSO4") + ylim(-0.5, 2.5)
+```
+
 
 ## Variance along dilute samples
 
@@ -846,13 +979,77 @@ left_join(varcuzeo_df, CSSI_CuZeo[c("CHROM", "POS", "ExperimentCycZeo_Zprime")])
   geom_point(alpha = 0.3) + ggtitle("Correlation of SD and Zprime within Windows")
 ```
 
-Realistically we want to know what the standard deviation is like at each region though, and not with changes in actual score. So if we normalize everything to its mean, would that help?
 
-Find the standard deviation of Z primes for replicates since that I can actually get my head around:
+For this to be relevant, we'd need to actually subtract and add that SD to our line so:
 
 ```{r}
-load("DiluteData.Rdata")
+left_join(varcuzeo_df, CSSI_CuZeo[c("CHROM", "POS", "ExperimentCycZeo_Zprime")]) %>% 
+  mutate(Upper = ExperimentCycZeo_Zprime + abs(ExperimentCycZeo_Z_ZVar),
+         Lower = ExperimentCycZeo_Zprime - abs(ExperimentCycZeo_Z_ZVar)) -> CI_CuZeo
 
-DiluteData
+CI_CuZeo$CHROM <- factor(CI_CuZeo$CHROM, levels = as.character(as.roman(1:16)))
+
+CI_CuZeo %>% ggplot(aes(x = POS, y = ExperimentCycZeo_Zprime)) + 
+  geom_line(size = 1) + geom_line(aes(y = Upper), color = "gray") + 
+  geom_line(aes(y = Lower), color = "gray") + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("SD of Cyclohex vs Zeocin Dilute Z Scores")
+
+CI_CuZeo %>% filter(CHROM == "IV") %>% ggplot(aes(x = POS, y = ExperimentCycZeo_Zprime)) + 
+  geom_line(size = 1) + geom_line(aes(y = Upper), color = "gray") + 
+  geom_line(aes(y = Lower), color = "gray") + 
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("SD of Cyclohex vs Zeocin Dilute Z Scores")
+  
+```
+
+If we were to do this for the actual data, what would that look like?
+
+```{r}
+load("CSSI_Fluc_BSA_med.Rdata")
+
+sdplaceholder <- list()
+for(i in unique(CSSI_Fluc_BSA$CHROM)){
+  CSSI_Fluc_BSA %>% filter(CHROM == i) %>% select(CHROM, POS, BulkFluconazole_Z, ParentWineI_Z) %>% SNPWindowVariance() -> sdplaceholder[[i]]
+  
+}
+
+CSSI_Fluc_BSA_sd_df <- bind_rows(sdplaceholder$I, sdplaceholder$II,sdplaceholder$IV,sdplaceholder$V,sdplaceholder$VII,sdplaceholder$VIII,
+          sdplaceholder$IX, sdplaceholder$X, sdplaceholder$XI,sdplaceholder$XII,sdplaceholder$XIII,sdplaceholder$XIV,sdplaceholder$XV,sdplaceholder$XVI)
+
+CSSI_Fluc_BSA_sd_df$CHROM <- factor(CSSI_Fluc_BSA_sd_df$CHROM, levels = as.character(as.roman(1:16)))
+
+left_join(CSSI_Fluc_BSA_sd_df, CSSI_Fluc_BSA[c("CHROM", "POS", "BulkFluconazole_Zprime")]) %>% 
+  mutate(Upper = BulkFluconazole_Zprime + abs(BulkFluconazole_Z_ZVar),
+         Lower = BulkFluconazole_Zprime - abs(BulkFluconazole_Z_ZVar)) -> CI_CSSI_Fluc_BSA
+
+CI_CSSI_Fluc_BSA %>% ggplot(aes(x = POS, y = BulkFluconazole_Zprime)) + 
+  geom_line(size = 1) + geom_line(aes(y = Upper), color = "gray") + 
+  geom_line(aes(y = Lower), color = "gray") + geom_hline(yintercept = 0, color = "navyblue", alpha = 0.5)+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("SD of Fluconazole Z Scores")
+
+CI_CSSI_Fluc_BSA %>% ggplot(aes(x = POS, y = BulkFluconazole_Zprime)) + 
+  geom_line(size = 1) + 
+  geom_line(aes(y = abs(BulkFluconazole_Z_ZVar)), color = "gray") + 
+  geom_line(aes(y = -abs(BulkFluconazole_Z_ZVar)), color = "gray") + 
+  geom_hline(yintercept = 0, color = "navyblue", alpha = 0.5)+
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") +
+  theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("SD of Fluconazole Z Scores")
+```
+
+
+There's also more or less error in the replicates; let's look at that for our confidence in the nulls?
+
+```{r}
+
 ```
 

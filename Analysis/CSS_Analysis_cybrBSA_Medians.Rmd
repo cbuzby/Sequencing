@@ -51,6 +51,43 @@ setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 #rawData = "HGV.SortedCat.vcf.output.table"
 ```
 
+## Means
+
+Use the mean for windows to compare with later medians
+
+### Zeocin Data without covariate
+
+```{r}
+load("CSSI_Zeo_BSA.Rdata")
+
+cybrPlotZPrime(CSSI_Zeo_BSA, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               # columns = colnames(CSSI_Zeo_BSA)[10:13], 
+               colvalues = c("#345F6F", "#D7335C", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")
+
+rm(CSSI_Zeo_BSA)
+```
+
+
+### Zeocin Data with replicate as covariate
+
+```{r}
+#Load in data
+load("CSSI_Zeo_BSA_r.Rdata")
+
+#Plot for Zeocin
+cybrPlotZPrime(CSSI_Zeo_BSA_r, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               columns = colnames(CSSI_Zeo_BSA_r)[10:13], 
+               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores with Replicate Covariate") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")
+
+rm(CSSI_Zeo_BSA_r)
+```
+
 ## Using Medians instead of Means
 
 Analyzing the dilute data from all three experiments showed weird skews when using means to smooth, so checking what happens if I change the smoothing script to use medians instead.
@@ -272,6 +309,8 @@ CSSI_Zeo_BSA <- foreach(i=unique(CSSI_Zeocin$CHROM), .combine=rbind) %dopar%{
 
 save(CSSI_Zeo_BSA, file = "CSSI_Zeo_BSA_med.Rdata")
 ```
+
+
 
 ## Redoing Zeocin with replicates
 

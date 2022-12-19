@@ -24,8 +24,9 @@ library(RColorBrewer)
 
 library(cybrBSA)
 
-ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_light())
 #ggplot2::theme_set(theme_bw())
+ggplot2::theme_set(theme_cybr())
 
 
 CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE5", "#8FC93A","#4C4C47", 
@@ -50,6 +51,7 @@ setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 #rawData = "HGV.SortedCat.vcf.output.table"
 ```
 
+# Running cybrBSA
 ## Convert Parental Alleles
 
 ```{r, eval = FALSE}
@@ -1650,9 +1652,324 @@ cybrPlotZPrime(CSSI_Cyc_BSA_r,
   geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed")
 ```
 
-Looking just at the raw data
+Using the largest replicate set per chromosome
+
 ```{r}
-load("CSSI_CycZeo_rep_counts.Rdata")
-CSSI_CycZeo_rep
+#Load in data
+load("CSSI_Zeo_BSA_r.Rdata")
+load("CSSI_Cyc_BSA_r.Rdata")
+
+CSSI_Zeo_BSA_r %>% group_by(CHROM) %>% summarize(ChromCutoff = max(abs(RepB_Zprime))) -> Cutoffs
+
+cybrPlotZPrime(CSSI_Zeo_BSA_r, 
+               chromosomes = ChromKey$chromosomes[2:16],
+               columns = colnames(CSSI_Zeo_BSA_r)[10:13], 
+               colvalues = c( "#D7335C","#345F6F", "#FFB05C","black"),
+               title = "Zeocin Smoothed Z scores with Replicate Covariate") + 
+  geom_hline(yintercept = c(-1.96, 1.96), linetype = "dashed") +
+  geom_hline(data = Cutoffs, aes(yintercept = ChromCutoff))
+
+#INCLUDING INTERCEPT
+CSSI_Zeo_BSA_r_zprimes <- CSSI_Zeo_BSA_r[,c(1,3,9:13)]
+
+CSSI_Zeo_BSA_r_zprimes %>% pivot_longer(-c(CHROM, POS)) %>% ggplot(aes(x = POS, y = abs(value), color = name)) +
+  geom_line(size = 1) +
+  geom_hline(data = Cutoffs, aes(yintercept = ChromCutoff)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_Zeo_BSA_r_zprimes$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())+
+  scale_color_manual(values = c("skyblue", "red", "blue", "black", "gray"))
+
+#EXCLUDING INTERCEPT
+ CSSI_Zeo_BSA_r[,c(1,3,10:13)] %>% pivot_longer(-c(CHROM, POS)) %>% ggplot(aes(x = POS, y = abs(value), color = name)) +
+  geom_line(size = 1) +
+  geom_hline(data = Cutoffs, aes(yintercept = ChromCutoff)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_Zeo_BSA_r_zprimes$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  scale_color_manual(values = c("red", "blue", "black", "gray"))
+
+ #EXCLUDING INTERCEPT
+ CSSI_Cyc_BSA_r[,c(1,3,10:13)] %>% pivot_longer(-c(CHROM, POS)) %>% ggplot(aes(x = POS, y = abs(value), color = name)) +
+  geom_line(size = 1) +
+  geom_hline(data = Cutoffs, aes(yintercept = ChromCutoff)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_Zeo_BSA_r_zprimes$POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_minimal() +
+      theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  scale_color_manual(values = c("red", "blue", "black", "gray"))
+
+```
+
+
+```{r}
+load("CSSI_Cyc_BSA_r.Rdata")
+
+CSSI_Cyc_BSA_r %>% group_by(CHROM) %>% summarize(ChromCutoff = max(abs(RepB_Zprime))) -> Cutoffs
+
+#EXCLUDING INTERCEPT
+ CSSI_Cyc_BSA_r[,c(1,3,10:13)] %>% filter(CHROM != "I") %>% pivot_longer(-c(CHROM, POS)) %>% ggplot(aes(x = POS, y = abs(value), color = name)) +
+  geom_line(size = 1) +
+  geom_hline(data = Cutoffs, aes(yintercept = ChromCutoff)) + 
+  scale_x_continuous(breaks = seq(from = 0, to = max(CSSI_Cyc_BSA_r[,c(1,3,10:13)] $POS), by = 1e5), name = "Genomic Position") +
+      facet_grid(~CHROM, scales = "free_x", space = "free_x") + 
+   scale_color_manual(values = cybr_BSAcolors[c(2,1,3,4)])
+ 
+```
+
+# Permutations on chunks of data
+
+```{r}
+load("CSSI_Fluc_counts.Rdata")
+
+unique(CSSI_Fluc$Dataset)
+
+CSSI_Fluc$Rep <- NA
+CSSI_Fluc$Rep[grep("B.fastq", CSSI_Fluc$Dataset)] <- "B"
+CSSI_Fluc$Rep[grep("C.fastq", CSSI_Fluc$Dataset)] <- "C"
+CSSI_Fluc$Rep[grep("D.fastq", CSSI_Fluc$Dataset)] <- "D"
+
+table(CSSI_Fluc$Rep, CSSI_Fluc$Parent, CSSI_Fluc$Bulk)
+
+#To actually make replicates from these, divide the reads in half? Then look at the interaction score(?)
+
+CSSI_Fluc %>% select(-REF, -ALT, -Dataset, -Type) %>% 
+  pivot_wider(names_from = c(Bulk, Parent, Rep), values_from = c(ReadCount)) %>%
+  mutate(Dilute_OakI_C = Dilute_OakI_B,
+         Dilute_OakI_D = Dilute_OakI_B,
+         Fluconazole_WineI_B = Fluconazole_WineI_C,
+         Fluconazole_WineI_D = Fluconazole_WineI_C) %>% pivot_longer(cols = -c(POS, CHROM, AltRef_Allele, PAllele), 
+                                                                     names_to = c("Bulk", "Parent", "Rep"),
+                                                                     names_pattern = "_?(.*)_(.*)_(.*)",
+                                                                     values_to = "ReadCount") -> CSSI_Fluc_FalseReps
+
+################################################################################
+Fluc_7 <- cybrBSA_GLM(CSSI_Fluc_FalseReps, formula = "PAllele ~ Bulk*Parent + Rep", chr = "VII") %>% cybrSmoothBSAWindows()
+Fluc_7_repint <- cybrBSA_GLM(CSSI_Fluc_FalseReps, formula = "PAllele ~ Bulk*Parent* Rep", chr = "VII") %>% cybrSmoothBSAWindows()
+
+Fluc_15 <- cybrBSA_GLM(CSSI_Fluc_FalseReps, formula = "PAllele ~ Bulk*Parent + Rep", chr = "XV") %>% cybrSmoothBSAWindows()
+Fluc_15_repint <- cybrBSA_GLM(CSSI_Fluc_FalseReps, formula = "PAllele ~ Bulk*Parent* Rep", chr = "XV") %>% cybrSmoothBSAWindows()
+
+################################################################################
+#Chr 7
+
+colnames(Fluc_7)[11:15] <- c("Bulk", "Parent", "RepC", "RepD", "Interaction")
+colnames(Fluc_7_repint)[17:27] <- c("1Bulk", "3Parent", "RepC", "RepD", 
+                           "2BulkParent_Interaction", "Bulk_RepC_Interaction", "Bulk_RepD_Interaction", 
+                           "Parent_RepC_Interaction", "Parent_RepD_Interaction", "BulkParentRepC", "BulkParentRepD")
+#Convert to absolute values
+Fluc_7[,c(-1)] <- abs(Fluc_7[,c(-1)])
+Fluc_7_repint[,c(-1)] <- abs(Fluc_7_repint[,c(-1)])
+
+p1 <- cybrPlotZPrime(Fluc_7, columns = c("Bulk", "Parent", "RepC", "RepD", "Interaction"), colvalues = cybr_BSAcolors)
+
+p2 <- cybrPlotZPrime(Fluc_7_repint, 
+               columns = c("1Bulk", "3Parent", "RepC", "RepD", 
+                           "2BulkParent_Interaction", "Bulk_RepC_Interaction", "Bulk_RepD_Interaction", 
+                           "Parent_RepC_Interaction", "Parent_RepD_Interaction", "BulkParentRepC", "BulkParentRepD"), 
+               colvalues = c(cybr_BSAcolors, cybr_CHROMcolors))
+
+p1
+p2
+p1 + theme(legend.position = "none") + ylim(0,6) + ggtitle("Fluconazole Bulk*Parent+Rep")
+p2 + theme(legend.position = "none") + ylim(0,6) + ggtitle("Fluconazole Bulk*Parent*Rep")
+
+################################################################################
+#Chr 15
+
+colnames(Fluc_15)[11:15] <- c("Bulk", "Parent", "RepC", "RepD", "Interaction")
+colnames(Fluc_15_repint)[17:27] <- c("1Bulk", "3Parent", "RepC", "RepD", 
+                           "2BulkParent_Interaction", "Bulk_RepC_Interaction", "Bulk_RepD_Interaction", 
+                           "Parent_RepC_Interaction", "Parent_RepD_Interaction", "BulkParentRepC", "BulkParentRepD")
+
+#Convert to absolute values
+Fluc_15[,c(-1)] <- abs(Fluc_15[,c(-1)])
+Fluc_15_repint[,c(-1)] <- abs(Fluc_15_repint[,c(-1)])
+
+p3 <- cybrPlotZPrime(Fluc_15, columns = c("Bulk", "Parent", "RepC", "RepD", "Interaction"), colvalues = cybr_BSAcolors)
+
+p4 <- cybrPlotZPrime(Fluc_15_repint, 
+               columns = c("1Bulk", "3Parent", "RepC", "RepD", 
+                           "2BulkParent_Interaction", "Bulk_RepC_Interaction", "Bulk_RepD_Interaction", 
+                           "Parent_RepC_Interaction", "Parent_RepD_Interaction", "BulkParentRepC", "BulkParentRepD"), 
+               colvalues = c(cybr_BSAcolors, cybr_CHROMcolors))
+
+p3
+p4
+p3 + theme(legend.position = "none") + ylim(0,6) + ggtitle("Fluconazole Bulk*Parent+Rep")
+p4 + theme(legend.position = "none") + ylim(0,6) + ggtitle("Fluconazole Bulk*Parent*Rep")
+```
+
+Okay actually doing permutations?
+
+```{r}
+### Run GLM Function
+lrP <- CSSI_Fluc
+chr <- "I"
+i <- unique(lrP$POS)[1]
+```
+
+```{r}
+cybrBSA_GLM_window <-  function(lrP, chr = "II", windowsize = 5000, formula = "PAllele~Bulk*Parent",
+                         resultscol = c("Intercept", "Bulk", "Parent", "Interaction")){
+  require(stringr)
+  if(identical(grep(" ", formula), integer(0)) == FALSE){return(print("Remove spaces from formula or use cybrBSA_GLM()"))}
+         
+         
+  lrP <- subset(lrP, CHROM == chr)
+
+  AllResults <- list()
+  for(c in unique(lrP$CHROM)){
+    lrP <- subset(lrP, CHROM == c)
+    #Run the glm on that chromosome
+    Results <- foreach (i=unique(lrP$POS), .combine=rbind) %dopar% {
+      windowdata <- lrP[lrP$POS < (i+windowsize) & lrP$POS > (i-windowsize),]
+      
+      #Convert to sum of counts
+      mycols <- unlist(str_split(unlist(str_split(formula, pattern = c("~"))), pattern = "\\*"))
+      windowdata %>% group_by(.[mycols]) %>% summarize(ReadCount = sum(ReadCount)) -> windowdata
+      
+      res <- suppressWarnings(glm(as.formula(formula), 
+                                  weights = ReadCount, 
+                                  family = binomial, 
+                                  data = windowdata))
+
+      #Output of foreach automatically binds rows of what is printed
+      c(c, i, summary(res)$coefficients[((length(summary(res)$coefficients)/2)+1):(length(summary(res)$coefficients) - length(summary(res)$coefficients)/4)])
+    }
+
+    resnames <- suppressWarnings(glm(as.formula(formula), weights = ReadCount, family = binomial, data = lrP[lrP$POS == unique(lrP$POS)[1],]))
+
+    #Format the results for the next function
+    Results <- as.data.frame(Results)
+    colnames(Results) <- c("CHROM", "POS", names(resnames$coefficients))
+    #colnames(Results) <- c("CHROM", "POS", resultscol)
+
+    for(i in 2:length(colnames(Results))){
+      Results[,i] <- as.numeric(Results[,i])
+    }
+    Results %>% arrange(POS) -> Results
+  }
+  return(Results)
+  
+}
+```
+
+```{r}
+Fluc_I <- suppressWarnings(cybrBSA_GLM_window(CSSI_Fluc, chr = "I", windowsize = 1000))
+colnames(Fluc_I)[4:6] <- c("Bulk", "Parent", "Interaction")
+
+Fluc_I %>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = value, color = name)) + geom_line()
+```
+
+Do this for each sample and chromosome
+
+```{r, eval = FALSE}
+load("CSSI_Fluc_counts.Rdata")
+load("CSSI_CycZeo_counts.Rdata")
+
+CycCounts <- CSSI_CycZeo %>% filter(Bulk != "Zeocin")
+ZeoCounts <- CSSI_CycZeo %>% filter(Bulk != "Cycloheximide")
+
+Fluc_SmoothedZ <- foreach(i=unique(CSSI_Fluc$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM_window(CSSI_Fluc, chr = i) 
+}
+Fluc_SmoothedZ$CHROM <- factor(Fluc_SmoothedZ$CHROM, levels = as.character((as.roman(1:17))))
+
+save(Fluc_SmoothedZ, file = "Fluc_SmoothedZ.Rdata")
+
+Cyc_SmoothedZ <- foreach(i=unique(CycCounts$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM_window(CycCounts, chr = i)  
+}
+Cyc_SmoothedZ$CHROM <- factor(Cyc_SmoothedZ$CHROM, levels = as.character((as.roman(1:17))))
+
+save(Cyc_SmoothedZ, file = "Cyc_SmoothedZ.Rdata")
+
+
+Zeo_SmoothedZ <- foreach(i=unique(ZeoCounts$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM_window(ZeoCounts, chr = i) 
+}
+Zeo_SmoothedZ$CHROM <- factor(Zeo_SmoothedZ$CHROM, levels = as.character((as.roman(1:17))))
+save(Zeo_SmoothedZ, file = "Zeo_SmoothedZ.Rdata")
+
+```
+
+Run this for CuSO4 as well
+
+```{r}
+load("CuSO4data_counts.Rdata")
+
+CuSO4_SmoothedZ <- foreach(i=unique(CuSO4data$CHROM), .combine=rbind) %dopar%{
+  cybrBSA_GLM_window(CuSO4data, chr = i) 
+}
+CuSO4_SmoothedZ$CHROM <- factor(CuSO4_SmoothedZ$CHROM, levels = as.character((as.roman(1:17))))
+
+save(CuSO4_SmoothedZ, file = "CuSO4_SmoothedZ.Rdata")
+
+```
+
+```{r}
+#Plot both sides
+load("Zeo_SmoothedZ.Rdata")
+colnames(Zeo_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Zeo_SmoothedZ %>% filter(CHROM != "I") %>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = value, color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+  ggtitle("Zeocin Combined Z Scores") + ylim(-40,40)
+
+load("Fluc_SmoothedZ.Rdata")
+colnames(Fluc_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Fluc_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = value, color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("Fluconazole Combined Z Scores")+ ylim(-40,40)
+
+
+load("Cyc_SmoothedZ.Rdata")
+colnames(Cyc_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Cyc_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = value, color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("Cycloheximide Combined Z Scores")+ ylim(-40,40)
+
+load("CuSO4_SmoothedZ.Rdata")
+colnames(CuSO4_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+CuSO4_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = value, color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("CuSO4 Combined Z Scores")+ ylim(-40,40)
+
+```
+
+```{r}
+#Plot absolute values
+load("Zeo_SmoothedZ.Rdata")
+colnames(Zeo_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Zeo_SmoothedZ %>% filter(CHROM != "I") %>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = abs(value), color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+  ggtitle("Zeocin Combined Z Scores") + ylim(0,40)
+
+load("Fluc_SmoothedZ.Rdata")
+colnames(Fluc_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Fluc_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = abs(value), color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("Fluconazole Combined Z Scores")+ ylim(0,40)
+
+
+load("Cyc_SmoothedZ.Rdata")
+colnames(Cyc_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+Cyc_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = abs(value), color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("Cycloheximide Combined Z Scores")+ ylim(0,40)
+
+load("CuSO4_SmoothedZ.Rdata")
+colnames(CuSO4_SmoothedZ)[4:6] <- c("Bulk", "Parent", "Interaction")
+CuSO4_SmoothedZ %>% filter(CHROM != "I")%>% pivot_longer(cols = c("Bulk", "Parent", "Interaction")) %>% ggplot(aes(x = POS, y = abs(value), color = name)) + geom_line() + facet_grid(~CHROM, scales = "free") +
+    ggtitle("CuSO4 Combined Z Scores") + ylim(0,40)
+```
+
+Cutoffs based on the parent effect
+
+```{r}
+quantile(abs(Cyc_SmoothedZ$Parent[Cyc_SmoothedZ$CHROM != "I"]), 0.975, na.rm = TRUE)
+quantile(abs(Zeo_SmoothedZ$Parent[Zeo_SmoothedZ$CHROM != "I"]), 0.975, na.rm = TRUE)
+quantile(abs(Fluc_SmoothedZ$Parent[Fluc_SmoothedZ$CHROM != "I"]), 0.975, na.rm = TRUE)
+
+Cyc_SmoothedZ$Experiment <- "Cycloheximide"
+Zeo_SmoothedZ$Experiment <- "Zeocin"
+Fluc_SmoothedZ$Experiment <- "Fluconazole"
+
+rbind(Cyc_SmoothedZ, Zeo_SmoothedZ, Fluc_SmoothedZ) %>% filter(CHROM != "I") %>% ggplot(aes(x = abs(Parent), color = Experiment)) + geom_density(size = 1)
 ```
 
