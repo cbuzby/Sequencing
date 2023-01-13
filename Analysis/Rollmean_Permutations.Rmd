@@ -1,0 +1,121 @@
+---
+title: "Rollmean Permutations"
+author: "Cassandra Buzby"
+date: "1/13/2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+```
+
+## Permutation Tests
+
+To produce a null distribution of effects, using the rollmean initial rolling average of _reads_ to produce an dataset to permute. Goals are to do this for EACH dataset and to both include and exclude replicates. 
+
+Starting with Zeocin, which has been rollmeaned already
+
+```{r}
+CSSI_Zeocin_cybr2 <- readRDS("../../cybrBSA/cybrBSA/CSSI_Zeocin_cybr2.rds")
+
+CSSI_Zeocin_cybr2 %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_rollmean_p
+
+```
+```{r}
+permsize <- 10000
+CSSI_Zeocin_rollmean_p %>% group_by(CHROM) %>% summarize(POS = 1:permsize, 
+                                                         L_O_Oa = sample(Dilute_OakI_A_Oak, size = permsize, replace = TRUE),
+                                                         L_O_Wa = sample(Dilute_OakI_A_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         L_O_Ob = sample(Dilute_OakI_B_Oak, size = permsize, replace = TRUE),
+                                                         L_O_Wb = sample(Dilute_OakI_B_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         L_W_Oa = sample(Dilute_WineI_A_Oak, size = permsize, replace = TRUE),
+                                                         L_W_Wa = sample(Dilute_WineI_A_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         L_W_Ob = sample(Dilute_WineI_B_Oak, size = permsize, replace = TRUE),
+                                                         L_W_Wb = sample(Dilute_WineI_B_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         H_O_Oa = sample(Zeocin_OakI_A_Oak, size = permsize, replace = TRUE),
+                                                         H_O_Wa = sample(Zeocin_OakI_A_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         H_O_Ob = sample(Zeocin_OakI_B_Oak, size = permsize, replace = TRUE),
+                                                         H_O_Wb = sample(Zeocin_OakI_B_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         H_W_Oa = sample(Zeocin_WineI_A_Oak, size = permsize, replace = TRUE),
+                                                         H_W_Wa = sample(Zeocin_WineI_A_Wine, size = permsize, replace = TRUE),
+                                                         
+                                                         H_W_Ob = sample(Zeocin_WineI_B_Oak, size = permsize, replace = TRUE),
+                                                         H_W_Wb = sample(Zeocin_WineI_B_Wine, size = permsize, replace = TRUE)
+                                                         )  -> CSSI_Zeocin_rollmean_permuted
+
+
+CSSI_Zeocin_rollmean_permuted %>% group_by(CHROM, POS) %>% summarize(glm = glmfixed_rep(
+                                                                      H_O_Oa, H_O_Wa, H_W_Oa, H_W_Wa, L_O_Oa, L_O_Wa, L_W_Oa, L_W_Wa, 
+                                                                      H_O_Ob, H_O_Wb, H_W_Ob, H_W_Wb, L_O_Ob, L_O_Wb, L_W_Ob, L_W_Wb),
+                                                                      label = c("intercept", "Bulk", "Parent", "BxP_Interaction", "replicate")) -> test5
+
+
+test5 %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + ggtitle("All Zeocin Permuted")
+test5 %>% filter(CHROM == "III") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Chrom III Distributions")
+
+test5 %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
+
+test5 %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, y = label, color = label)) + geom_boxplot() + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
+
+```
+

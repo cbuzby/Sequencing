@@ -127,7 +127,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "I") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -135,7 +135,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "I") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -152,7 +152,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "II") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -160,7 +160,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "II") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -177,7 +177,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "III") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -185,7 +185,6 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "III") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>%
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -201,7 +200,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "IV") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -209,7 +208,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "IV") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -225,7 +224,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "V") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -233,7 +232,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "V") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -249,7 +248,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "VI") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -257,7 +256,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "VI") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -276,7 +275,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "VIII") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -284,7 +283,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "VIII") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -301,7 +300,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "X") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -309,7 +308,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "X") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -326,7 +325,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "IX") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -334,7 +333,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "IX") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -351,7 +350,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XI") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -359,7 +358,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XI") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -376,7 +375,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XII") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -384,7 +383,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XII") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -401,7 +400,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIII") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -409,7 +408,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIII") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -426,7 +425,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIV") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -434,7 +433,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIV") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -451,7 +450,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XV") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -459,7 +458,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XV") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
@@ -475,7 +474,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XVI") %>%
   pivot_wider(names_from = label,values_from = SmoothCount) %>% 
   
   na.omit() %>%
-  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
                            H_O_W = Zeocin_OakI_B_Wine,
                            H_W_O = Zeocin_WineI_B_Oak,
                            H_W_W = Zeocin_WineI_B_Wine, 
@@ -483,7 +482,7 @@ CSSI_Zeocin_cybr2 %>% filter(CHROM == "XVI") %>%
                            L_O_W = Dilute_OakI_B_Wine,
                            L_W_O = Dilute_WineI_B_Oak, 
                            L_W_W = Dilute_WineI_B_Wine) %>% 
-select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+ 
 group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
                                                             L_O_O,L_O_W,L_W_O,L_W_W),
                                                    label = c("intercept", "Bulk", "Parent", "Interaction",
