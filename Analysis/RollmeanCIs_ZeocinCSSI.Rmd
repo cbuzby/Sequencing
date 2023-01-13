@@ -1,0 +1,579 @@
+---
+title: "Rollmean Confidence Intervals for CSS I Zeocin"
+author: "Cassandra Buzby"
+date: "1/12/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+```
+
+## Load Data
+
+This is using a window size of 100 SNPs
+
+```{r}
+CSSI_Zeocin_cybr2 <- readRDS("../../cybrBSA/cybrBSA/CSSI_Zeocin_cybr2.rds")
+
+```
+
+## Functions
+
+```{r}
+glmfixed_confint <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  c(summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)], as.vector(confint(b)))
+
+}
+```
+
+
+## Run and save all chromosomes I:VII
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "I") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_I
+
+saveRDS(CSSI_Zeocin_rollmean_I, file = "CSSI_Zeocin_rollmean_I.rds")
+```
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "II") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_II
+
+saveRDS(CSSI_Zeocin_rollmean_II, file = "CSSI_Zeocin_rollmean_II.rds")
+```
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "III") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_III
+
+saveRDS(CSSI_Zeocin_rollmean_III, file = "CSSI_Zeocin_rollmean_III.rds")
+```
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "IV") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_IV
+
+saveRDS(CSSI_Zeocin_rollmean_IV, file = "CSSI_Zeocin_rollmean_IV.rds")
+```
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "V") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_V
+
+saveRDS(CSSI_Zeocin_rollmean_V, file = "CSSI_Zeocin_rollmean_V.rds")
+```
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "VI") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_VI
+
+saveRDS(CSSI_Zeocin_rollmean_VI, file = "CSSI_Zeocin_rollmean_VI.rds")
+```
+
+## After running this all night
+
+Plotting up to this point
+
+```{r}
+CSSI_Zeocin_rollmean_I <- readRDS("CSSI_Zeocin_rollmean_I.rds")
+CSSI_Zeocin_rollmean_II <- readRDS("CSSI_Zeocin_rollmean_II.rds")
+CSSI_Zeocin_rollmean_III <- readRDS("CSSI_Zeocin_rollmean_III.rds")
+CSSI_Zeocin_rollmean_IV <- readRDS("CSSI_Zeocin_rollmean_IV.rds")
+CSSI_Zeocin_rollmean_V <- readRDS("CSSI_Zeocin_rollmean_V.rds")
+CSSI_Zeocin_rollmean_VI <- readRDS("CSSI_Zeocin_rollmean_VI.rds")
+CSSI_Zeocin_rollmean_VII <- readRDS("CSSI_Zeocin_rollmean_VII.rds")
+
+```
+
+
+```{r}
+rbind(CSSI_Zeocin_rollmean_I, 
+      CSSI_Zeocin_rollmean_II,
+      CSSI_Zeocin_rollmean_III,
+      CSSI_Zeocin_rollmean_IV,
+      CSSI_Zeocin_rollmean_V,
+      CSSI_Zeocin_rollmean_VI,
+      CSSI_Zeocin_rollmean_VII) -> rollmean_ItoVII
+
+```
+
+Reformatting this
+
+```{r}
+
+rollmean_ItoVII$type <- "Zscore"
+rollmean_ItoVII$type[grep("CIL", rollmean_ItoVII$label)] <- "CIL"
+rollmean_ItoVII$type[grep("CIU", rollmean_ItoVII$label)] <- "CIU"
+
+rollmean_ItoVII$label <- gsub("CIL_", "", rollmean_ItoVII$label)
+rollmean_ItoVII$label <- gsub("CIU_", "", rollmean_ItoVII$label)
+
+rollmean_ItoVII %>% pivot_wider(names_from = label, values_from = summary) %>% pivot_longer(c(intercept, Bulk, Parent, Interaction), names_to = "param", values_to = "Effect") %>% pivot_wider(names_from = type, values_from = Effect) -> rollmean_ItoVII_pivot
+
+
+```
+
+Plots with reformatted total (rollmean_pivot)
+
+```{r}
+#Plot all, including intercept
+rollmean_ItoVII_pivot %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = Zscore + CIL, ymax = Zscore + CIU, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+#Plot non-Chr I, excluding intercept
+rollmean_ItoVII_pivot %>% 
+  filter(CHROM != "I", param != "intercept") %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = Zscore + CIL, ymax = Zscore + CIU, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+```
+
+
+
+## Run and save all chromosomes VIII:XVI
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "VIII") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_VIII
+
+saveRDS(CSSI_Zeocin_rollmean_VIII, file = "CSSI_Zeocin_rollmean_VIII.rds")
+```
+
+```{r}
+CSSI_Zeocin_rollmean_XVI <- readRDS("CSSI_Zeocin_rollmean_XVI.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "X") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_X
+
+saveRDS(CSSI_Zeocin_rollmean_X, file = "CSSI_Zeocin_rollmean_X.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "IX") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_IX
+
+saveRDS(CSSI_Zeocin_rollmean_IX, file = "CSSI_Zeocin_rollmean_IX.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XI") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XI
+
+saveRDS(CSSI_Zeocin_rollmean_XI, file = "CSSI_Zeocin_rollmean_XI.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XII") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XII
+
+saveRDS(CSSI_Zeocin_rollmean_XII, file = "CSSI_Zeocin_rollmean_XII.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIII") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XIII
+
+saveRDS(CSSI_Zeocin_rollmean_XIII, file = "CSSI_Zeocin_rollmean_XIII.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIV") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XIV
+
+saveRDS(CSSI_Zeocin_rollmean_XIV, file = "CSSI_Zeocin_rollmean_XIV.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XV") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XV
+
+saveRDS(CSSI_Zeocin_rollmean_XV, file = "CSSI_Zeocin_rollmean_XV.rds")
+```
+
+```{r, eval = TRUE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "XVI") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  mutate(H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+select(CHROM, POS, H_O_O,H_O_W,H_W_O,H_W_W,L_O_O,L_O_W,L_W_O,L_W_W) %>% 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CIL_intercept", "CIL_Bulk", "CIL_Parent", "CIL_Interaction",
+                                                             "CIU_intercept", "CIU_Bulk", "CIU_Parent", "CIU_Interaction")) -> CSSI_Zeocin_rollmean_XVI
+
+saveRDS(CSSI_Zeocin_rollmean_XVI, file = "CSSI_Zeocin_rollmean_XVI.rds")
+```
+
+```{r}
+CSSI_Zeocin_rollmean_XI <- readRDS("CSSI_Zeocin_rollmean_XI.rds")
+CSSI_Zeocin_rollmean_XII <- readRDS("CSSI_Zeocin_rollmean_XII.rds")
+
+CSSI_Zeocin_rollmean_XIII <- readRDS("CSSI_Zeocin_rollmean_XIII.rds")
+
+CSSI_Zeocin_rollmean_XIV <- readRDS("CSSI_Zeocin_rollmean_XIV.rds")
+CSSI_Zeocin_rollmean_XV <- readRDS("CSSI_Zeocin_rollmean_XV.rds")
+CSSI_Zeocin_rollmean_XVI <- readRDS("CSSI_Zeocin_rollmean_XVI.rds")
+CSSI_Zeocin_rollmean_VIII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
+CSSI_Zeocin_rollmean_IX <- readRDS("CSSI_Zeocin_rollmean_IX.rds")
+CSSI_Zeocin_rollmean_X <- readRDS("CSSI_Zeocin_rollmean_X.rds")
+
+```
+
+
+## After running this all day
+
+```{r, eval = FALSE}
+rbind(CSSI_Zeocin_rollmean_XI, 
+      CSSI_Zeocin_rollmean_XII,
+      CSSI_Zeocin_rollmean_XIII,
+      CSSI_Zeocin_rollmean_XIV,
+      CSSI_Zeocin_rollmean_XV,
+      CSSI_Zeocin_rollmean_XVI,
+      CSSI_Zeocin_rollmean_VIII,
+      CSSI_Zeocin_rollmean_IX,
+      CSSI_Zeocin_rollmean_X,
+      rollmean_ItoVII) -> rollmean_all
+
+
+rollmean_all$type <- "Zscore"
+rollmean_all$type[grep("CIL", rollmean_all$label)] <- "CIL"
+rollmean_all$type[grep("CIU", rollmean_all$label)] <- "CIU"
+
+rollmean_all$label <- gsub("CIL_", "", rollmean_all$label)
+rollmean_all$label <- gsub("CIU_", "", rollmean_all$label)
+
+rollmean_all %>% pivot_wider(names_from = label, values_from = summary)%>% pivot_longer(c(intercept, Bulk, Parent, Interaction), names_to = "param", values_to = "Effect") %>% pivot_wider(names_from = type, values_from = Effect) -> rollmean_all_pivot
+
+saveRDS(rollmean_all_pivot, file = "rollmean_all_pivot.rds")
+```
+
+
+## Plotting the full dataset
+
+```{r}
+#Plot all, including intercept
+rollmean_all_pivot %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = Zscore + CIL, ymax = Zscore + CIU, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+#Plot non-Chr I, excluding intercept
+rollmean_all_pivot %>% 
+  filter(CHROM != "I", param != "intercept") %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = Zscore + CIL, ymax = Zscore + CIU, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+```
+
