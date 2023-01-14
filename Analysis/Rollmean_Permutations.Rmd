@@ -107,15 +107,28 @@ CSSI_Zeocin_rollmean_p %>% group_by(CHROM) %>% summarize(POS = 1:permsize,
 CSSI_Zeocin_rollmean_permuted %>% group_by(CHROM, POS) %>% summarize(glm = glmfixed_rep(
                                                                       H_O_Oa, H_O_Wa, H_W_Oa, H_W_Wa, L_O_Oa, L_O_Wa, L_W_Oa, L_W_Wa, 
                                                                       H_O_Ob, H_O_Wb, H_W_Ob, H_W_Wb, L_O_Ob, L_O_Wb, L_W_Ob, L_W_Wb),
-                                                                      label = c("intercept", "Bulk", "Parent", "BxP_Interaction", "replicate")) -> test5
+                                                                      label = c("intercept", "Bulk", "Parent", "BxP_Interaction", "replicate")) -> CSSI_Zeocin_rollmean_permuted_glm
 
+saveRDS(CSSI_Zeocin_rollmean_permuted_glm, file = "CSSI_Zeocin_rollmean_permuted_glm.rds")
 
-test5 %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + ggtitle("All Zeocin Permuted")
+```
+
+## Plot the results
+
+```{r}
+
+CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + ggtitle("All Zeocin Permuted")
 test5 %>% filter(CHROM == "III") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Chrom III Distributions")
 
-test5 %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
+CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, color = label)) + geom_density() + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
 
-test5 %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, y = label, color = label)) + geom_boxplot() + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
+CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, y = label, color = label)) + geom_boxplot() + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
 
+```
+
+## Find quantiles
+
+```{r}
+CSSI_Zeocin_rollmean_permuted_glm %>% group_by(CHROM, label) %>% summarize(quant = quantile(glm)) 
 ```
 

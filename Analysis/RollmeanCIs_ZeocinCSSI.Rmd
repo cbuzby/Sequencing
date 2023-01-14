@@ -42,6 +42,24 @@ glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
     ((length(summary(b)$coefficients)/4)*2+1):
       ((length(summary(b)$coefficients)/4)*3)]
 }
+
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
 ```
 
 ## Load Data
@@ -55,6 +73,7 @@ CSSI_Zeocin_cybr2 <- readRDS("../../cybrBSA/cybrBSA/CSSI_Zeocin_cybr2.rds")
 
 ## Functions
 
+If not including replicates:
 ```{r}
 #library(MASS)
 glmfixed_confint <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
@@ -76,11 +95,33 @@ glmfixed_confint <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
   
   #For effects
   results[1:4] <- c(summary(b)$coefficients[1:4])
-  
   results[5:8] <- as.vector(confint(b, level = 0.05))
 
   return(results)
 }
+```
+
+If including replicates:
+
+```{r}
+glmfixed_rep_confint <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  results[1:5] <- c(summary(b)$coefficients[1:4])
+  
+  results[6:10] <- as.vector(confint(b, level = 0.05))
+
+  }
+
 
 ```
 
@@ -120,7 +161,7 @@ test3_pivot %>% ggplot(aes(x = POS, y = Zscore, color = param)) + geom_line(size
 
 ## Run and save all chromosomes I:VII
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "I") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -145,7 +186,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_I, file = "CSSI_Zeocin_rollmean_I.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "II") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -170,7 +211,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_II, file = "CSSI_Zeocin_rollmean_II.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "III") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -193,7 +234,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_III, file = "CSSI_Zeocin_rollmean_III.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "IV") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -217,7 +258,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_IV, file = "CSSI_Zeocin_rollmean_IV.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "V") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -241,7 +282,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_V, file = "CSSI_Zeocin_rollmean_V.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "VI") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -265,10 +306,34 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_VI, file = "CSSI_Zeocin_rollmean_VI.rds")
 ```
 
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 %>% filter(CHROM == "VII") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>% 
+  
+  na.omit() %>%
+  transmute(CHROM = CHROM, POS = POS, H_O_O = Zeocin_OakI_B_Oak, 
+                           H_O_W = Zeocin_OakI_B_Wine,
+                           H_W_O = Zeocin_WineI_B_Oak,
+                           H_W_W = Zeocin_WineI_B_Wine, 
+                           L_O_O = Dilute_OakI_B_Oak,  
+                           L_O_W = Dilute_OakI_B_Wine,
+                           L_W_O = Dilute_WineI_B_Oak, 
+                           L_W_W = Dilute_WineI_B_Wine) %>% 
+ 
+group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,H_W_W,
+                                                            L_O_O,L_O_W,L_W_O,L_W_W),
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction",
+                                                             "CI_intercept", "CI_Bulk", "CI_Parent", "CI_Interaction")) -> CSSI_Zeocin_rollmean_VII
+
+saveRDS(CSSI_Zeocin_rollmean_VII, file = "CSSI_Zeocin_rollmean_VII.rds")
+```
+
 
 ## Run and save all chromosomes VIII:XVI
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "VIII") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -293,7 +358,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_VIII, file = "CSSI_Zeocin_rollmean_VIII.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "X") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -318,7 +383,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_X, file = "CSSI_Zeocin_rollmean_X.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "IX") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -343,7 +408,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_IX, file = "CSSI_Zeocin_rollmean_IX.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XI") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -368,7 +433,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_XI, file = "CSSI_Zeocin_rollmean_XI.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XII") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -393,7 +458,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_XII, file = "CSSI_Zeocin_rollmean_XII.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIII") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -418,7 +483,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_XIII, file = "CSSI_Zeocin_rollmean_XIII.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XIV") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -443,7 +508,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_XIV, file = "CSSI_Zeocin_rollmean_XIV.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XV") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -467,7 +532,7 @@ group_by(CHROM, POS) %>% summarise(summary = glmfixed_confint(H_O_O,H_O_W,H_W_O,
 saveRDS(CSSI_Zeocin_rollmean_XV, file = "CSSI_Zeocin_rollmean_XV.rds")
 ```
 
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 CSSI_Zeocin_cybr2 %>% filter(CHROM == "XVI") %>% 
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% 
@@ -493,17 +558,28 @@ saveRDS(CSSI_Zeocin_rollmean_XVI, file = "CSSI_Zeocin_rollmean_XVI.rds")
 ```
 
 ```{r}
+
+CSSI_Zeocin_rollmean_I <- readRDS("CSSI_Zeocin_rollmean_I.rds")
+CSSI_Zeocin_rollmean_II <- readRDS("CSSI_Zeocin_rollmean_II.rds")
+CSSI_Zeocin_rollmean_III <- readRDS("CSSI_Zeocin_rollmean_III.rds")
+
+CSSI_Zeocin_rollmean_IV <- readRDS("CSSI_Zeocin_rollmean_IV.rds")
+CSSI_Zeocin_rollmean_V <- readRDS("CSSI_Zeocin_rollmean_V.rds")
+CSSI_Zeocin_rollmean_VI <- readRDS("CSSI_Zeocin_rollmean_VI.rds")
+CSSI_Zeocin_rollmean_VII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
+
+CSSI_Zeocin_rollmean_VIII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
+CSSI_Zeocin_rollmean_IX <- readRDS("CSSI_Zeocin_rollmean_IX.rds")
+CSSI_Zeocin_rollmean_X <- readRDS("CSSI_Zeocin_rollmean_X.rds")
+
 CSSI_Zeocin_rollmean_XI <- readRDS("CSSI_Zeocin_rollmean_XI.rds")
 CSSI_Zeocin_rollmean_XII <- readRDS("CSSI_Zeocin_rollmean_XII.rds")
-
 CSSI_Zeocin_rollmean_XIII <- readRDS("CSSI_Zeocin_rollmean_XIII.rds")
 
 CSSI_Zeocin_rollmean_XIV <- readRDS("CSSI_Zeocin_rollmean_XIV.rds")
 CSSI_Zeocin_rollmean_XV <- readRDS("CSSI_Zeocin_rollmean_XV.rds")
 CSSI_Zeocin_rollmean_XVI <- readRDS("CSSI_Zeocin_rollmean_XVI.rds")
-CSSI_Zeocin_rollmean_VIII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
-CSSI_Zeocin_rollmean_IX <- readRDS("CSSI_Zeocin_rollmean_IX.rds")
-CSSI_Zeocin_rollmean_X <- readRDS("CSSI_Zeocin_rollmean_X.rds")
+
 
 ```
 
