@@ -1,0 +1,440 @@
+---
+title: "LOD Scores"
+author: "Cassandra Buzby"
+date: "1/12/2023"
+output: html_notebook
+---
+
+## Load Data and Packages
+
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    
+```{r}
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+```
+
+```{r}
+#Load Stuff
+CSSI_CuSO4 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_Fluc <- readRDS("RdataFiles/CSSI_Fluc_cybr2.rds")
+CSSI_Zeocin <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
+```
+
+Either use rollmeans or roll medians, and change n appropriately
+
+```{r}
+#MEDIANS
+CSSI_CuSO4 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = mean, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_CuSO4_cybr2
+
+CSSI_Fluc %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = mean, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Fluc_cybr2
+
+CSSI_Zeocin %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = mean, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_cybr2
+
+#MEANS, WINDOW 100
+# CSSI_CuSO4_cybr2 <- cybr2_rollmean(CSSI_CuSO4)
+# CSSI_Fluc_cybr2 <- cybr2_rollmean(CSSI_Fluc)
+# CSSI_Zeocin_cybr2 <- cybr2_rollmean(CSSI_Zeocin)
+
+# #MEANS, WINDOW 200
+# CSSI_CuSO4 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+#   summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 200))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_CuSO4_cybr2
+# 
+# CSSI_Fluc %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+#   summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 200))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)-> CSSI_Fluc_cybr2
+# 
+# CSSI_Zeocin %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+#   summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 200))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_cybr2
+
+```
+
+## Calculate LOD for each position
+
+```{r}
+CSSI_Zeocin_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Zeocin_LOD
+
+
+CSSI_Fluc_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Fluc_LOD
+
+CSSI_CuSO4_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent","Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) %>% transmute(CHROM = CHROM, POS = POS, Bulk = Bulk, Parent = Parent, Rep = NA, Oak = Oak, Wine = Wine, LOD = LOD) -> CSSI_CuSO4_LOD
+
+
+```
+
+```{r}
+CSSI_CuSO4_LOD %>% ggplot(aes(x = POS, y = LOD, color = Bulk, linetype = Parent)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + scale_color_manual(values = c("blue", "black"))
+
+CSSI_Zeocin_LOD %>% ggplot(aes(x = POS, y = LOD, color = Bulk, linetype = Parent)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + scale_color_manual(values = c("black", "violet"))
+
+CSSI_Fluc_LOD %>% ggplot(aes(x = POS, y = LOD, color = Bulk, linetype = Parent)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + scale_color_manual(values = c("black", "goldenrod"))
+
+```
+
+```{r}
+rbind(data.frame(CSSI_CuSO4_LOD, Dataset = "CuSO4"),
+data.frame(CSSI_Fluc_LOD, Dataset = "Fluconazole"),
+data.frame(CSSI_Zeocin_LOD, Dataset = "Zeocin")) -> AllLODs
+
+AllLODs %>% filter(CHROM != "I", CHROM != "M") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values = c("blue", "black", "goldenrod", "firebrick")) + 
+  ggtitle("")
+
+```
+
+
+```{r}
+CSSI_CuSO4_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Bulk, values_from = LOD) %>%
+  mutate(BulkEffect = CuSO4-Dilute) -> CuSO4_Bulk
+
+CSSI_Zeocin_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Bulk, values_from = LOD) %>%
+  mutate(BulkEffect = Zeocin-Dilute) -> Zeocin_Bulk
+
+CSSI_Fluc_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Bulk, values_from = LOD) %>%
+  group_by(CHROM, POS, Parent) %>% summarize(dilute = mean(Dilute, na.rm = TRUE), 
+                                             fluc = mean(Fluconazole, na.rm = TRUE),
+                                             sd_dilute = sd(Dilute),
+                                             sd_fluc = sd(Fluconazole)) %>%
+  mutate(BulkEffect = fluc-dilute) -> Fluc_Bulk
+
+Zeocin_Bulk %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = BulkEffect, color = Parent, linetype = Rep)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Minus Dilute")
+
+CuSO4_Bulk %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = BulkEffect, color = Parent)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Minus Dilute")
+
+Fluc_Bulk %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = BulkEffect, color = Parent)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Fluc Minus Dilute")
+```
+
+Parental Effect Only
+
+```{r}
+CSSI_CuSO4_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Parent, values_from = LOD) %>%
+  mutate(ParentEffect = WineI-OakI) -> CuSO4_Parent
+
+CSSI_Zeocin_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Parent, values_from = LOD) %>%
+  mutate(ParentEffect = WineI-OakI) -> Zeocin_Parent
+
+CSSI_Fluc_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Parent, values_from = LOD) %>%
+  group_by(CHROM, POS, Bulk) %>% summarize(oakI = mean(OakI, na.rm = TRUE), 
+                                             wineI = mean(WineI, na.rm = TRUE),
+                                             sd_oakI = sd(OakI),
+                                             sd_wineI = sd(WineI)) %>%
+  mutate(ParentEffect = wineI-oakI) -> Fluc_Parent
+
+Zeocin_Parent %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = ParentEffect, color = Bulk, linetype = Rep)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Minus Dilute")
+
+CuSO4_Parent %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = ParentEffect, color = Bulk)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Minus Dilute")
+
+Fluc_Parent %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = ParentEffect, color = Bulk)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Fluc Minus Dilute")
+```
+
+Parent Effect on Bulk Difference
+
+```{r}
+Zeocin_Bulk %>% select(-Dilute, -Zeocin) %>% pivot_wider(names_from = Parent, values_from = BulkEffect) %>% mutate(Bulk_Parent_Difference = WineI - OakI) -> Zeocin_Interaction
+
+CuSO4_Bulk %>% select(-Dilute, -CuSO4) %>% pivot_wider(names_from = Parent, values_from = BulkEffect) %>% mutate(Bulk_Parent_Difference = WineI - OakI) -> CuSO4_Interaction
+  
+Fluc_Bulk %>% select(-dilute, -fluc, -starts_with("sd")) %>% pivot_wider(names_from = Parent, values_from = BulkEffect) %>% mutate(Bulk_Parent_Difference = WineI - OakI) -> Fluc_Interaction
+
+
+Zeocin_Interaction %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = Bulk_Parent_Difference, color = Rep, linetype = Rep)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Minus Dilute")
+
+CuSO4_Interaction %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = Bulk_Parent_Difference)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Minus Dilute")
+
+Fluc_Interaction %>% filter(CHROM != "M", CHROM != "I")%>% ggplot(aes(x = POS, y = Bulk_Parent_Difference)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Fluc Minus Dilute")
+  
+```
+
+## Averaging Replicates Initially
+
+Calculate Bulk Effects
+
+```{r}
+CSSI_CuSO4_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Bulk, values_from = LOD) %>%
+  mutate(BulkEffect = CuSO4-Dilute) -> CuSO4_Bulk
+
+CSSI_Zeocin_LOD %>% select(-Oak, -Wine) %>% group_by(CHROM, POS, Bulk, Parent) %>%
+  summarize(repLOD = mean(LOD), sdLOD = sd(LOD)) %>% 
+  pivot_wider(names_from = Bulk, values_from = c(repLOD, sdLOD)) %>%
+  mutate(BulkEffect = repLOD_Zeocin-repLOD_Dilute, noise = (abs(sdLOD_Dilute) + abs(sdLOD_Zeocin))) -> Zeocin_Bulk
+
+CSSI_Fluc_LOD %>% select(-Oak, -Wine)%>% group_by(CHROM, POS, Bulk, Parent) %>% 
+  summarize(repLOD = mean(LOD), sdLOD = sd(LOD)) %>% 
+  pivot_wider(names_from = Bulk, values_from = c(repLOD, sdLOD)) %>%
+  replace(is.na(.), 0) %>%  
+  mutate(BulkEffect = repLOD_Fluconazole-repLOD_Dilute, noise = (abs(sdLOD_Dilute) + abs(sdLOD_Fluconazole))) -> Fluc_Bulk
+```
+
+Plot Bulk Effects
+
+```{r}
+CuSO4_Bulk %>% filter(CHROM != "M", CHROM != "I")  %>% ggplot(aes(x = POS, y = abs(BulkEffect), group = Parent)) + 
+  #geom_ribbon(aes(ymin = 0, ymax = abs(noise)), fill = "lightblue") + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Bulk Effect")
+
+Fluc_Bulk %>% filter(CHROM != "M", CHROM != "I")  %>% ggplot(aes(x = POS, y = abs(BulkEffect), group = Parent)) + 
+  geom_ribbon(aes(ymin = 0, ymax = abs(noise)), fill = "lightblue") + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Bulk Effect")
+
+Zeocin_Bulk %>% filter(CHROM != "M", CHROM != "I")  %>% ggplot(aes(x = POS, y = abs(BulkEffect), group = Parent)) + 
+  geom_ribbon(aes(ymin = 0, ymax = abs(noise)), fill = "lightblue") + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Bulk Effect")
+```
+
+
+Calculate Interaction Effects
+
+```{r}
+CSSI_CuSO4_LOD %>% select(-Oak, -Wine) %>% pivot_wider(names_from = Bulk, values_from = LOD) %>%
+  mutate(BulkEffect = CuSO4-Dilute) %>% select(-Dilute, -CuSO4) %>% pivot_wider(names_from = Parent, values_from = BulkEffect) %>% mutate(Interaction = WineI - OakI) -> CuSO4_All
+
+CSSI_Zeocin_LOD %>% select(-Oak, -Wine) %>% group_by(CHROM, POS, Bulk, Parent) %>%
+  summarize(repLOD = mean(LOD), sdLOD = sd(LOD)) %>% 
+  pivot_wider(names_from = Bulk, values_from = c(repLOD, sdLOD)) %>%
+  mutate(BulkEffect = repLOD_Zeocin-repLOD_Dilute, noise = (abs(sdLOD_Dilute) + abs(sdLOD_Zeocin))) %>% select(-starts_with("repLOD"), -starts_with("sdLOD")) %>% 
+  pivot_wider(names_from = Parent, values_from = c(BulkEffect, noise)) %>% 
+  mutate(Interaction = BulkEffect_WineI - BulkEffect_OakI, noise = noise_WineI + noise_OakI) -> Zeocin_All
+
+CSSI_Fluc_LOD %>% select(-Oak, -Wine)%>% group_by(CHROM, POS, Bulk, Parent) %>% 
+  summarize(repLOD = mean(LOD), sdLOD = sd(LOD)) %>% 
+  pivot_wider(names_from = Bulk, values_from = c(repLOD, sdLOD)) %>%
+  replace(is.na(.), 0) %>%  mutate(BulkEffect = repLOD_Fluconazole-repLOD_Dilute, noise = (abs(sdLOD_Dilute) + abs(sdLOD_Fluconazole))) %>% select(-starts_with("repLOD"), -starts_with("sdLOD")) %>% 
+  pivot_wider(names_from = Parent, values_from = c(BulkEffect, noise)) %>% 
+  mutate(Interaction = BulkEffect_WineI - BulkEffect_OakI, noise = noise_WineI + noise_OakI) -> Fluc_All
+
+```
+
+Plot Interaction Effects
+
+```{r}
+Fluc_All%>% filter(CHROM != "M", CHROM != "I")  %>% ggplot(aes(x = POS, y = abs(Interaction))) + 
+  geom_ribbon(aes(ymin = 0, ymax = abs(noise)), fill = "lightblue") + 
+  geom_line() + ylim(0,0.75)+
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Interaction")
+
+Zeocin_All%>% filter(CHROM != "M", CHROM != "I")  %>% ggplot(aes(x = POS, y = abs(Interaction))) + 
+  geom_ribbon(aes(ymin = 0, ymax = abs(noise)), fill = "lightblue") +  
+  geom_line() + ylim(0,0.75)+
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Interaction")
+
+CuSO4_All %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Interaction))) + geom_line() + 
+  ylim(0,0.75) +
+  #geom_ribbon(aes(ymin = Interaction-noise, ymax = Interaction+noise)) + 
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Interaction")
+
+```
+
+## Dilute Effects for Growth QTL
+
+```{r}
+Ziv_Data <- data.frame(POS = c(1160904, 137644, 224632, 286752, 609824, 528176, 512955, 466129, 179172, 182578, 763417),
+                       CHROM = factor(as.character(as.roman(c(4, 7, 9, 11, 12, 15, 16, 7, 15, 4, 7))), levels = as.character(as.roman(1:16))),
+                       LOD = c(3.251, 5.429, 2.985, 3.955, 5.003, 3.145, 4.181, 3.496, 2.669, 0.269, 0.162)) %>% arrange(CHROM)
+
+ExtraStuff <- data.frame(POS = c(116167, 46271, 31694), CHROM = c("V", "IV", "V"), label = c("URA3", "HO", "CAN1"))
+
+AllLODs %>% filter(Bulk == "Dilute", CHROM != "M", CHROM != "I", CHROM != "III") %>% 
+  mutate(Flask = paste(Bulk, Dataset, Rep, Parent, sep = "_")) %>%
+  ggplot(aes(x = POS, y = LOD, group = Flask)) + 
+  geom_vline(data = Ziv_Data, aes(xintercept = POS, alpha = LOD), color = "lightblue", size = 2) +
+  geom_vline(data = ExtraStuff, aes(xintercept = POS), color = "violet", size = 2, alpha = 0.3) +
+  geom_line() + geom_hline(yintercept = 0, color = "firebrick") +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Dilute Bulks + Ziv Data")
+
+AllLODs %>% filter(Bulk == "Dilute", CHROM != "M", CHROM != "I", CHROM != "III") %>% 
+  mutate(Flask = paste(Bulk, Dataset, Rep, Parent, sep = "_")) %>%
+  ggplot(aes(x = POS, y = LOD, group = Flask, color = Dataset)) + 
+  geom_line() + geom_hline(yintercept = 0, color = "firebrick") +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Dilute Bulks Across Studies")
+```
+
+### Comparing intercepts to dilute amounts 
+
+The assumption of the intercept in a glm is that it reflects what is consistent in ALL groups, regardless of effect. This would potentially include the following:  
+
+* Consistent effects such as insertion of URA3 of one background  
+* QTL for growth in YPD  
+* Areas where alignment calls one allele more than the other for any reason (unlikely)
+
+The Dilute bulks should show the QTL for growth in YPD and the insertion of non 50/50 allele frequency regions, so we would expect that if the Intercept is showing these values, that they would line up. If the intercept is also reflecting the reverse of variance shown by the QTL, then these Intercept regions should diverge from the Dilute bulk LODs and match the Bulk effects instead.
+
+```{r}
+
+Zeocin_glm<- readRDS("2023/CSSI_Zeocin_glm.rds")
+Zeocinp <- readRDS("2023/CSSI_Zeocin_cybr2_permuted.rds")
+CuSO4p <- readRDS("2023/CSSI_CuSO4_cybr2_permuted.rds")
+CuSO4_glm <- readRDS("2023/CSSI_CuSO4_glm.rds")
+Flucp <- readRDS("2023/CSSI_Fluc_cybr2_permuted.rds")
+Fluc_glm <- readRDS("2023/CSSI_Fluc_glm.rds")
+
+# CuSO4_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "CuSO4") -> cuso4intercept
+# Fluc_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "Fluconazole") -> flucintercept
+# Zeocin_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "Zeocin") -> zeocinintercept
+# 
+# rbind(cuso4intercept, flucintercept, zeocinintercept) %>% 
+#   transmute(CHROM = CHROM, POS = POS, Intercept = summary/10, Dataset = study) -> Intercepts
+
+rbind(data.frame(Zeocin_glm, Dataset = "Zeocin"), 
+      data.frame(CuSO4_glm, Dataset = "CuSO4"), 
+      data.frame(Fluc_glm, Dataset = "Fluconazole")) %>% 
+  mutate(newsummary = summary/10) %>% select(-summary) %>%
+  pivot_wider(names_from = label, values_from = newsummary)  -> Intercepts
+
+## Check to make sure the distribution of LODs and of Intercepts matches
+Intercepts %>% ggplot(aes(x = abs(intercept))) + geom_density() +
+  geom_density(data = AllLODs, aes(x = abs(LOD), color = Bulk), linetype = "dashed")
+
+Intercepts %>% ggplot(aes(x = abs(intercept), y = "Intercept")) + geom_boxplot() +
+    geom_boxplot(aes(x = 10*abs(intercept), y = "Original Intercept"))+
+  geom_boxplot(data = subset(AllLODs, Bulk == "Dilute"), aes(x = abs(LOD), color = Dataset, y = Bulk))
+
+```
+
+```{r}
+# Compare intercepts /10
+AllLODs%>% mutate(Flask = paste(Bulk, Dataset, Rep, Parent, sep = "_")) %>% 
+  filter(Bulk == "Dilute") %>% select(CHROM, POS, LOD, Dataset, Flask) %>% 
+  left_join(Intercepts, by = c("CHROM", "POS", "Dataset")) %>% 
+  pivot_longer(c(intercept, Bulk, Parent, Rep, Interaction, LOD), names_to = "Effect", values_to = "LOD_Zscore")-> InterceptComparison
+
+
+InterceptComparison %>% filter(CHROM != "M", CHROM != "I", CHROM != "III") %>%
+  filter(Effect == "LOD" | Effect == "intercept" | Effect == "Bulk") %>%
+  ggplot(aes(x = POS, y = LOD_Zscore, color = Effect, linetype = Flask)) + 
+  geom_line() +
+  facet_grid(c("Dataset", "CHROM"), scales = "free", space = "free")+
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+  ggtitle("Intercept (green), Bulk (red), Dilute LOD (blue)")
+
+```
+If we want to know how often they correspond, maybe look at the difference between them vs scale? Is that not what this is?
+
+```{r}
+InterceptComparison %>% filter(CHROM != "M", CHROM != "I", CHROM != "III") %>%
+  filter(Effect == "LOD" | Effect == "intercept" | Effect == "Bulk") %>%
+  pivot_wider(names_from = Effect, values_from = LOD_Zscore) %>%
+  mutate(IminusB = intercept + Bulk) %>%
+  ggplot(aes(x = POS, y = IminusB, linetype = Flask), color = "black") + 
+  geom_line(aes(x = POS, y = LOD, color = Flask)) + 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("Intercept + Bulk Effects (black) vs Dilute LOD (color)")
+
+
+```
+
+
+
+### Looking at URA3 again just in case
+
+YPS606 (Oak parent) Ura3 was added back into most(?) strains, so look up who was transformed with what for how much of an effect it should have.  
+
+It's potentially worth actually looking at medians instead since these are averaged and therefore might be a bit skewed along the edges...
+
+```{r}
+AllLODs %>% filter(Bulk == "Dilute", CHROM == "V") %>% 
+  mutate(Flask = paste(Bulk, Dataset, Rep, Parent, sep = "_")) -> ChrV
+
+ChrV %>% group_by(CHROM, Dataset, POS) %>% summarize(LOD = mean(LOD),
+                                                     Flask = "Dataset_mean") -> ChrV_means
+
+ChrV %>% select(CHROM, Dataset, POS, LOD, Flask) %>% rbind(ChrV_means) -> ChrV_meandata
+
+ChrV_meandata %>%
+  group_by(Flask, Dataset) %>%
+  arrange(LOD) %>%
+  slice(c(1, n())) %>%
+  mutate(minmax = c("min", "max")) -> peaks2
+
+ChrV_meandata %>%
+  ggplot(aes(x = POS, y = LOD, group = Flask, color = Flask)) + 
+  geom_vline(data = subset(ExtraStuff, label == "URA3"), aes(xintercept = POS), color = "violet", size = 2, alpha = 0.3) +
+  geom_line() + geom_hline(yintercept = 0, color = "firebrick") +
+  geom_vline(data = peaks2, aes(xintercept = POS, color = Flask, linetype = minmax), size = 1, alpha = 0.8) +
+  facet_grid(rows = "Dataset", space = "free") + ggtitle("Chr V Dilute Bulks + URA3") +
+  scale_color_manual(values = c("black", rep("gray", 10)))
+
+```
+

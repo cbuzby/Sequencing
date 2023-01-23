@@ -566,7 +566,7 @@ CSSI_Zeocin_rollmean_III <- readRDS("CSSI_Zeocin_rollmean_III.rds")
 CSSI_Zeocin_rollmean_IV <- readRDS("CSSI_Zeocin_rollmean_IV.rds")
 CSSI_Zeocin_rollmean_V <- readRDS("CSSI_Zeocin_rollmean_V.rds")
 CSSI_Zeocin_rollmean_VI <- readRDS("CSSI_Zeocin_rollmean_VI.rds")
-CSSI_Zeocin_rollmean_VII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
+CSSI_Zeocin_rollmean_VII <- readRDS("CSSI_Zeocin_rollmean_VII.rds")
 
 CSSI_Zeocin_rollmean_VIII <- readRDS("CSSI_Zeocin_rollmean_VIII.rds")
 CSSI_Zeocin_rollmean_IX <- readRDS("CSSI_Zeocin_rollmean_IX.rds")
@@ -581,14 +581,16 @@ CSSI_Zeocin_rollmean_XV <- readRDS("CSSI_Zeocin_rollmean_XV.rds")
 CSSI_Zeocin_rollmean_XVI <- readRDS("CSSI_Zeocin_rollmean_XVI.rds")
 
 
+
 ```
 
 
-## After running this all day
+## After running the above sections
 
 Knitting makes it faster apparently
 
 ```{r, eval = FALSE}
+
 rbind(CSSI_Zeocin_rollmean_I, 
       CSSI_Zeocin_rollmean_II,
       CSSI_Zeocin_rollmean_III,
@@ -596,15 +598,15 @@ rbind(CSSI_Zeocin_rollmean_I,
       CSSI_Zeocin_rollmean_V,
       CSSI_Zeocin_rollmean_VI,
       CSSI_Zeocin_rollmean_VII,
+      CSSI_Zeocin_rollmean_VIII,
+      CSSI_Zeocin_rollmean_IX,
+      CSSI_Zeocin_rollmean_X,
       CSSI_Zeocin_rollmean_XI, 
       CSSI_Zeocin_rollmean_XII,
       CSSI_Zeocin_rollmean_XIII,
       CSSI_Zeocin_rollmean_XIV,
-      CSSI_Zeocin_rollmean_XV,
-      CSSI_Zeocin_rollmean_XVI,
-      CSSI_Zeocin_rollmean_VIII,
-      CSSI_Zeocin_rollmean_IX,
-      CSSI_Zeocin_rollmean_X) -> rollmean_all
+      #CSSI_Zeocin_rollmean_XVI,
+      CSSI_Zeocin_rollmean_XV) %>% distinct() -> rollmean_all
 
 
 rollmean_all$type <- "Zscore"
@@ -612,9 +614,17 @@ rollmean_all$type[grep("CI", rollmean_all$label)] <- "CI"
 
 rollmean_all$label <- gsub("CI_", "", rollmean_all$label)
 
-rollmean_all %>% pivot_wider(names_from = label, values_from = summary)%>% pivot_longer(c(intercept, Bulk, Parent, Interaction), names_to = "param", values_to = "Effect") %>% pivot_wider(names_from = type, values_from = Effect) -> rollmean_all_pivot
+rollmean_all <- rbind(rollmean_all, CSSI_Zeocin_rollmean_XVI)
+rollmean_all %>% pivot_wider(names_from = label, values_from = summary) %>% pivot_longer(c(intercept, Bulk, Parent, Interaction), names_to = "param", values_to = "Effect") %>% pivot_wider(names_from = type, values_from = Effect) -> rollmean_all_pivot
 
 saveRDS(rollmean_all_pivot, file = "rollmean_all_pivot.rds")
+
+unique(rollmean_all_pivot$CHROM)
+```
+
+```{r}
+rollmean_all_pivot <- readRDS("rollmean_all_pivot.rds")
+
 ```
 
 ## Plotting the full dataset
@@ -624,13 +634,32 @@ saveRDS(rollmean_all_pivot, file = "rollmean_all_pivot.rds")
 rollmean_all_pivot %>% 
   ggplot(aes(x = POS, y = Zscore, color = param)) + 
   geom_line() + 
-  geom_ribbon(aes(ymin = Zscore + CI, ymax = Zscore + CI, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+  geom_ribbon(aes(ymin = Zscore - CI, ymax = Zscore + CI, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+#Plot non-Chr I, including intercept
+rollmean_all_pivot %>% 
+  filter(CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = Zscore - CI, ymax = Zscore + CI, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
 
 #Plot non-Chr I, excluding intercept
 rollmean_all_pivot %>% 
   filter(CHROM != "I", param != "intercept") %>% 
   ggplot(aes(x = POS, y = Zscore, color = param)) + 
   geom_line() + 
-  geom_ribbon(aes(ymin = Zscore + CI, ymax = Zscore + CI, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+  geom_ribbon(aes(ymin = Zscore - CI, ymax = Zscore + CI, fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+rollmean_all_pivot %>% 
+  filter(CHROM == "VII", param != "intercept") %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = (Zscore - CI), ymax = (Zscore + CI), fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
+
+rollmean_all_pivot %>% 
+  filter(CHROM == "III", param != "intercept") %>% 
+  ggplot(aes(x = POS, y = Zscore, color = param)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = (Zscore - CI), ymax = (Zscore + CI), fill = param), alpha = 0.2, color = NA) + facet_grid(~CHROM, scales = "free")
 ```
 

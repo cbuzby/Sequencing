@@ -1,0 +1,406 @@
+---
+title: "Rollmean Permutations"
+author: "Cassandra Buzby"
+date: "1/13/2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+
+#Load Stuff
+CSSI_CuSO4_cybr2 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_CuSO4_cybr2 <- cybr2_rollmean(CSSI_CuSO4_cybr2)
+
+CSSI_Fluc_cybr2 <- readRDS("RdataFiles/CSSI_Fluc_cybr2.rds")
+CSSI_Fluc_cybr2 <- cybr2_rollmean(CSSI_Fluc_cybr2)
+
+CSSI_Zeocin_cybr2 <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
+CSSI_Zeocin_cybr2 <- cybr2_rollmean(CSSI_Zeocin_cybr2)
+
+```
+
+
+# Permutations
+
+## Permute CuSO4
+
+```{r, eval = FALSE}
+CSSI_CuSO4_cybr2 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+
+CSSI_CuSO4_cybr2 <- cybr2_rollmean(CSSI_CuSO4_cybr2)
+
+#RUN GLM ON DATA WITH THESE COLUMNS
+CSSI_CuSO4_cybr2 %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = CuSO4_OakI_Oak, 
+                           HOW = CuSO4_OakI_Wine, 
+                           HWO = CuSO4_WineI_Oak,
+                           HWW = CuSO4_WineI_Wine,
+                           LOO = Dilute_OakI_Oak,
+                           LOW = Dilute_OakI_Wine,
+                           LWO = Dilute_WineI_Oak, 
+                           LWW = Dilute_WineI_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_CuSO4_glm
+
+
+#PERMUTE DATA
+CSSI_CuSO4_cybr2 %>% pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(CHROM, Colname) %>%
+  summarize(POS = 1:1000, samples = sample(Counts, size = 1000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_CuSO4
+
+
+permuteddata_CuSO4 %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = CuSO4_OakI_Oak, 
+                           HOW = CuSO4_OakI_Wine, 
+                           HWO = CuSO4_WineI_Oak,
+                           HWW = CuSO4_WineI_Wine,
+                           LOO = Dilute_OakI_Oak,
+                           LOW = Dilute_OakI_Wine,
+                           LWO = Dilute_WineI_Oak, 
+                           LWW = Dilute_WineI_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_CuSO4_cybr2_permuted
+
+saveRDS(CSSI_CuSO4_glm, "2023/CSSI_CuSO4_glm.rds")
+saveRDS(CSSI_CuSO4_cybr2_permuted, "2023/CSSI_CuSO4_cybr2_permuted.rds")
+```
+
+
+## Permute Fluconazole
+
+```{r, eval = FALSE}
+CSSI_Fluc_cybr2 <- readRDS("RdataFiles/CSSI_Fluc_cybr2.rds")
+CSSI_Fluc_cybr2 <- cybr2_rollmean(CSSI_Fluc_cybr2)
+
+#RUN GLM ON DATA WITH THESE COLUMNS
+CSSI_Fluc_cybr2 %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = Fluconazole_OakI_B_Oak, #Fluconazole_OakI_C_Oak, Fluconazole_OakI_D_Oak,
+                           HOW = Fluconazole_OakI_B_Wine, #Fluconazole_OakI_C_Wine, Fluconazole_OakI_D_Wine,
+                           HWO = Fluconazole_WineI_C_Oak,
+                           HWW = Fluconazole_WineI_C_Wine,
+                           LOO = Dilute_OakI_B_Oak,
+                           LOW = Dilute_OakI_B_Wine,
+                           LWO = Dilute_WineI_B_Oak, #Dilute_WineI_C_Oak,Dilute_WineI_D_Oak,
+                           LWW = Dilute_WineI_B_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_Fluc_glm
+
+
+#PERMUTE DATA
+CSSI_Fluc_cybr2 %>% pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(CHROM, Colname) %>%
+  summarize(POS = 1:1000, samples = sample(Counts, size = 1000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_Fluc
+
+
+permuteddata_Fluc %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = Fluconazole_OakI_B_Oak, #Fluconazole_OakI_C_Oak, Fluconazole_OakI_D_Oak,
+                           HOW = Fluconazole_OakI_B_Wine, #Fluconazole_OakI_C_Wine, Fluconazole_OakI_D_Wine,
+                           HWO = Fluconazole_WineI_C_Oak,
+                           HWW = Fluconazole_WineI_C_Wine,
+                           LOO = Dilute_OakI_B_Oak,
+                           LOW = Dilute_OakI_B_Wine,
+                           LWO = Dilute_WineI_B_Oak, #Dilute_WineI_C_Oak,Dilute_WineI_D_Oak,
+                           LWW = Dilute_WineI_B_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_Fluc_cybr2_permuted
+
+saveRDS(CSSI_Fluc_glm, "2023/CSSI_Fluc_glm.rds")
+saveRDS(CSSI_Fluc_cybr2_permuted, "2023/CSSI_Fluc_cybr2_permuted.rds")
+
+```
+
+## Zeocin Permutations
+
+```{r, eval = FALSE}
+CSSI_Zeocin_cybr2 <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
+CSSI_Zeocin_cybr2 <- cybr2_rollmean(CSSI_Zeocin_cybr2)
+
+
+#RUN GLM ON DATA WITH THESE COLUMNS
+CSSI_Zeocin_cybr2 %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = Zeocin_OakI_A_Oak, 
+                                   HOWa = Zeocin_OakI_A_Wine,
+                                   HWOa = Zeocin_WineI_A_Oak,
+                                   HWWa = Zeocin_WineI_A_Wine, 
+                                   LOOa = Dilute_OakI_A_Oak,
+                                   LOWa = Dilute_OakI_A_Wine,
+                                   LWOa = Dilute_WineI_A_Oak, 
+                                   LWWa = Dilute_WineI_A_Wine,
+                                   
+                                   HOOb = Zeocin_OakI_B_Oak, 
+                                   HOWb = Zeocin_OakI_B_Wine,
+                                   HWOb = Zeocin_WineI_B_Oak,
+                                   HWWb = Zeocin_WineI_B_Wine,  
+                                   LOOb = Dilute_OakI_B_Oak,  
+                                   LOWb = Dilute_OakI_B_Wine,
+                                   LWOb = Dilute_WineI_B_Oak, 
+                                   LWWb = Dilute_WineI_B_Wine)[1:5],
+            label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_Zeocin_glm
+
+
+#PERMUTE DATA
+CSSI_Zeocin_cybr2 %>% pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(CHROM, Colname) %>%
+  summarize(POS = 1:1000, samples = sample(Counts, size = 1000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_Zeocin
+
+
+permuteddata_Zeocin %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = Zeocin_OakI_A_Oak, 
+                                   HOWa = Zeocin_OakI_A_Wine,
+                                   HWOa = Zeocin_WineI_A_Oak,
+                                   HWWa = Zeocin_WineI_A_Wine, 
+                                   LOOa = Dilute_OakI_A_Oak,
+                                   LOWa = Dilute_OakI_A_Wine,
+                                   LWOa = Dilute_WineI_A_Oak, 
+                                   LWWa = Dilute_WineI_A_Wine,
+                                   
+                                   HOOb = Zeocin_OakI_B_Oak, 
+                                   HOWb = Zeocin_OakI_B_Wine,
+                                   HWOb = Zeocin_WineI_B_Oak,
+                                   HWWb = Zeocin_WineI_B_Wine,  
+                                   LOOb = Dilute_OakI_B_Oak,  
+                                   LOWb = Dilute_OakI_B_Wine,
+                                   LWOb = Dilute_WineI_B_Oak, 
+                                   LWWb = Dilute_WineI_B_Wine)[1:5],
+            label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_Zeocin_cybr2_permuted
+
+saveRDS(CSSI_Zeocin_glm, "2023/CSSI_Zeocin_glm.rds")
+saveRDS(CSSI_Zeocin_cybr2_permuted, "2023/CSSI_Zeocin_cybr2_permuted.rds")
+
+```
+
+
+Testing something
+
+```{r}
+CSSI_Zeocin_cybr2 %>% head(20) %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = Zeocin_OakI_A_Oak, 
+                                   HOWa = Zeocin_OakI_A_Wine,
+                                   HWOa = Zeocin_WineI_A_Oak,
+                                   HWWa = Zeocin_WineI_A_Wine, 
+                                   LOOa = Dilute_OakI_A_Oak,
+                                   LOWa = Dilute_OakI_A_Wine,
+                                   LWOa = Dilute_WineI_A_Oak, 
+                                   LWWa = Dilute_WineI_A_Wine,
+                                   
+                                   HOOb = Zeocin_OakI_B_Oak, 
+                                   HOWb = Zeocin_OakI_B_Wine,
+                                   HWOb = Zeocin_WineI_B_Oak,
+                                   HWWb = Zeocin_WineI_B_Wine,  
+                                   LOOb = Dilute_OakI_B_Oak,  
+                                   LOWb = Dilute_OakI_B_Wine,
+                                   LWOb = Dilute_WineI_B_Oak, 
+                                   LWWb = Dilute_WineI_B_Wine),
+            label = c("intercept", "Bulk", "Parent", "Rep", "Interaction"))
+
+CSSI_Zeocin_cybr2 %>% filter(POS == 69678) %>% summarize(glmfixed_rep(HOOa = Zeocin_OakI_A_Oak, 
+                                   HOWa = Zeocin_OakI_A_Wine,
+                                   HWOa = Zeocin_WineI_A_Oak,
+                                   HWWa = Zeocin_WineI_A_Wine, 
+                                   LOOa = Dilute_OakI_A_Oak,
+                                   LOWa = Dilute_OakI_A_Wine,
+                                   LWOa = Dilute_WineI_A_Oak, 
+                                   LWWa = Dilute_WineI_A_Wine,
+                                   
+                                   HOOb = Zeocin_OakI_B_Oak, 
+                                   HOWb = Zeocin_OakI_B_Wine,
+                                   HWOb = Zeocin_WineI_B_Oak,
+                                   HWWb = Zeocin_WineI_B_Wine,  
+                                   LOOb = Dilute_OakI_B_Oak,  
+                                   LOWb = Dilute_OakI_B_Wine,
+                                   LWOb = Dilute_WineI_B_Oak, 
+                                   LWWb = Dilute_WineI_B_Wine)[1:5])
+
+```
+
+
+
+
+# Visualizations
+
+## Load Data
+
+```{r}
+Zeocin_glm<- readRDS("2023/CSSI_Zeocin_glm.rds")
+Zeocinp <- readRDS("2023/CSSI_Zeocin_cybr2_permuted.rds")
+CuSO4p <- readRDS("2023/CSSI_CuSO4_cybr2_permuted.rds")
+CuSO4_glm <- readRDS("2023/CSSI_CuSO4_glm.rds")
+Flucp <- readRDS("2023/CSSI_Fluc_cybr2_permuted.rds")
+Fluc_glm <- readRDS("2023/CSSI_Fluc_glm.rds")
+```
+
+## Find quantiles with of permutations
+
+```{r}
+CuSO4p %>% group_by(CHROM, label) %>% summarize(quant = quantile(summary, 0.975, na.rm = TRUE)) -> CuSO4q
+Flucp %>% group_by(CHROM, label) %>% summarize(quant = quantile(summary, 0.975, na.rm = TRUE)) -> Flucq
+Zeocinp %>% group_by(CHROM, label) %>% summarize(quant = quantile(summary, 0.975, na.rm = TRUE)) -> Zeocinq
+
+```
+
+## Plot with these cutoffs
+
+```{r}
+Zeocin_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free") + ggtitle("Zeocin Z-Scores")
+
+Fluc_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free") + ggtitle("Fluconazole Z-Scores")
+
+CuSO4_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free")+ ggtitle("CuSO4 Z-Scores")
+
+```
+
+```{r}
+Zeocin_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
+  geom_hline(data = Zeocinq, aes(yintercept = quant, color = label), linetype = "dashed") +
+  geom_hline(data = Zeocinq, aes(yintercept = quant*-1, color = label), linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free") + ggtitle("Zeocin Z-Scores")
+
+Fluc_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
+  geom_hline(data = Flucq, aes(yintercept = quant, color = label), linetype = "dashed") +
+  geom_hline(data = Flucq, aes(yintercept = quant*-1, color = label), linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free") + ggtitle("Fluc Z-Scores")
+
+CuSO4_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
+  geom_hline(data = CuSO4q, aes(yintercept = quant, color = label), linetype = "dashed") +
+  geom_hline(data = CuSO4q, aes(yintercept = quant*-1, color = label), linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free") + ggtitle("CuSO4 Z-Scores")
+```
+
+Plotting the quantiles
+
+```{r}
+CuSO4p %>% filter(CHROM != "M") %>% ggplot(aes(x = abs(summary), color = label)) + geom_density() + 
+  geom_vline(data = subset(CuSO4q, CHROM != "M"), aes(xintercept = abs(quant), color = label), linetype= "dashed") + 
+  facet_wrap(~CHROM)
+
+Flucp %>% filter(CHROM != "M") %>% ggplot(aes(x = abs(summary), color = label)) + geom_density() + 
+  geom_vline(data = subset(Flucq, CHROM != "M"), aes(xintercept = abs(quant), color = label), linetype= "dashed") + 
+  facet_wrap(~CHROM)
+
+Zeocinp %>% filter(CHROM != "M") %>% ggplot(aes(x = abs(summary), color = label)) + geom_density() + 
+  geom_vline(data = subset(Zeocinq, CHROM != "M"), aes(xintercept = abs(quant), color = label), linetype= "dashed") + 
+  facet_wrap(~CHROM)
+```
+
+What is the distribution of the original reads per bulk per chromosome?
+
+```{r}
+
+CSSI_CuSO4_cybr2 %>% filter(CHROM != "M") %>% pivot_longer(c(-CHROM, -POS), names_to = "Bulk", values_to = "Reads") %>% ggplot(aes(x = Reads, color = Bulk)) + geom_density() + facet_wrap(~CHROM, scales = "free")
+```
+
+Checking the intercept in all of these
+
+```{r}
+Ziv_Central_Tendency <- data.frame(CHROM = as.character(as.roman(c(4, 7, 7, 9, 11, 12, 15, 15, 16))), 
+                                   POS = c(0.75, 0.1, 0.5, 0.5, 0.45, 0.6, 0.2, 0.3, 0.6))
+
+Ziv_Data <- data.frame(POS = c(1160904, 137644, 224632, 286752, 609824, 528176, 512955, 466129, 179172, 182578, 763417),
+                       CHROM = factor(as.character(as.roman(c(4, 7, 9, 11, 12, 15, 16, 7, 15, 4, 7))), levels = as.character(as.roman(1:16))),
+                       LOD = c(3.251, 5.429, 2.985, 3.955, 5.003, 3.145, 4.181, 3.496, 2.669, 0.269, 0.162)) %>% arrange(CHROM)
+
+                                   
+CuSO4_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "CuSO4") -> cuso4intercept
+Fluc_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "Fluconazole") -> flucintercept
+Zeocin_glm %>% filter(CHROM != "M", label == "intercept") %>% mutate(study = "Zeocin") -> zeocinintercept
+
+rbind(cuso4intercept, flucintercept, zeocinintercept) -> Intercepts
+
+Intercepts %>% filter(CHROM != "I", CHROM != "III") %>%
+  ggplot(aes(x = POS, y = abs(summary), color = study)) + 
+    geom_vline(data = Ziv_Data, aes(xintercept = POS, alpha = LOD), size = 2, color = "skyblue") + 
+  geom_line() + scale_color_manual(values = c("navy", "firebrick", "goldenrod")) +
+  #scale_x_continuous(breaks = seq(from = 0, to = max(Intercepts$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_bw()+ 
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + 
+  ylab("Intercept Z-score") + 
+  ggtitle("BSA Intercept vs Ziv GR (H) QTL") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+Intercepts %>% filter(CHROM != "I", CHROM != "III") %>%
+  ggplot(aes(x = POS, y = abs(summary), color = study)) + 
+    geom_vline(data = Ziv_Data, aes(xintercept = POS, alpha = LOD), size = 2, color = "skyblue") + 
+  geom_line() + scale_color_manual(values = c("navy", "firebrick", "goldenrod")) +
+  #scale_x_continuous(breaks = seq(from = 0, to = max(Intercepts$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(rows = "CHROM", scales = "free") + theme_bw()+ 
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ylab("Intercept Z-score") + ggtitle("BSA Intercept vs Ziv GR (H) QTL") 
+
+
+Intercepts %>% filter(CHROM == "V") %>%
+  ggplot(aes(x = POS, y = summary, color = study)) + 
+  geom_line() + scale_color_manual(values = c("navy", "firebrick", "goldenrod")) +
+  #scale_x_continuous(breaks = seq(from = 0, to = max(Intercepts$POS), by = 1e5), name = "Genomic Position") +
+  facet_grid(~CHROM, scales = "free_x", space = "free_x") + theme_bw()+ 
+  # theme(legend.position = "bottom", axis.text.x=element_blank(),
+  #           axis.ticks.x=element_blank()) + 
+  ylab("Intercept Z-score") + 
+    geom_vline(data = subset(ExtraStuff, label == "URA3"), aes(xintercept = POS), color = "violet", size = 2, alpha = 0.3) +
+
+  ggtitle("BSA Intercept | URA3") 
+#   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+# panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+
+```
+

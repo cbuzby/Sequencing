@@ -75,7 +75,8 @@ CSSI_Zeocin_cybr2 %>%
   summarize(POS = POS, CHROM = CHROM, SmoothCount = frollmean(value, n = 100)) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_rollmean_p
 
 ```
-```{r}
+
+```{r, eval = FALSE}
 permsize <- 10000
 CSSI_Zeocin_rollmean_p %>% group_by(CHROM) %>% summarize(POS = 1:permsize, 
                                                          L_O_Oa = sample(Dilute_OakI_A_Oak, size = permsize, replace = TRUE),
@@ -113,12 +114,17 @@ saveRDS(CSSI_Zeocin_rollmean_permuted_glm, file = "CSSI_Zeocin_rollmean_permuted
 
 ```
 
+```{r}
+CSSI_Zeocin_rollmean_permuted_glm <- readRDS("CSSI_Zeocin_rollmean_permuted_glm.rds")
+```
+
 ## Plot the results
 
 ```{r}
 
 CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M", CHROM != "I") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + ggtitle("All Zeocin Permuted")
-test5 %>% filter(CHROM == "III") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Chrom III Distributions")
+
+CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM == "III") %>% ggplot(aes(x = glm, color = label)) + geom_density(size = 1) + facet_wrap(~CHROM) + ggtitle("Chrom III Distributions")
 
 CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M") %>% ggplot(aes(x = glm, color = label)) + geom_density() + facet_wrap(~CHROM) + ggtitle("Zeocin Permuted Distributions by Chromosome")
 
@@ -129,6 +135,14 @@ CSSI_Zeocin_rollmean_permuted_glm %>% filter(CHROM != "M") %>% ggplot(aes(x = gl
 ## Find quantiles
 
 ```{r}
-CSSI_Zeocin_rollmean_permuted_glm %>% group_by(CHROM, label) %>% summarize(quant = quantile(glm)) 
+CSSI_Zeocin_rollmean_permuted_glm %>% group_by(CHROM, label) %>% summarize(quant = quantile(abs(glm), 0.975)) %>% pivot_wider(names_from = label, values_from = quant)
+```
+
+
+Compare these permuted values to the overall chart
+
+```{r}
+CSSI_Zeocin_cybr2 <- readRDS("../../cybrBSA/cybrBSA/CSSI_Zeocin_cybr2.rds")
+
 ```
 
