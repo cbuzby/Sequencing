@@ -349,7 +349,7 @@ CSSI_CuSO4_cybr2 %>% filter(CHROM != "M") %>% pivot_longer(c(-CHROM, -POS), name
 
 Checking the intercept in all of these
 
-```{r}
+```{r, eval = FALSE}
 Ziv_Central_Tendency <- data.frame(CHROM = as.character(as.roman(c(4, 7, 7, 9, 11, 12, 15, 15, 16))), 
                                    POS = c(0.75, 0.1, 0.5, 0.5, 0.45, 0.6, 0.2, 0.3, 0.6))
 
@@ -403,4 +403,134 @@ Intercepts %>% filter(CHROM == "V") %>%
 
 
 ```
+# Redo Permutations
+
+If we want to use the entire genome in proportion, then this needs to be changed to account for that. Exclude chromosomes where there's an effect and the permuted distribution is different from the others, but then sample from the entire genome.
+
+## Permute CuSO4
+
+```{r}
+CSSI_CuSO4_cybr2 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_CuSO4_cybr2 <- cybr2_rollmean(CSSI_CuSO4_cybr2)
+
+#PERMUTE DATA
+CSSI_CuSO4_cybr2 %>% filter(CHROM != "I",
+                            CHROM != "III",
+                            CHROM != "V",
+                            CHROM != "VIII",
+                            CHROM != "XI",
+                            CHROM != "XII", 
+                            CHROM != "XVI") %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(Colname) %>%
+  summarize(POS = 1:100000, samples = sample(Counts, size = 100000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_CuSO4
+
+
+permuteddata_CuSO4 %>% group_by(POS) %>% 
+  summarise(summary = glmfixed(HOO = CuSO4_OakI_Oak, 
+                           HOW = CuSO4_OakI_Wine, 
+                           HWO = CuSO4_WineI_Oak,
+                           HWW = CuSO4_WineI_Wine,
+                           LOO = Dilute_OakI_Oak,
+                           LOW = Dilute_OakI_Wine,
+                           LWO = Dilute_WineI_Oak, 
+                           LWW = Dilute_WineI_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_CuSO4_cybr2_permuted
+
+saveRDS(CSSI_CuSO4_cybr2_permuted, "2023/CSSI_CuSO4_cybr2_permutedWG.rds")
+```
+
+
+## Permute Fluconazole
+
+```{r}
+CSSI_Fluc_cybr2 <- readRDS("RdataFiles/CSSI_Fluc_cybr2.rds")
+CSSI_Fluc_cybr2 <- cybr2_rollmean(CSSI_Fluc_cybr2)
+
+
+#PERMUTE DATA
+CSSI_Fluc_cybr2 %>% filter(CHROM != "I",
+                            CHROM != "III",
+                            CHROM != "XVI") %>% pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(Colname) %>%
+  summarize(POS = 1:100000, samples = sample(Counts, size = 100000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_Fluc
+
+
+permuteddata_Fluc %>% group_by(POS) %>% 
+  summarise(summary = glmfixed(HOO = Fluconazole_OakI_B_Oak, #Fluconazole_OakI_C_Oak, Fluconazole_OakI_D_Oak,
+                           HOW = Fluconazole_OakI_B_Wine, #Fluconazole_OakI_C_Wine, Fluconazole_OakI_D_Wine,
+                           HWO = Fluconazole_WineI_C_Oak,
+                           HWW = Fluconazole_WineI_C_Wine,
+                           LOO = Dilute_OakI_B_Oak,
+                           LOW = Dilute_OakI_B_Wine,
+                           LWO = Dilute_WineI_B_Oak, #Dilute_WineI_C_Oak,Dilute_WineI_D_Oak,
+                           LWW = Dilute_WineI_B_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> CSSI_Fluc_cybr2_permuted
+
+saveRDS(CSSI_Fluc_cybr2_permuted, "2023/CSSI_Fluc_cybr2_permutedWG.rds")
+
+```
+
+## Zeocin Permutations
+
+```{r}
+CSSI_Zeocin_cybr2 <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
+CSSI_Zeocin_cybr2 <- cybr2_rollmean(CSSI_Zeocin_cybr2)
+
+
+#PERMUTE DATA
+CSSI_Zeocin_cybr2 %>% filter(CHROM != "I",
+                            CHROM != "III",
+                            CHROM != "XIV") %>% pivot_longer(c(-CHROM, -POS), names_to = "Colname", values_to = "Counts") %>% 
+  group_by(Colname) %>%
+  summarize(POS = 1:100000, samples = sample(Counts, size = 100000, replace = TRUE)) %>% 
+  pivot_wider(names_from = Colname, values_from = samples) -> permuteddata_Zeocin
+
+
+permuteddata_Zeocin %>% group_by(POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = Zeocin_OakI_A_Oak, 
+                                   HOWa = Zeocin_OakI_A_Wine,
+                                   HWOa = Zeocin_WineI_A_Oak,
+                                   HWWa = Zeocin_WineI_A_Wine, 
+                                   LOOa = Dilute_OakI_A_Oak,
+                                   LOWa = Dilute_OakI_A_Wine,
+                                   LWOa = Dilute_WineI_A_Oak, 
+                                   LWWa = Dilute_WineI_A_Wine,
+                                   
+                                   HOOb = Zeocin_OakI_B_Oak, 
+                                   HOWb = Zeocin_OakI_B_Wine,
+                                   HWOb = Zeocin_WineI_B_Oak,
+                                   HWWb = Zeocin_WineI_B_Wine,  
+                                   LOOb = Dilute_OakI_B_Oak,  
+                                   LOWb = Dilute_OakI_B_Wine,
+                                   LWOb = Dilute_WineI_B_Oak, 
+                                   LWWb = Dilute_WineI_B_Wine)[1:5],
+            label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_Zeocin_cybr2_permuted
+
+saveRDS(CSSI_Zeocin_cybr2_permuted, "2023/CSSI_Zeocin_cybr2_permutedWG.rds")
+
+```
+
+```{r}
+CuP <- readRDS("2023/CSSI_CuSO4_cybr2_permutedWG.rds")
+ZeoP <- readRDS("2023/CSSI_Zeocin_cybr2_permutedWG.rds")
+FluP <- readRDS("2023/CSSI_Fluc_cybr2_permutedWG.rds")
+
+rbind(data.frame(CuP, Dataset = "CuSO4"),
+      data.frame(ZeoP, Dataset = "Zeocin"),
+      data.frame(FluP, Dataset = "Fluconazole")) %>%
+  filter(label != "intercept") %>%
+  group_by(Dataset, label) %>%
+  summarize(Quant = quantile(abs(summary), 0.975)) -> AllQuants
+
+rbind(data.frame(CuP, Dataset = "CuSO4"),
+      data.frame(ZeoP, Dataset = "Zeocin"),
+      data.frame(FluP, Dataset = "Fluconazole")) %>% 
+  filter(label != "intercept") %>% ggplot(aes(x = abs(summary), color = label)) + geom_density(size = 1) + 
+  geom_vline(data = AllQuants, aes(xintercept = Quant, color = label), linetype= "dashed", size = 1) +
+  facet_grid(rows = "Dataset") + ggtitle("Distribution of Permuted Scores")
+```
+
 
