@@ -76,6 +76,10 @@ CSSI_Fluc_cybr2 <- cybr2_rollmean(CSSI_Fluc_cybr2)
 CSSI_Zeocin_cybr2 <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
 CSSI_Zeocin_cybr2 <- cybr2_rollmean(CSSI_Zeocin_cybr2)
 
+CSSI_CuSO42_cybr2 <- readRDS("RdataFiles/CSSI_CuSO42_cybr2.rds")
+CSSI_CuSO42_cybr2 <- cybr2_rollmean(CSSI_CuSO42_cybr2)
+
+
 ```
 
 
@@ -285,6 +289,44 @@ CuSO4p <- readRDS("2023/CSSI_CuSO4_cybr2_permuted.rds")
 CuSO4_glm <- readRDS("2023/CSSI_CuSO4_glm.rds")
 Flucp <- readRDS("2023/CSSI_Fluc_cybr2_permuted.rds")
 Fluc_glm <- readRDS("2023/CSSI_Fluc_glm.rds")
+
+CSSI_CuSO42_glm <- readRDS("2023/CSSI_CuSO42_glm.Rdata")
+```
+
+```{r, eval = FALSE}
+#Analyze CuSO4 2 Data
+
+#RUN GLM ON DATA WITH THESE COLUMNS
+CSSI_CuSO42_cybr2 %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = CuSO4_Oak_A_Oak, 
+                           HOWa = CuSO4_Oak_A_Wine, 
+                           HWOa = CuSO4_Wine_A_Oak,
+                           HWWa = CuSO4_Wine_A_Wine,
+                           LOOa = Dilute_Oak_A_Oak,
+                           LOWa = Dilute_Oak_A_Wine,
+                           LWOa = Dilute_Wine_A_Oak, 
+                           LWWa = Dilute_Wine_A_Wine,
+                           HOOb = CuSO4_Oak_B_Oak, 
+                           HOWb = CuSO4_Oak_B_Wine, 
+                           HWOb = CuSO4_Wine_B_Oak,
+                           HWWb = CuSO4_Wine_B_Wine,
+                           LOOb = Dilute_Oak_B_Oak,
+                           LOWb = Dilute_Oak_B_Wine,
+                           LWOb = Dilute_Wine_B_Oak, 
+                           LWWb = Dilute_Wine_B_Wine)[1:5],
+                                                   label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_CuSO42_glm
+
+saveRDS(CSSI_CuSO42_glm, file = "2023/CSSI_CuSO42_glm.Rdata")
+
+CSSI_CuSO42_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free") + ggtitle("Zeocin Z-Scores")
+
+CSSI_CuSO42_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
+  geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  ggtitle("CuSO4 Z-Scores") + 
+  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray"))
+
+
 ```
 
 ## Find quantiles with of permutations
@@ -303,9 +345,42 @@ Zeocin_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
 
 Fluc_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free") + ggtitle("Fluconazole Z-Scores")
 
-CuSO4_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free")+ ggtitle("CuSO4 Z-Scores")
+# CuSO4_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free")+ ggtitle("CuSO4 Z-Scores")
+
+CuSO4_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
+  geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  ggtitle("CuSO4 Z-Scores") + 
+  scale_color_manual(values = c("firebrick", "blue", "goldenrod", "gray"))
+
+CSSI_CuSO42_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  ggtitle("CuSO4 Z-Scores") + 
+  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray"))
 
 ```
+
+```{r}
+
+CuSO4_glm %>% filter(label == "Bulk") %>% 
+  ggplot(aes(x = POS, y = summary)) + geom_line() + 
+  geom_line(data = subset(CSSI_CuSO42_glm, label == "Bulk"), aes(x = POS, y = summary), color = "violet") +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+CuSO4_glm %>% filter(label == "Parent") %>% 
+  ggplot(aes(x = POS, y = summary)) + geom_line() + 
+  geom_line(data = subset(CSSI_CuSO42_glm, label == "Parent"), aes(x = POS, y = summary), color = "violet") +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+CuSO4_glm %>% filter(label == "Interaction") %>% 
+  ggplot(aes(x = POS, y = summary)) + geom_line() + 
+  geom_line(data = subset(CSSI_CuSO42_glm, label == "Interaction"), aes(x = POS, y = summary), color = "violet") +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+```
+
 
 ```{r}
 Zeocin_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
