@@ -146,11 +146,9 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 ```
 
-#### Plot Data
-
-## Basic Plots
-
-Single GLM Plot for this Data for reference
+### Visualizing
+***
+#### Single GLM Plot for this Data for reference
 
 ```
 GLMdata %>% 
@@ -163,7 +161,7 @@ GLMdata %>%
             axis.ticks.x=element_blank()) + ggtitle("GLM of Data")
 ```
 
-Log Odds of Alleles Plot for reference
+#### Log Odds of Alleles Plot for reference
 
 ```
 RawCountSummary %>% 
