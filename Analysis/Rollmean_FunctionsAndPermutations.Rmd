@@ -80,6 +80,7 @@ CSSI_CuSO42_cybr2 <- readRDS("RdataFiles/CSSI_CuSO42_cybr2.rds")
 CSSI_CuSO42_cybr2 <- cybr2_rollmean(CSSI_CuSO42_cybr2)
 
 
+
 ```
 
 
@@ -317,7 +318,10 @@ CSSI_CuSO42_cybr2 %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_CuSO42_glm
 
 saveRDS(CSSI_CuSO42_glm, file = "2023/CSSI_CuSO42_glm.Rdata")
+```
 
+```{r}
+CSSI_CuSO42_glm <- readRDS("2023/CSSI_CuSO42_glm.Rdata")
 CSSI_CuSO42_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free") + ggtitle("Zeocin Z-Scores")
 
 CSSI_CuSO42_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
@@ -350,16 +354,20 @@ Fluc_glm %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + fa
 CuSO4_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
   geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
   facet_grid(~CHROM, scales = "free", space = "free") + 
-  ggtitle("CuSO4 Z-Scores") + 
-  scale_color_manual(values = c("firebrick", "blue", "goldenrod", "gray"))
+  ggtitle("CuSO4 Z-Scores 2021") + 
+  scale_color_manual(values = c("firebrick", "blue", "goldenrod", "gray")) +
+ theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
 
 CSSI_CuSO42_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% 
   ggplot(aes(x = POS, y = abs(summary), color = label)) + 
   geom_line() + 
   geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
   facet_grid(~CHROM, scales = "free", space = "free") + 
-  ggtitle("CuSO4 Z-Scores") + 
-  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray"))
+  ggtitle("CuSO4 Z-Scores 2023 (with Replicates)") + 
+  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray"))+
+   theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
 
 ```
 
@@ -608,4 +616,274 @@ rbind(data.frame(CuP, Dataset = "CuSO4"),
   facet_grid(rows = "Dataset") + ggtitle("Distribution of Permuted Scores")
 ```
 
+## Analyzing CuSO4 Replicates all together
+
+```{r, eval = FALSE}
+CSSI_CuSO4_cybr2 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_CuSO42_cybr2 <- readRDS("RdataFiles/CSSI_CuSO42_cybr2.rds")
+
+CuSO4_All <- full_join(CSSI_CuSO4_cybr2, CSSI_CuSO42_cybr2) %>% na.omit()
+CuSO4_All_rllm <- cybr2_rollmean(CuSO4_All)
+```
+
+Look at the log of odds for each
+
+```{r}
+#Borrow scripts from LOD notebook
+
+CuSO4_All_rllm %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") -> Intermediate
+
+Intermediate$Allele[Intermediate$Rep == "Oak"] <- "Oak"
+Intermediate$Allele[Intermediate$Rep == "Wine"] <- "Wine"
+Intermediate$Rep[Intermediate$Rep == "Oak"] <- "C"
+Intermediate$Rep[Intermediate$Rep == "Wine"] <- "C"
+
+#Get rid of "OakI" as the parent
+Intermediate$Parent <- gsub("I", "", Intermediate$Parent)
+
+Intermediate %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CuSO4_A_LOD
+
+CuSO4_A_LOD %>% filter(CHROM != "I", CHROM != "M") %>%
+  ggplot(aes(x = POS, y = LOD, linetype = Rep, alpha = Bulk, color = Parent)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("firebrick", "lightblue")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+CuSO4_A_LOD %>% filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = LOD, linetype = Parent, alpha = Bulk, color = Rep)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+unique(CuSO4_A_LOD$CHROM)
+
+CuSO4_A_LOD %>% filter(CHROM == "XV") %>%
+  ggplot(aes(x = POS, y = LOD, linetype = Parent, alpha = Bulk, color = Rep)) + geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom")
+```
+Zoom in on the weird section
+
+```{r}
+CuSO4_A_LOD %>% filter(CHROM == "XV", POS > 8e+05, POS < 1e+06) %>%
+  ggplot(aes(x = POS, y = LOD, linetype = Parent, alpha = Bulk, color = Rep)) + 
+  geom_vline(xintercept = c(822588,824867), color = "goldenrod", size = 2, alpha = 0.2) + #HRK1 
+  geom_vline(xintercept = c(976421,976493), color = "violet", size = 2, alpha = 0.2) +
+  geom_vline(xintercept = c(975913,976244), color = "lightblue", size = 2, alpha = 0.2) + #YORWdelta24 LTR 
+  geom_vline(xintercept = c(849635,850054), color = "firebrick", size = 2, alpha = 0.2) + #RDL1
+  geom_vline(xintercept = c(850280,850729), color = "darkorange", size = 2, alpha = 0.2) + #RDL2
+  geom_vline(xintercept = c(855147,860258), color = "#138803", size = 2, alpha = 0.2) + #SNF2
+  geom_vline(xintercept = c(861175,865593), color = "#00563F", size = 2, alpha = 0.2) + #YPK9 
+  geom_line() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("Smoothed LODs")
+```
+
+Compare with CuSO4 2 GLM
+
+```{r}
+CSSI_CuSO42_glm %>% filter(label != "intercept", CHROM == "XV") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + 
+  geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42_glm$CHROM == "III" & CSSI_CuSO42_glm$label != "intercept"])))) +
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  ggtitle("CuSO4 Z-Scores (Second Replicates)") + 
+  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray")) +
+  geom_vline(xintercept = c(822588,824867), color = "goldenrod", size = 2, alpha = 0.2) + #HRK1 
+  geom_vline(xintercept = c(976421,976493), color = "violet", size = 2, alpha = 0.2) +
+  geom_vline(xintercept = c(975913,976244), color = "lightblue", size = 2, alpha = 0.2) + #YORWdelta24 LTR 
+  geom_vline(xintercept = c(849635,850054), color = "firebrick", size = 2, alpha = 0.2) + #RDL1
+  geom_vline(xintercept = c(850280,850729), color = "darkorange", size = 2, alpha = 0.2) + #RDL2
+  geom_vline(xintercept = c(855147,860258), color = "#138803", size = 2, alpha = 0.2) + #SNF2
+  geom_vline(xintercept = c(861175,865593), color = "#00563F", size = 2, alpha = 0.2) + #YPK9  
+  geom_line() + 
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+```
+
+
+Do the GLM
+```{r}
+#Define triple replicate function
+glmfixed_rep3 <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                         HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W",
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B",
+                                          "C", "C", "C", "C", "C", "C","C", "C")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                                     HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+CuSO4_All_rllm %>% #filter(CHROM == "I", POS == 36434) %>% 
+  group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep3(HOOa = CuSO4_Oak_A_Oak, 
+                           HOWa = CuSO4_Oak_A_Wine, 
+                           HWOa = CuSO4_Wine_A_Oak,
+                           HWWa = CuSO4_Wine_A_Wine,
+                           LOOa = Dilute_Oak_A_Oak,
+                           LOWa = Dilute_Oak_A_Wine,
+                           LWOa = Dilute_Wine_A_Oak, 
+                           LWWa = Dilute_Wine_A_Wine,
+                           
+                           HOOb = CuSO4_Oak_B_Oak, 
+                           HOWb = CuSO4_Oak_B_Wine, 
+                           HWOb = CuSO4_Wine_B_Oak,
+                           HWWb = CuSO4_Wine_B_Wine,
+                           LOOb = Dilute_Oak_B_Oak,
+                           LOWb = Dilute_Oak_B_Wine,
+                           LWOb = Dilute_Wine_B_Oak, 
+                           LWWb = Dilute_Wine_B_Wine,
+                           
+                           HOOc = CuSO4_OakI_Oak, 
+                           HOWc = CuSO4_OakI_Wine, 
+                           HWOc = CuSO4_WineI_Oak,
+                           HWWc = CuSO4_WineI_Wine,
+                           LOOc = Dilute_OakI_Oak,
+                           LOWc = Dilute_OakI_Wine,
+                           LWOc = Dilute_WineI_Oak, 
+                           LWWc = Dilute_WineI_Wine)[1:5],
+                                                   label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> CSSI_CuSO42All_glm
+
+saveRDS(CSSI_CuSO42All_glm, file = "2023/CSSI_CuSO4a_glm.Rdata")
+
+```
+
+```{r}
+CSSI_CuSO42All_glm <- readRDS("2023/CSSI_CuSO4a_glm.Rdata")
+
+CSSI_CuSO42All_glm %>% filter(label != "intercept", CHROM != "M", CHROM != "I") %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
+  geom_hline(aes(yintercept = max(abs(CSSI_CuSO42_glm$summary[CSSI_CuSO42All_glm$CHROM == "III" & CSSI_CuSO42All_glm$label != "intercept"])))) +
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  ggtitle("CuSO4 Z-Scores") + 
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +  
+  scale_color_manual(values = c("blue", "firebrick", "goldenrod", "gray"))
+```
+
+Look at the unsmoothed values of CuSO4
+
+```{r}
+CSSI_CuSO4_cybr2 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_CuSO42_cybr2 <- readRDS("RdataFiles/CSSI_CuSO42_cybr2.rds")
+
+CuSO4_All_checks <- full_join(CSSI_CuSO4_cybr2, CSSI_CuSO42_cybr2)
+
+CuSO4_All_checks %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") -> Intermediatechecks
+
+Intermediatechecks$Allele[Intermediatechecks$Rep == "Oak"] <- "Oak"
+Intermediatechecks$Allele[Intermediatechecks$Rep == "Wine"] <- "Wine"
+Intermediatechecks$Rep[Intermediatechecks$Rep == "Oak"] <- "C"
+Intermediatechecks$Rep[Intermediatechecks$Rep == "Wine"] <- "C"
+
+#Get rid of "OakI" as the parent
+Intermediatechecks$Parent <- gsub("I", "", Intermediatechecks$Parent)
+
+Intermediatechecks %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CuSO4_A_LOD_unsmoothed
+
+```
+
+```{r}
+#The entire region
+CuSO4_A_LOD_unsmoothed %>% filter(CHROM == "XV", POS > 8e+05, POS < 1e+06) %>%
+  ggplot(aes(x = POS, y = LOD, shape = Parent, alpha = Bulk, color = Rep)) + 
+  geom_vline(xintercept = c(976375, 976500), linetype = "dashed") +
+    geom_vline(xintercept = c(822588,824867), color = "goldenrod", size = 2, alpha = 0.5) + #HRK1 
+      geom_vline(xintercept = c(976421,976493), color = "violet", size = 2, alpha = 0.5) +
+  geom_vline(xintercept = c(975913,976244), color = "lightblue", size = 2, alpha = 0.5) + #YORWdelta24 LTR 
+  geom_vline(xintercept = c(849635,850054), color = "firebrick", size = 2, alpha = 0.5) + #RDL1
+  geom_vline(xintercept = c(850280,850729), color = "darkorange", size = 2, alpha = 0.5) + #RDL2
+  geom_vline(xintercept = c(855147,860258), color = "#138803", size = 2, alpha = 0.5) + #SNF2
+  geom_vline(xintercept = c(861175,865593), color = "#00563F", size = 2, alpha = 0.5) + #YPK9
+  geom_point() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("Annotated Genes on Weird Region")
+
+#The earlier region
+CuSO4_A_LOD_unsmoothed %>% filter(CHROM == "XV", POS > 822000, POS < 824000) %>%
+  ggplot(aes(x = POS, y = LOD, shape = Parent, alpha = Bulk, color = Rep)) + 
+    geom_vline(xintercept = c(822588,824867), color = "goldenrod", size = 2, alpha = 0.5) + #HRK1 
+  geom_point() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("HRK1 SNPs")
+
+#The middle region
+CuSO4_A_LOD_unsmoothed %>% filter(CHROM == "XV", POS > 840000, POS < 860000) %>%
+  ggplot(aes(x = POS, y = LOD, shape = Parent, alpha = Bulk, color = Rep)) + 
+    geom_vline(xintercept = c(849635,850054), color = "firebrick", size = 2, alpha = 0.5) + #RDL1
+  geom_vline(xintercept = c(850280,850729), color = "darkorange", size = 2, alpha = 0.5) + #RDL2
+  geom_point() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("RDL SNPs")
+
+#The other middle region
+CuSO4_A_LOD_unsmoothed %>% filter(CHROM == "XV", POS > 860000, POS < 870000) %>%
+  ggplot(aes(x = POS, y = LOD, shape = Parent, alpha = Bulk, color = Rep)) + 
+    geom_vline(xintercept = c(855147,860258), color = "#138803", size = 2, alpha = 0.5) + #SNF2
+  geom_vline(xintercept = c(861175,865593), color = "#00563F", size = 2, alpha = 0.5) + #YPK9
+  geom_point() + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("SNPs between SNF2 and YPK9")
+
+#Zoomed into weird part with specific genes marked
+CuSO4_A_LOD_unsmoothed %>% filter(CHROM == "XV", POS > 976375, POS < 980000) %>%
+  ggplot(aes(x = POS, y = LOD, shape = Parent, alpha = Bulk, color = Rep)) + geom_point() + 
+    geom_vline(xintercept = c(976421,976493), color = "violet", size = 2, alpha = 0.5) + #EMT2
+   geom_vline(xintercept = c(975913,976244), color = "lightblue", size = 2, alpha = 0.5) + #YORWdelta24 LTR
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  theme(legend.position = "bottom") +
+  ggtitle("SNPs between EMT2 and YORWdelta24 LTR")
+
+```
 
