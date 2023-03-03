@@ -108,7 +108,9 @@ parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_
 parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
 
 #CHANGE THIS
-mydatatotest = "Data/HKTFTDRX2.SortedCat.vcf.output.table"
+#mydatatotest = "Data/HKTFTDRX2.SortedCat.vcf.output.table"
+mydatatotest = "2023/HKTFTDRX2.SortedCat.vcf.output.table"
+
 
 FilteredData <- cybrInputGATKTable(mydatatotest) %>% 
   cybrQualityFilter() %>% 
@@ -196,7 +198,19 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "2023/PLACEHOLDER_glm.Rdata")
+saveRDS(GLMdata, file = "2023/CuSO4_2_glm.rds")
 
+```
+
+```{r}
+head(GLMdata)
+unique(tempFilteredData$CHROM)
+
+test <- cybrInputGATKTable(mydatatotest, yeast = FALSE) 
+testyeast <- cybrInputGATKTable(mydatatotest, yeast = TRUE) 
+
+unique(testyeast$CHROM)
+length(unique(test$CHROM))
 ```
 
 ## Basic Plots
