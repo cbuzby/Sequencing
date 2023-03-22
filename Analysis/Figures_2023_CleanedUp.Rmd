@@ -1,0 +1,527 @@
+---
+title: "Figures for 2023 PopGen Poster"
+author: "Cassandra Buzby"
+date: "1/24/2023"
+output:
+  html_notebook:
+    code_folding: hide
+---
+
+
+```{r}
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 20)))
+
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H","H","H", "H", 
+                                             "L", "L","L", "L", 
+                                             "H", "H","H", "H", 
+                                             "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W",
+                                             "O", "W", "O", "W", 
+                                             "O", "W", "O", "W",
+                                             "O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+
+
+```
+
+## Load in Data
+
+```{r}
+#Load Stuff
+CSSI_CuSO4 <- readRDS("RdataFiles/CSSI_CuSO4_cybr2.rds")
+CSSI_Fluc <- readRDS("RdataFiles/CSSI_Fluc_cybr2.rds")
+CSSI_Zeocin <- readRDS("RdataFiles/CSSI_Zeocin_cybr2.rds")
+```
+
+## Non-Smoothed Data
+
+```{r, warning=FALSE}
+
+CSSI_CuSO4 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = value) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_CuSO4_unsmoothed
+
+CSSI_Fluc %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = value) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Fluc_unsmoothed
+
+CSSI_Zeocin %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = value) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_unsmoothed
+
+#Merge together and rbind
+CSSI_Zeocin_unsmoothed %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Zeocin_LODu
+
+
+CSSI_Fluc_unsmoothed %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Fluc_LODu
+
+CSSI_CuSO4_unsmoothed %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent","Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) %>% 
+  transmute(CHROM = CHROM, POS = POS, Bulk = Bulk, Parent = Parent, Rep = NA, Oak = Oak, Wine = Wine, LOD = LOD) -> CSSI_CuSO4_LODu
+
+rbind(data.frame(CSSI_CuSO4_LODu, Dataset = "CuSO4"),
+      data.frame(CSSI_Fluc_LODu, Dataset = "Fluconazole"),
+      data.frame(CSSI_Zeocin_LODu, Dataset = "Zeocin")) -> AllLODs_unsmoothed
+
+#Plot to see odds ratio
+AllLODs_unsmoothed %>% filter(CHROM == "VIII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_point(alpha = 0.2) + 
+  facet_grid(~Dataset, scales = "free", space = "free") + 
+  scale_color_manual(values = c("blue",  #CuSO4
+                                      "black", #Unselected
+                                      "firebrick", #Fluconazole
+                                      "skyblue")) + #Zeocin
+  ggtitle("")
+```
+
+## Smooth Data
+
+```{r}
+#change n for window size and FUN for mean vs median smoothing
+CSSI_CuSO4 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_CuSO4_cybr2
+
+CSSI_Fluc %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Fluc_cybr2
+
+CSSI_Zeocin %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount) -> CSSI_Zeocin_cybr2
+
+```
+
+Combine datasets for plotting
+
+```{r}
+CSSI_Zeocin_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Zeocin_LOD
+
+
+CSSI_Fluc_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent", "Rep", "Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) -> CSSI_Fluc_LOD
+
+CSSI_CuSO4_cybr2 %>% pivot_longer(cols = c(-CHROM, -POS),
+  names_to = c("Bulk", "Parent","Allele"),
+    names_sep = "_",
+  values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(LOD = log(Wine/Oak)) %>% transmute(CHROM = CHROM, POS = POS, Bulk = Bulk, Parent = Parent, Rep = NA, Oak = Oak, Wine = Wine, LOD = LOD) -> CSSI_CuSO4_LOD
+
+rbind(data.frame(CSSI_CuSO4_LOD, Dataset = "CuSO4"),
+      data.frame(CSSI_Fluc_LOD, Dataset = "Fluconazole"),
+      data.frame(CSSI_Zeocin_LOD, Dataset = "Zeocin")) -> AllLODs
+
+```
+
+
+Plot for individual chromosome
+
+```{r}
+AllLODs %>% filter(CHROM == "XIV", Dataset == "CuSO4") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Flask)) + 
+  geom_line(size = 2) +
+      ylab("") + xlab("")+
+  scale_color_manual(values = c("gray","black","lightblue", "firebrick")) + 
+  theme(legend.position = "bottom") +
+  ggtitle("CuSO4 Chr XIV")
+```
+Plot smoothed and unsmoothed data on the same axes
+
+```{r, fig.width=7, fig.height=6}
+
+AllLODs_unsmoothed %>% filter(CHROM == "VII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_point(alpha = 0.2, size = 0.8) + ylim(-2.5,2.5)+
+      ylab("") + xlab("")+
+  facet_grid(~Dataset, scales = "free", space = "free") + 
+  scale_color_manual(values = c("#345F6F","black","firebrick", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("")
+
+AllLODs %>% filter(CHROM == "VII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_point(alpha = 0.2, size = 0.8) + ylim(-2.5,2.5)+
+      ylab("") + xlab("")+
+  facet_grid(~Dataset, scales = "free", space = "free") + 
+  scale_color_manual(values = c("#345F6F","black","firebrick", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("")
+
+```
+
+```{r, fig.width=16,fig.height=5}
+
+AllLODs %>% filter(CHROM != "I", CHROM != "M") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_line(size = 1.5) + 
+      ylab("") + xlab("")+
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values =  c("black","firebrick","#345F6F", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("")
+```
+
+
+## GLM Data plots
+
+Load data
+
+```{r}
+Zeocin_glm<- readRDS("2023/CSSI_Zeocin_glm.rds")
+CuSO4_glm <- readRDS("2023/CSSI_CuSO4_glm.rds")
+CuSO4_glm2 <- readRDS("2023/CuSO4_2_glm.rds")
+Fluc_glm <- readRDS("2023/CSSI_Fluc_glm.rds")
+
+```
+
+Reformat data and "call" peaks for plots
+
+```{r, fig.width=17,fig.height=5}
+
+Zeocin_glm$label <- factor(Zeocin_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+Fluc_glm$label <- factor(Fluc_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_glm$label <- factor(CuSO4_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_glm2$label <- factor(CuSO4_glm2$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+Zeocin_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> Zeocin_glm
+Fluc_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> Fluc_glm
+CuSO4_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> CuSO4_glm
+CuSO4_glm2 %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> CuSO4_glm2
+
+################################################################################
+#Peaks
+max(abs(Zeocin_glm$summary[Zeocin_glm$CHROM == "III"]))
+Zeocin_glm %>% filter(label == "Interaction") %>% filter(abs(summary) > 0.7) %>% group_by(CHROM) %>% summarize(peak = max(abs(summary))) -> ZeocinPeaks
+
+for(i in 1:length(ZeocinPeaks$peak)){
+  ZeocinPeaks$POS[i] <- Zeocin_glm$POS[Zeocin_glm$label == "Interaction" & abs(Zeocin_glm$summary) == ZeocinPeaks$peak[i] & Zeocin_glm$CHROM == ZeocinPeaks$CHROM[i]]
+
+}
+
+max(abs(Fluc_glm$summary[Fluc_glm$CHROM == "III"]))
+Fluc_glm %>% filter(label == "Interaction") %>% filter(abs(summary) > 1.124545) %>% group_by(CHROM) %>% summarize(peak = max(abs(summary))) -> FlucPeaks
+
+for(i in 1:length(FlucPeaks$peak)){
+  FlucPeaks$POS[i] <- Fluc_glm$POS[Fluc_glm$label == "Interaction" & abs(Fluc_glm$summary) == FlucPeaks$peak[i] & Fluc_glm$CHROM == FlucPeaks$CHROM[i]]
+
+}
+```
+
+Plot smoothed Z-scores with peaks
+
+```{r}
+
+#Plots
+Zeocin_glm %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label, linetype = label)) +   
+  geom_vline(data = ZeocinPeaks, aes(xintercept = POS), color = "#BCEAF3", size = 2) +
+  geom_line(size = 1) + 
+  geom_hline(aes(yintercept = max(abs(Zeocin_glm$summary[Zeocin_glm$CHROM == "III"]))), linetype = "dashed") +
+    ylab("") + xlab("")+ ggtitle("")+
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values = c("gray", "gray", "black","#FFB05C")) + 
+  scale_linetype_manual(values = c("dotted", "solid", "solid", "solid")) +
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) 
+  
+
+Fluc_glm %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + 
+  geom_vline(data = FlucPeaks, aes(xintercept = POS), color = "#BCEAF3", size = 2) +
+  geom_line(size = 1) + 
+  geom_hline(aes(yintercept = max(abs(Fluc_glm$summary[Fluc_glm$CHROM == "III"]))), linetype = "dashed") +
+
+    ylab("") + xlab("")+ ggtitle("")+
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("gray", "black","firebrick")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) 
+
+CuSO4_glm %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(size = 1) + 
+    geom_hline(aes(yintercept = max(abs(CuSO4_glm$summary[CuSO4_glm$CHROM == "III"]))), linetype = "dashed") +
+    ylab("") + xlab("")+ ggtitle("")+
+  facet_grid(~CHROM, scales = "free", space = "free")  + 
+  scale_color_manual(values = c("gray","black","#345F6F")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) 
+
+CuSO4_glm2 %>% 
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(size = 1) + 
+    geom_hline(aes(yintercept = max(abs(CuSO4_glm$summary[CuSO4_glm$CHROM == "III"]))), linetype = "dashed") +
+    ylab("") + xlab("")+ ggtitle("")+
+  facet_grid(~CHROM, scales = "free", space = "free")  + 
+  scale_color_manual(values = c("gray","gray",  "black","#345F6F")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) 
+```
+
+CuSO4 comparison - missing two chromosomes
+
+```{r, fig.width=17,fig.height=5}
+
+rbind(data.frame(CuSO4_glm, Exp = "1"),
+      data.frame(CuSO4_glm2, Exp = "2")) -> CUSO4ALL
+
+max(abs(CUSO4ALL$summary[CUSO4ALL$CHROM == "III" & CUSO4ALL$Exp == 1]))
+max(abs(CUSO4ALL$summary[CUSO4ALL$CHROM == "III" & CUSO4ALL$Exp == 2]))
+
+
+CUSO4ALL %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
+    geom_hline(aes(yintercept = max(abs(CUSO4ALL$summary[CUSO4ALL$CHROM == "III" & CUSO4ALL$Exp == 2]))), linetype = "dashed") +
+    ylab("") + xlab("")+ ggtitle("")+
+  facet_grid(Exp ~ CHROM, scales = "free", space = "free")  + 
+  scale_color_manual(values = c("pink", "gray","black","#345F6F")) + 
+  theme(legend.position = "bottom", 
+        axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) 
+
+
+```
+
+
+## Combining GLM and LOD scores
+
+```{r, fig.width=5,fig.height=4}
+
+AllLODs %>% filter(CHROM == "VII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, color = Parent, group = Flask, alpha = Bulk)) +
+  ylab("") + xlab("")+geom_line(size = 2) + geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  scale_color_manual(values = c("firebrick", "#5391C4")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("") -> chr7_glm
+
+AllLODs$Bulk[AllLODs$Bulk == "CuSO4"] <- "Selected"
+AllLODs %>% filter(CHROM == "VIII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  filter(Dataset == "CuSO4") %>%
+  ggplot(aes(x = POS, y = LOD, color = Parent, group = Flask, alpha = Bulk)) + 
+  ylab("") + xlab("")+geom_line(size = 2) + geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  scale_color_manual(values = c("firebrick", "#5391C4")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("") -> chr8_glm
+
+CuSO4_glm %>% filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = -1*(summary), color = label)) + geom_line(size = 2) + 
+  ylab("") + xlab("") + geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  geom_vline(aes(xintercept = 212535), color = "#00ADD0", alpha = 0.3, size = 2) +
+  scale_color_manual(values = c("gray", "black","#7030A0")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ylim(-12, 2.5) +
+  ggtitle("") -> chr8_lod
+
+Fluc_glm %>% filter(CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = -1*(summary), color = label)) + geom_line(size = 2) + 
+  ylab("") + xlab("")+geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  scale_color_manual(values = c("gray", "black","#7030A0")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("") -> chr7_lod
+
+plot_grid(chr7_glm, chr7_lod)
+plot_grid(chr8_glm, chr8_lod)
+```
+
+## Focus on Chr III as Baseline
+
+Plot raw data log(oak/wine)
+
+```{r}
+AllLODs_unsmoothed %>% filter(CHROM == "III") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_point(alpha = 0.2) + 
+  geom_vline(xintercept = c(198671,201177)) +
+  facet_grid(~Dataset, scales = "free", space = "free") + 
+  scale_color_manual(values = c("#345F6F", "black", "firebrick", "#FFB05C")) + 
+  ggtitle("") + ylab("") +
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+```
+Plot overall log(alleles), with and without Chr I
+
+```{r, fig.width=16,fig.height=5}
+
+AllLODs %>% filter(CHROM != "I", CHROM != "M") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_line(size = 1.5) + 
+      ylab("") + xlab("")+
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values =  c("black","firebrick","#345F6F", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("")
+
+#Sanity check for which direction each allele is; this has wine down apparently
+
+AllLODs %>% filter(CHROM != "M") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_line(size = 1.5) + 
+      ylab("") + xlab("")+
+  facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values =  c("black","firebrick","#345F6F", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("")
+
+```
+Plot smoothed (200 SNPs, median) log(alleles)
+
+```{r}
+
+AllLODs %>% filter(CHROM == "III") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  ggplot(aes(x = POS, y = LOD, color = Bulk, group = Flask, linetype = Parent)) + 
+  geom_line(size = 1.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed")+
+      ylab("") + xlab("")+
+  ylim(c(-2,1)) +
+  #facet_grid(~CHROM, scales = "free", space = "free") + 
+  scale_color_manual(values =  c("black","firebrick","#345F6F", "#FFB05C")) + 
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  ggtitle("All Datasets") -> px
+
+AllLODs %>% filter(CHROM == "III") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  filter(Dataset == "Fluconazole") %>%
+  
+  ggplot(aes(x = POS, y = LOD, color = Parent, group = Flask, alpha = Bulk)) + 
+  geom_line(size = 2) + geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  scale_color_manual(values = c("firebrick", "#5391C4")) + 
+    scale_alpha_manual(values = c(0.5, 1)) +
+  theme(legend.position = "none", axis.text.x=element_blank(),axis.ticks.x=element_blank(),
+        text = element_text(size = 20)) +
+  ylab("") + xlab("")+ggtitle("Fluconazole") -> py
+
+plot_grid(px, py, ncol = 2)
+```
+Plot Chr III GLMs (to show effects without a specific bulk effect etc)
+
+```{r}
+
+Fluc_glm %>% filter(CHROM == "III", label != "Rep") %>%
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(size = 2) + 
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), linetype = "dashed") +
+
+    scale_color_manual(values = c("gray", "black","firebrick")) + 
+  ylim(c(0, 1.2))+
+  ylab("") + xlab("") + ggtitle("Fluconazole") +
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(), axis.text.y = element_blank()) -> Fluc3
+
+CuSO4_glm %>% filter(CHROM == "III", label != "Rep") %>%
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(size = 2) + 
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), linetype = "dashed") +
+  scale_color_manual(values = c("gray", "black","#345F6F")) + 
+  ylab("") + xlab("") + ggtitle("CuSO4") +
+    ylim(c(0, 1.2))+
+
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(), axis.text.y = element_blank()) -> CuSO43
+
+Zeocin_glm %>% filter(CHROM == "III", label != "Rep") %>%
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(size = 2) + 
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), linetype = "dashed") +
+  scale_color_manual(values = c("gray", "black","#FFB05C")) + 
+    ylim(c(0, 1.2))+
+  ylab("") + xlab("") + ggtitle("Zeocin") +
+  theme(legend.position = "none", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(), axis.text.y = element_blank()) -> Zeocin3
+
+plot_grid(CuSO43, Fluc3, Zeocin3, ncol = 3)
+
+```
