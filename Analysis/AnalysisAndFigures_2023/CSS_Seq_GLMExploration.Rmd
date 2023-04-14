@@ -1196,13 +1196,90 @@ cdata %>% merge(testKEY) %>% select(-Reads) %>% pivot_longer(c(Oak, Wine), names
 
 testcdata$Allele <- factor(testcdata$Allele)
 
-
-b <- glmer(Allele ~ Bulk*Parent+(1 | Condition/RepN), 
+c <- glmer(Allele ~ Bulk*Parent+(1 | RepN), 
+             weights = Reads, family = binomial, 
+              data = testcdata)
+a <- glmer(Allele ~ Bulk*Parent+(1 | Condition/RepN), 
              weights = Reads, family = binomial, 
               data = testcdata)
 
-b
+b <- glmer(Allele ~ Bulk*Parent+(1 +Condition | RepN), 
+             weights = Reads, family = binomial, 
+              data = testcdata)
+
+d <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, data = testcdata)
+
+e <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, data = testcdata)
+
+summary(a)$coefficients #(1|Condition/Rep)
+summary(b)$coefficients #(Condition | Rep)
+summary(c)$coefficients #(1 | Rep)
+summary(d)$coefficients # Bulk*Parent+Rep
+summary(e)$coefficients # Bulk*Parent, no rep included
+
+
 summary(b)$coefficients[1:12] #Effects
-as.vector(attr(lme4::VarCorr(b)$Rep,"stddev"))
+as.vector(attr(lme4::VarCorr(b)$R,"stddev"))
 ```
+
+Trying this for something where the replicate *actually* has an effect
+
+```{r}
+Zeo <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/Zeocin_cybr2.rds")
+
+Zeo %>% filter(CHROM == "XV") %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "Reads") -> Zeo_long
+
+#Filtering for a specific point
+Zeo_long %>% filter(POS > 8.65e+05 & POS < 8.75e+05) %>% filter(POS == 867041)
+
+#Figuring out where the disparity is
+Zeo_long %>% pivot_wider(names_from = Allele, values_from = Reads) %>% filter(Bulk != "NA") %>% mutate(odds = log(Oak/Wine)) %>% filter(POS > 8.65e+05 & POS < 8.75e+05) %>%
+  ggplot(aes(x = POS, y = odds, color = paste(Bulk, Parent, Rep, sep = "_"))) + geom_line()
+
+Zeo_long %>% filter(POS == 867041) -> zdata
+```
+
+```{r}
+zdata %>% group_by(Bulk, Parent) %>% summarize(Condition = paste(Bulk, Parent, sep="_")) -> testKEYz
+
+zdata %>% merge(testKEYz) %>% filter(Bulk != "NA") -> testzdata
+
+testzdata$Allele <- factor(testzdata$Allele)
+
+c <- glmer(Allele ~ Bulk*Parent+(1 | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+a <- glmer(Allele ~ Bulk*Parent+(1 | Condition/Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+b <- glmer(Allele ~ Bulk*Parent+(1 +Condition | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+d <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, data = testzdata)
+
+e <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, data = testzdata)
+
+summaries_zeo <- rbind(
+  data.frame(summary(a)$coefficients, formula = "(1|Condition/Rep)", param = rownames(summary(a)$coefficients)), #(1|Condition/Rep)
+  data.frame(summary(b)$coefficients, formula = "(Condition | Rep)", param = rownames(summary(b)$coefficients)), #(Condition | Rep)
+  data.frame(summary(c)$coefficients, formula = "(1 | Rep)", param = rownames(summary(c)$coefficients)), #(1 | Rep)
+  data.frame(summary(d)$coefficients, formula = "Bulk*Parent+Rep", param = rownames(summary(d)$coefficients)), # Bulk*Parent+Rep
+  data.frame(summary(e)$coefficients, formula = "Bulk*Parent, no rep included", param = rownames(summary(e)$coefficients))) # Bulk*Parent, no rep included
+
+summaries_zeo %>% ggplot(aes(y = param, x = Estimate, color = formula)) + geom_point(size = 4, alpha = 0.5) +
+  scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + ggtitle("Zeocin Chr XV POS 867041")
+```
+
+```{r}
+
+testzdata %>% ggplot(aes(x = Condition, y = Reads, color = Allele, shape = Rep)) + geom_point(size = 4, alpha = 0.4) + ggtitle("Raw Counts Per Condition") + scale_color_manual(values = c("darkorange", "skyblue"))
+
+testzdata %>% distinct() %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  ggplot(aes(x = Bulk, y = log(Oak/Wine), color = Parent, shape = Rep)) + 
+  geom_point(size = 4) + 
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("log(Oak/Wine) by Parent and Bulk")
+```
+
 
