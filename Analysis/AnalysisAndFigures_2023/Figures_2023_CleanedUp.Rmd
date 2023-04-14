@@ -155,6 +155,39 @@ AllLODs_unsmoothed %>% filter(CHROM == "VIII") %>%
                                       "skyblue")) + #Zeocin
   ggtitle("")
 
+AllLODs_unsmoothed %>% filter(CHROM == "XII") %>% 
+  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, alpha = Bulk, group = Flask, color = paste(Parent, Rep))) + 
+  geom_point(size = 0.2) + 
+  facet_grid(~Dataset, scales = "free", space = "free") #+ 
+  #scale_color_manual(values = c("#345F6F",  #CuSO4_1
+                                        # "turquoise", #CuSO4_2
+                                      "black", #Unselected
+                                      "firebrick", #Fluconazole
+                                      "skyblue")) + #Zeocin
+  ggtitle("")
+
+
+###############
+unique(AllLODs_unsmoothed$Dataset)
+AllLODs_unsmoothed %>% filter(CHROM == "XII" & Dataset == "CuSO4_2") %>% 
+    mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
+
+  #filter(Dataset == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = LOD, group = Flask, color = paste(Bulk, Parent, Rep))) +
+  geom_point() +
+  scale_color_manual(values = c("#345F6F",  #CuSO4_1
+                                        # "turquoise", #CuSO4_2
+                                      "black", #Unselected
+                                      "firebrick", #Fluconazole
+                                      "skyblue",
+                                      "gray",  #CuSO4_1
+                                      "gray", #CuSO4_2
+                                      "gray", #Unselected
+                                      "gray", #Fluconazole
+                                      "gray")) 
+  
 
 ```
 
@@ -219,14 +252,51 @@ rbind(data.frame(CSSI_CuSO4_LOD, Dataset = "CuSO4_1"),
 Plot for individual chromosome
 
 ```{r}
-AllLODs %>% filter(CHROM == "XIV", Dataset == "CuSO4") %>% 
-  mutate(Flask = paste(Bulk, Parent, Rep, Dataset, sep = "_")) %>% 
-  ggplot(aes(x = POS, y = LOD, color = Flask)) + 
-  geom_line(size = 2) +
+AllLODs %>% filter(CHROM == "XII") %>% mutate(BulkBin = "Selected") -> tempAllLods
+tempAllLods$BulkBin[tempAllLods$Bulk == "Dilute"] <- "Dilute"
+
+tempAllLods %>% filter(Bulk != "NA") %>% 
+  ggplot(aes(x = POS, y = LOD, alpha = BulkBin, color = paste(Parent, Rep, sep = "_"))) + 
+  geom_line(size = 1) +
       ylab("") + xlab("")+
-  scale_color_manual(values = c("gray","black","lightblue", "firebrick")) + 
+  geom_vline(xintercept = c(556591, 573671)) +
+  geom_vline(xintercept = c(451575,489469), color = "orchid") +
+  facet_grid(~Dataset, scales = "free") +
+  #scale_color_manual(values = c("gray","black","lightblue", "firebrick")) + 
   theme(legend.position = "bottom") +
   ggtitle("CuSO4 Chr XIV")
+
+tempAllLods[tempAllLods$LOD == min(tempAllLods$LOD),] %>% arrange(POS)
+
+tempAllLods %>% filter(Bulk != "NA") %>% filter(POS > 556591 & POS < 573671) %>%
+  ggplot(aes(x = POS, y = LOD, alpha = BulkBin, color = paste(Parent, Rep, sep = "_"))) + 
+  geom_line(size = 1) +
+      ylab("") + xlab("")+
+  geom_vline(xintercept = c(556591, 573671)) +
+  facet_grid(~Dataset, scales = "free") +
+  #scale_color_manual(values = c("gray","black","lightblue", "firebrick")) + 
+  theme(legend.position = "bottom") +
+  ggtitle("CuSO4 Chr XIV")
+
+
+###################################################
+
+AllLODs %>% filter(CHROM == "VIII") %>% mutate(BulkBin = "Selected") -> tempAllLods8
+tempAllLods8$BulkBin[tempAllLods8$Bulk == "Dilute"] <- "Dilute"
+
+tempAllLods8 %>% filter(Bulk != "NA" & Dataset == "CuSO4_2") %>% 
+  ggplot(aes(x = POS, y = LOD, alpha = BulkBin, color = paste(Parent, Rep, sep = "_"))) + 
+  geom_line(size = 1) +
+      ylab("") + xlab("")+
+  # geom_vline(xintercept = c(556591, 573671)) +
+  # geom_vline(xintercept = c(451575,489469), color = "orchid") +
+  facet_grid(~Dataset, scales = "free") +
+  #scale_color_manual(values = c("gray","black","lightblue", "firebrick")) + 
+  theme(legend.position = "bottom") +
+  ggtitle("CuSO4 Chr VIII")
+
+#tempAllLods[tempAllLods$LOD == min(tempAllLods$LOD),] %>% arrange(POS)
+
 ```
 Plot smoothed and unsmoothed data on the same axes
 
