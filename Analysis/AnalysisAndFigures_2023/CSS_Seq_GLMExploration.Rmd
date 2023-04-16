@@ -1262,24 +1262,61 @@ d <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, data = te
 e <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, data = testzdata)
 
 summaries_zeo <- rbind(
-  data.frame(summary(a)$coefficients, formula = "(1|Condition/Rep)", param = rownames(summary(a)$coefficients)), #(1|Condition/Rep)
-  data.frame(summary(b)$coefficients, formula = "(Condition | Rep)", param = rownames(summary(b)$coefficients)), #(Condition | Rep)
-  data.frame(summary(c)$coefficients, formula = "(1 | Rep)", param = rownames(summary(c)$coefficients)), #(1 | Rep)
-  data.frame(summary(d)$coefficients, formula = "Bulk*Parent+Rep", param = rownames(summary(d)$coefficients)), # Bulk*Parent+Rep
-  data.frame(summary(e)$coefficients, formula = "Bulk*Parent, no rep included", param = rownames(summary(e)$coefficients))) # Bulk*Parent, no rep included
+  data.frame(summary(a)$coefficients, formula = "A (1|Condition/Rep)", param = rownames(summary(a)$coefficients)), #(1|Condition/Rep)
+  data.frame(summary(b)$coefficients, formula = "B (Condition | Rep)", param = rownames(summary(b)$coefficients)), #(Condition | Rep)
+  data.frame(summary(c)$coefficients, formula = "C (1 | Rep)", param = rownames(summary(c)$coefficients)), #(1 | Rep)
+  data.frame(summary(d)$coefficients, formula = "D Bulk*Parent+Rep", param = rownames(summary(d)$coefficients)), # Bulk*Parent+Rep
+  data.frame(summary(e)$coefficients, formula = "E Bulk*Parent, no rep included", param = rownames(summary(e)$coefficients))) # Bulk*Parent, no rep included
 
 summaries_zeo %>% ggplot(aes(y = param, x = Estimate, color = formula)) + geom_point(size = 4, alpha = 0.5) +
   scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + ggtitle("Zeocin Chr XV POS 867041")
+
+lme4::VarCorr(a)
+lme4::VarCorr(b)
+lme4::VarCorr(c)
+#lme4::VarCorr(d)
+#lme4::VarCorr(e)
 ```
 
 ```{r}
 
-testzdata %>% ggplot(aes(x = Condition, y = Reads, color = Allele, shape = Rep)) + geom_point(size = 4, alpha = 0.4) + ggtitle("Raw Counts Per Condition") + scale_color_manual(values = c("darkorange", "skyblue"))
+testzdata %>% ggplot(aes(x = Condition, y = Reads, color = Allele, shape = Rep)) + geom_point(size = 4, alpha = 0.4) + ggtitle("Raw Counts Per Condition") + scale_color_manual(values = c("skyblue", "darkorange"))
 
 testzdata %>% distinct() %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
   ggplot(aes(x = Bulk, y = log(Oak/Wine), color = Parent, shape = Rep)) + 
   geom_point(size = 4) + 
   scale_color_manual(values = c("navy", "firebrick")) + ggtitle("log(Oak/Wine) by Parent and Bulk")
+
+#Let's see if we can make a plot just of the counts where it looks like the logistic regression to visualize
+testzdata %>% distinct() -> reformattestz
+
+counttestz <- data.frame(counts = rep(x = paste(reformattestz$Bulk, reformattestz$Parent, reformattestz$Rep, reformattestz$Allele, sep = "_"), 
+    times = reformattestz$Reads))
+
+counttestz %>% separate(counts, sep = "_", into = c("Bulk", "Parent", "Rep", "Allele")) -> cz
+```
+
+```{r, fig.width=3, fig.height=2.5}
+
+#All factors
+cz %>% ggplot(aes(y = Allele, x = Parent, color = Parent)) + 
+  geom_jitter(alpha = 0.4, width = .4, height = 0.2) +
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041") + facet_grid(Rep ~ Bulk)
+
+#Not separating by Replicate
+cz %>% ggplot(aes(y = Allele, x = Parent, color = Parent)) + 
+  geom_jitter(alpha = 0.4, width = .4, height = 0.2) +
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041") + facet_grid(~ Bulk)
+
+#Not separating by Bulk
+cz %>% ggplot(aes(y = Allele, x = Parent, color = Parent)) + 
+  geom_jitter(alpha = 0.4, width = .4, height = 0.2) +
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041")
+
+#Not separating by Parent
+cz %>% ggplot(aes(y = Allele, x = Bulk, color = Parent)) + 
+  geom_jitter(alpha = 0.4, width = .4, height = 0.2) +
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041")
 ```
 
 
