@@ -175,3 +175,12 @@ RawCountSummary %>%
             axis.ticks.x=element_blank()) +
   scale_color_manual(values = c("Violet", "Black"))
 ```
+
+#### Notes
+
+* nextflow processes each FILE on its own, one file for each flask
+* for 8 samples in a sp run, this is ~8 hours
+* using CB_2.q, each file is merged together, indexed as one, and THEN SEPARATED by chromosome. This took 10 hours for a 1s Novaseq run
+* CB_3.q takes a couple of minutes for the by-chromosome samples
+* CB_4.q will take > 8 hours for all except the smallest samples if running 1s (I swear it was shorter for the sp run, maybe 7 max for the large ones)
+* CB_4.q finishes for all Chr at: [>9hr]
