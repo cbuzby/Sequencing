@@ -1,0 +1,517 @@
+---
+title: "Simulating Recombinant Intercross Populations"
+author: "Cassandra Buzby"
+date: "2023-05-22"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+
+```{r, warning=FALSE, message=FALSE}
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+library(scales)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 20)))
+
+```
+
+## Creating the phenotypes for genotypes
+
+### First set a seed and simulate 100 loci
+
+```{r}
+#Save a randomized distribution of effects
+set.seed(04201993)
+
+loci_100 <- rnorm(n = 100)/5
+#Add in a QTL to POS 40
+loci_100[40] <- max(loci_100)*5
+
+#loci_100 <- rchisq(100, 1)
+max(loci_100)
+plot(loci_100)
+hist(loci_100)
+
+#Simulate a population with all of these genotypes
+num_rows <- 10000
+num_cols <- 100
+
+sim_pop <- matrix(rbinom(num_rows*num_cols, 1, 0.5), nrow = num_rows, ncol = num_cols)
+
+#Simulate phenotypes
+sim_pop_pheno <- sim_pop %*% loci_100
+hist(sim_pop_pheno)
+
+#Which genotypes are in each location?
+sim_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% mutate(alt = ./length(sim_pop[,1]), ref = 1-alt) -> pop_freq
+
+plot(pop_freq$alt, ylim = c(0,1), main = "Number of Alternative Alleles | Unselected")
+
+plot(abs(log(pop_freq$alt/pop_freq$ref)), ylim = c(0,1), main = "LOD alt/ref | Unselected")
+
+#Which genotypes are enriched in the top 10% of the phenotype?
+cutoff <- quantile(sim_pop_pheno, probs = 0.9) #1.297661 
+selected_pop <- sim_pop[sim_pop_pheno > cutoff,]
+
+selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% mutate(alt = ./length(selected_pop[,1]), ref = 1-alt) -> selected_pop_freq
+plot(selected_pop_freq$alt, ylim = c(0,1), main = "Number of Alt Alleles | Selected")
+plot(abs(log(selected_pop_freq$alt/selected_pop_freq$ref)), ylim = c(0,1), main = "LOD of alt/ref | Selected")
+
+#Compare the actual effects vs the QTL of effects
+plot(data.frame(effect = loci_100, QTL_count = selected_pop_freq$alt), main = "Effect Size vs Alt Number | Selected")
+
+plot(data.frame(effect = loci_100, absLOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref))), main = "Simulated Data Without Noise")
+
+
+
+```
+
+### Calculating Percent Variance
+
+Each locus gives us an amount of change, and all of these are just added up, so the overall variance would be calculated for the population (without noise) and then each locus' effect would be the sum of those...?
+
+```{r}
+#Calculate the variance
+var(sim_pop_pheno)
+
+#Calculate the amount of variance that is explained by the first locus
+locus1 <- data.frame(phenotypes = sim_pop_pheno, genotype = sim_pop[1,])
+summary(lm(phenotypes ~ genotype, locus1))
+
+#Run the lm() for every locus
+sim_phenogeno <- cbind(sim_pop_pheno, as.data.frame(sim_pop))
+
+sim_summarylm <- summary(lm(sim_pop_pheno ~ ., sim_phenogeno))
+plot(sim_summarylm$coefficients[-1,1], loci_100)
+
+#Find percentage variance using anova()
+var(sim_pop_pheno)
+af <- anova(lm(sim_pop_pheno ~ ., sim_phenogeno))
+afss <- af$"Sum Sq"
+sim_anova_ss <- cbind(af,PctExp=afss/sum(afss)*100)
+
+plot(sim_anova_ss$PctExp[1:100], abs(loci_100))
+
+#How much variance is unexplained?
+sim_anova_ss$PctExp[101]
+```
+
+### Adding in Noise
+
+This model doesn't include noise, so we can add in some amount of rnorm to the phenotypes actually experienced in the model
+
+```{r}
+#Simulate phenotypes
+realistic_pop_pheno <- sim_pop %*% loci_100 + rnorm(100, 0, sd = 2)
+plot(sim_pop_pheno, realistic_pop_pheno)
+abline(a = 0, b = 1)
+
+#Which genotypes are enriched in the top 10% of the phenotype?
+rlcutoff <- quantile(realistic_pop_pheno, probs = 0.9) #1.297661 
+rlselected_pop <- sim_pop[realistic_pop_pheno > rlcutoff,]
+
+rlselected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% mutate(alt = ./length(rlselected_pop[,1]), ref = 1-alt) -> rlselected_pop_freq
+
+#Run the lm() for every locus
+rlsim_phenogeno <- cbind(realistic_pop_pheno, as.data.frame(sim_pop))
+
+#Run the anova() for the model
+rlaf <- anova(lm(realistic_pop_pheno ~ ., rlsim_phenogeno))
+rlafss <- rlaf$"Sum Sq"
+rlsim_anova_ss <- cbind(rlaf,PctExp=rlafss/sum(rlafss)*100)
+plot(rlsim_anova_ss$PctExp[1:100], abs(loci_100))
+rlsim_anova_ss$PctExp[101]
+
+#This shows that it isn't right... and now it is :)
+plot(afss[1:100], rlafss[1:100],
+     main = "Percentage Variance with and without noise")
+abline(0,1)
+
+#Percentage of variance vs actual effect
+plot(abs(loci_100), afss[1:100], main = "Variance Explained by Effect Size")
+points(abs(loci_100), rlafss[1:100], col = "pink2")
+
+#Plotting with noise
+# plot(data.frame(effect = loci_100, absLOD = abs(log(rlselected_pop_freq$alt/rlselected_pop_freq$ref))), main = "Simulated Data WITH Noise", col = "violet")
+# points(data.frame(effect = loci_100, absLOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref))), col = "black")
+
+```
+
+### Comparing the true and the realistic (with noise)
+
+Bonferroni correction would be 0.5/100 since there's 100 loci, so that would make the cutoff 1 - that
+
+```{r}
+bcorr <- 0.05/100
+#Plotting with noise
+plot(data.frame(effect = loci_100, absLOD = abs(log(rlselected_pop_freq$alt/rlselected_pop_freq$ref))), main = "Simulated Data WITH Noise", col = "pink2")
+points(data.frame(effect = loci_100, absLOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref))), col = "black")
+
+#Distributions
+compdata <- data.frame(effect = loci_100, 
+                       true_LOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref)),
+                       noise_LOD = abs(log(rlselected_pop_freq$alt/rlselected_pop_freq$ref)))
+
+compdata %>% pivot_longer(-effect, names_to = "Type", values_to = "LOD") %>% ggplot(., aes(x = LOD, color = Type)) + geom_density() + ggtitle("Comparison of LOD Distributions")
+
+#QTL Map
+
+
+plot(compdata$noise_LOD, col = ((compdata$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(compdata$noise_LOD, 0.95), col = "lightblue3", lwd = 2)
+abline(h = quantile(compdata$noise_LOD, (1 - bcorr)), col = "violet", lwd = 2)
+
+
+plot(compdata$true_LOD, compdata$noise_LOD, col = ((compdata$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(compdata$noise_LOD, 0.95), col = "lightblue3", lwd = 2)
+abline(h = quantile(compdata$noise_LOD, (1 - bcorr)), col = "violet", lwd = 2)
+
+```
+
+### Calculating TP, FN, etc
+
+```{r}
+#if the cutoff was 0.75, what would be the TP, FP, TN and FN?
+true_and_false <- function(compdata, temp_cutoff){
+  TP <- sum(compdata$true_LOD > temp_cutoff & compdata$noise_LOD > temp_cutoff)/100
+  FP <- sum(compdata$true_LOD < temp_cutoff & compdata$noise_LOD > temp_cutoff)/100
+  TN <- sum(compdata$true_LOD < temp_cutoff & compdata$noise_LOD < temp_cutoff)/100
+  FN <- sum(compdata$true_LOD > temp_cutoff & compdata$noise_LOD < temp_cutoff)/100
+
+  return(c(TP, FP, TN, FN))
+}
+
+#true_and_false(compdata, 0.3)
+
+for(i in 1:100){
+  if(i == 1){
+    tprate <- c(i, true_and_false(compdata, i/100))
+  }else{
+    tprate <- rbind(tprate, c(i, true_and_false(compdata, i/100)))
+  }
+}
+
+colnames(tprate) <- c("Cutoff", "TP", "FP", "TN", "FN")
+
+head(tprate)
+
+tprate %>% as.data.frame() %>% pivot_longer(-Cutoff) %>% ggplot(aes(x = Cutoff, y = value, color = name)) + geom_point() + ggtitle("Comparison of True and False Negatives and Positives")
+  
+```
+
+## Add in Recombination
+
+I want to know if I only allow the populations of one effect or the other to recombine once in each population, how many individuals I would need before I would see the loci that are contributing to a trait (without noise). I can replace one segment of my "chromosome" with 0s, but that doesn't help with the other half being in the population too. But let's try that? 
+
+```{r}
+#Recombinations occur at a Poisson rate, so it would be how many occur and where?
+
+recombine <- function(mylength){
+  zeros <- sample(x = 0:mylength, 1)
+  m0 <- c(rep(0, zeros), rep(1, mylength-zeros))
+  return(m0)
+}
+
+#ChatGPT
+num_individuals <- 100000
+matrix_result <- replicate(num_individuals, recombine(100)) #20 individuals, 100 loci
+rec_pop <- cbind(matrix_result, 1-matrix_result) #40 individuals, 100 loci
+
+rec_population <- t(rec_pop)
+```
+
+```{r}
+#Population of 1000 individuals that match
+rec_phenotype <- rec_population %*% loci_100
+
+#Which genotypes are enriched in the top 10% of the phenotype?
+rec_cutoff <- quantile(rec_phenotype, probs = 0.9) #1.297661 
+rec_selected_pop <- rec_population[rec_phenotype > rec_cutoff,]
+
+rec_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% mutate(alt = ./length(rec_selected_pop[,1]), ref = 1-alt) -> rec_selected_pop_freq
+rec_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% dim()
+
+#Run the lm() for every locus
+rec_pheno_geno <- cbind(rec_phenotype, as.data.frame(rec_population))
+
+#Run the anova() for the model
+rec_anova <- anova(lm(rec_phenotype ~ ., rec_pheno_geno))
+rec_anovass <- rec_anova$"Sum Sq"
+rec_anova_ss <- cbind(rec_anova,PctExp=rec_anovass/sum(rec_anovass)*100)
+plot(rec_anova_ss$PctExp[1:100], abs(loci_100))
+rec_anova_ss$PctExp[101]
+
+#This shows that it isn't right... and now it is :)
+plot(afss[1:100], rec_anovass[1:100],
+     main = "Percentage Variance with and without noise")
+abline(0,1)
+
+#Percentage of variance vs actual effect
+plot(abs(loci_100), afss[1:100], main = "Variance Explained by Effect Size")
+points(abs(loci_100), rec_anovass[1:100], col = "turquoise4")
+
+
+```
+
+```{r}
+bcorr <- 0.05/100
+#Plotting with noise
+plot(data.frame(effect = loci_100, absLOD = abs(log(rec_selected_pop_freq$alt/rec_selected_pop_freq$ref))), main = "Simulated Data WITH Noise", col = "turquoise")
+points(data.frame(effect = loci_100, absLOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref))), col = "black")
+
+#Distributions
+rec_compdata <- data.frame(effect = loci_100, 
+                       true_LOD = abs(log(selected_pop_freq$alt/selected_pop_freq$ref)),
+                       noise_LOD = abs(log(rec_selected_pop_freq$alt/rec_selected_pop_freq$ref)))
+
+rec_compdata %>% pivot_longer(-effect, names_to = "Type", values_to = "LOD") %>% ggplot(., aes(x = LOD, color = Type)) + geom_density() + ggtitle("Comparison of LOD Distributions")
+
+#QTL Map
+
+plot(rec_compdata$noise_LOD, col = ((rec_compdata$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(rec_compdata$noise_LOD, 0.95, na.rm = TRUE), col = "lightblue3", lwd = 2)
+abline(h = quantile(rec_compdata$noise_LOD, (1 - bcorr), na.rm = TRUE), col = "violet", lwd = 2)
+
+
+plot(rec_compdata$true_LOD, rec_compdata$noise_LOD, col = ((rec_compdata$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(rec_compdata$noise_LOD, 0.95, na.rm = TRUE), col = "lightblue3", lwd = 2)
+abline(h = quantile(rec_compdata$noise_LOD, (1 - bcorr), na.rm = TRUE), col = "violet", lwd = 2)
+
+```
+
+Why does this data look so weird?
+
+```{r}
+#check on the distributions of them in the first place
+dim(rec_population)
+
+plot(rec_population[1:1000,1])
+plot(rec_population[1:1000,50])
+plot(rec_population[1:1000,100])
+
+
+plot(rec_population[199000:200000,1])
+plot(rec_population[1:1000,1])
+```
+How does the sampling work? Maybe I should make the QTL actually have an effect....
+
+```{r}
+hist(sample(0:100, size = 1000, replace = TRUE))
+
+hist(rec_compdata$noise_LOD)
+
+plot(rec_compdata$noise_LOD, col = ((rec_compdata$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(rec_compdata$noise_LOD, 0.95), col = "lightblue3", lwd = 2)
+abline(h = quantile(rec_compdata$noise_LOD, (1 - bcorr)), col = "violet", lwd = 2)
+```
+```{r}
+#Trying this without 0s
+#Distributions
+rec_compdata_1 <- data.frame(effect = loci_100, 
+                       true_LOD = abs(log((selected_pop_freq$alt + 1)/(selected_pop_freq$ref+1))),
+                       noise_LOD = abs(log((rec_selected_pop_freq$alt +1)/(rec_selected_pop_freq$ref+1))))
+
+#Plot QTL
+plot(rec_compdata_1$noise_LOD, col = ((rec_compdata_1$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(rec_compdata_1$noise_LOD, 0.95), col = "lightblue3", lwd = 2)
+abline(h = quantile(rec_compdata_1$noise_LOD, (1 - bcorr)), col = "violet", lwd = 2)
+```
+
+## Add in two recombinations?
+
+```{r}
+#Recombinations occur at a Poisson rate, so it would be how many occur and where?
+mylength <- 100
+recombine_twice <- function(mylength){
+  zeros <- sample(x = 0:mylength, 2)
+  zs <- min(zeros)
+  zs[2] <- max(zeros)
+  m0 <- c(rep(0, zs[1]), 
+          rep(1, zs[2] - zs[1]),
+          rep(0, mylength-zs[2]))
+  return(m0)
+}
+
+#Test how often these samples have a difference > 1
+myzeros <- NA
+z1s <- NA
+z2s <- NA
+for(i in 1:1000){
+  zeros <- sample(x = 0:10, 2)
+  z1s[i] <- zeros[1]
+  z2s[i] <- zeros[2]
+  myzeros[i] <- zeros[1] - zeros[2]
+}
+hist(myzeros)
+hist(z1s)
+hist(z2s)
+
+#ChatGPT
+num_individuals <- 2000
+matrix_result <- replicate(num_individuals, recombine_twice(100)) #20 individuals, 100 loci
+rec_pop <- cbind(matrix_result, 1-matrix_result) #40 individuals, 100 loci
+
+rec2_population <- t(rec_pop)
+```
+
+Using this population
+
+```{r}
+#Population of 1000 individuals that match
+rec2_phenotype <- rec2_population %*% loci_100
+
+#Which genotypes are enriched in the top 10% of the phenotype?
+rec2_cutoff <- quantile(rec2_phenotype, probs = 0.9) #1.297661 
+rec2_selected_pop <- rec2_population[rec2_phenotype > rec2_cutoff,]
+
+rec2_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% mutate(alt = ./length(rec2_selected_pop[,1]), ref = 1-alt) -> rec2_selected_pop_freq
+rec2_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% dim()
+
+#Run the lm() for every locus
+rec2_pheno_geno <- cbind(rec2_phenotype, as.data.frame(rec2_population))
+
+#Run the anova() for the model
+rec2_anova <- anova(lm(rec2_phenotype ~ ., rec2_pheno_geno))
+rec2_anovass <- rec2_anova$"Sum Sq"
+rec2_anova_ss <- cbind(rec2_anova,PctExp=rec2_anovass/sum(rec2_anovass)*100)
+plot(rec2_anova_ss$PctExp[1:100], abs(loci_100))
+rec2_anova_ss$PctExp[101]
+
+#This shows that it isn't right... and now it is :)
+plot(afss[1:100], rec2_anovass[1:100],
+     main = "Percentage Variance with and without noise")
+abline(0,1)
+
+#THE QTL PLOT
+#Distributions
+rec2_compdata_1 <- data.frame(effect = loci_100, 
+                       true_LOD = abs(log((selected_pop_freq$alt + 1)/(selected_pop_freq$ref+1))),
+                       noise_LOD = abs(log((rec2_selected_pop_freq$alt +1)/(rec2_selected_pop_freq$ref+1))))
+
+#Plot QTL
+plot(rec2_compdata_1$noise_LOD, col = ((rec2_compdata_1$true_LOD > 0.5)+2), main = "Log Odds of 'Reads' with P-val Correction")
+abline(h = quantile(rec2_compdata_1$noise_LOD, 0.95), col = "lightblue3", lwd = 2)
+abline(h = quantile(rec2_compdata_1$noise_LOD, (1 - bcorr)), col = "violet", lwd = 2)
+```
+What the loci_100 actually look like
+
+```{r}
+plot(loci_100)
+plot(loci_100, col = loci_100+2)
+
+plot(rec2_compdata_1$noise_LOD, col = loci_100+2, main = "Log Odds of 'Reads' with P-val Correction")
+```
+## Simulate in a loop
+
+Run the entire thing in a loop and produce a bunch of different plots like the one above that show where the recombinations end up happening?
+
+```{r}
+savedata <- list()
+sims <- 10
+for(i in 1:sims){
+  num_individuals <- 200000
+  matrix_result <- replicate(num_individuals, recombine_twice(100)) #20 individuals, 100 loci
+  rec_pop <- cbind(matrix_result, 1-matrix_result) #40 individuals, 100 loci
+
+  rec2_population <- t(rec_pop)
+  
+  #Population of 1000 individuals that match
+  rec2_phenotype <- rec2_population %*% loci_100
+  
+  #Which genotypes are enriched in the top 10% of the phenotype?
+  rec2_cutoff <- quantile(rec2_phenotype, probs = 0.9) #1.297661 
+  rec2_selected_pop <- rec2_population[rec2_phenotype > rec2_cutoff,]
+  
+  rec2_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% 
+    mutate(A = .+1, R = 1 + length(rec2_selected_pop[,1]) -.) %>%
+    mutate(alt = A/length(rec2_selected_pop[,1]), ref = R/length(rec2_selected_pop[,1])) %>%
+    mutate(LOD = log(alt/ref)) -> rec2_selected_pop_freq
+
+  savedata[[i]] <- rec2_selected_pop_freq
+  if(i == 1){
+      plot(rec2_selected_pop_freq$LOD, col = loci_100+2, main = "Log Odds of 'Reads' from Recombination")
+  }else{
+    points(rec2_selected_pop_freq$LOD, col = loci_100+2)
+  }
+
+}
+
+NoNoise <- savedata
+```
+
+Let's say I wanted to add in noise too
+
+```{r}
+savedata <- list()
+sims <- 10
+for(i in 1:sims){
+  num_individuals <- 200000
+  matrix_result <- replicate(num_individuals, recombine_twice(100)) #20 individuals, 100 loci
+  rec_pop <- cbind(matrix_result, 1-matrix_result) #40 individuals, 100 loci
+
+  rec2_population <- t(rec_pop)
+  
+  #Population of 1000 individuals that match
+  rec2_phenotype <- rec2_population %*% (loci_100 + rnorm(length(loci_100),
+                                                          0,
+                                                          sd = 0.1))
+  
+  #Add noise; how much for a normally distributed chromosome of effects?
+  rec2_phenotype <- rec2_phenotype + rnorm(n = length(rec2_phenotype),
+                                           mean = 0,
+                                           sd = 1)
+  
+  #Which genotypes are enriched in the top 10% of the phenotype?
+  rec2_cutoff <- quantile(rec2_phenotype, probs = 0.9) #1.297661 
+  rec2_selected_pop <- rec2_population[rec2_phenotype > rec2_cutoff,]
+  
+  rec2_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% 
+    mutate(A = .+1, R = 1 + length(rec2_selected_pop[,1]) -.) %>%
+    mutate(alt = A/length(rec2_selected_pop[,1]), ref = R/length(rec2_selected_pop[,1])) %>%
+    mutate(LOD = log(alt/ref)) -> rec2_selected_pop_freq
+
+  savedata[[i]] <- rec2_selected_pop_freq
+  if(i == 1){
+      plot(rec2_selected_pop_freq$LOD, col = loci_100+2, ylim = c(0,3),
+           main = "Log Odds of 'Reads' from Recombination with Noise")
+  }else{
+    points(rec2_selected_pop_freq$LOD, col = loci_100+2)
+  }
+
+}
+
+
+```
+
+## Adding in correct probabilities into the recombination
+
+```{r}
+plot(loci_100, loci_100 + rnorm(length(loci_100),0,sd = 0.1))
+
+unlist(savedata)
+savedata[1]
+
+count <- sum(sapply(savedata, function(df) max(df[40,6])) == max(df[,6]))
+
+mycount <- 0
+for(i in 1:sims){
+  if(max(savedata[[i]]$LOD) == savedata[[1]]$LOD[40]){
+    mycount <- mycount+1
+  }
+}
+
+mycount
+```
+

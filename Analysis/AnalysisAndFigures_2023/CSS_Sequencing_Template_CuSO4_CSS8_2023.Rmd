@@ -1,0 +1,382 @@
+---
+title: "CSS Sequence Analysis Template"
+date: "April 2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(cybrBSA)
+
+ggplot2::theme_set(theme_light())
+
+################################################################################
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+#glm with replicates
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+################################################################################
+#Define triple replicate function
+glmfixed_rep3 <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                         HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W",
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B",
+                                          "C", "C", "C", "C", "C", "C","C", "C")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                                     HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+```
+
+# GATK Table to Data Frame
+
+```{r}
+#test
+setwd("../../../../GitHub/Sequencing/Analysis/")
+rawData = "AnalysisAndFigures_2023/Data/HVYTYDRX2.SortedCat.vcf.output.table"
+HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+#Identify the unique values besides AD/DP/GQ/PL
+gsub(".AD", "",
+     gsub(".GQ", "",
+          gsub(".DP","",
+               gsub(".PL","",
+                    colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+#i <- Samples[1]
+
+resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+  mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+  AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD", ignore.case = FALSE))
+  GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ", ignore.case = FALSE))
+  DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP", ignore.case = FALSE))
+  PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL", ignore.case = FALSE))
+  cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+  colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+
+  mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='drop') %>%
+    separate(PL, c('PL.REF','PL.ALT'), extra='drop') -> mycdf
+
+  mycdf
+}
+
+#Run without if statement
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                     "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                     CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                               "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                               "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                               "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+resultscdf %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> results
+
+
+```
+
+```{r}
+setwd("../../../../GitHub/Sequencing/Analysis/")
+
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+
+#CHANGE THIS - the dataset got moved also since it had to be rerun; most aren't in the 2023 folder
+#mydatatotest = "AnalysisAndFigures_2023/Data/HVYTYDRX2.SortedCat.vcf.output.table.temp"
+#mydatatotest = "HKTFTDRX2.SortedCat.vcf.output.table"
+
+
+#FilteredData <- cybrInputGATKTable(mydatatotest)# %>% 
+ results %>% cybrQualityFilter() %>% 
+  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) %>% 
+  na.omit() -> FilteredData
+
+#unique(FilteredData$CHROM)
+
+#Using Gsub for this
+gsub(FilteredData$Dataset, "HVYTYDRX2_n01_", "") #CHANGE THIS
+
+FilteredData %>% mutate(DShort = gsub("HVYTYDRX2_n01_", "", Dataset),
+                       DS = gsub(".fastq", "", DShort)) %>% select(-Dataset, -DShort) -> tempFilteredData
+
+tempFilteredData$Bulk <- NA
+tempFilteredData$Parent <- NA
+tempFilteredData$Rep <- NA
+tempFilteredData$Dose <- NA
+
+tempFilteredData$Bulk[grep("C", tempFilteredData$DS)] <- "CuSO4" #CHANGE THIS
+tempFilteredData$Bulk[grep("C", tempFilteredData$DS)] <- "CuSO4" #CHANGE THIS
+tempFilteredData$Bulk[grep("C", tempFilteredData$DS)] <- "CuSO4" #CHANGE THIS
+tempFilteredData$Bulk[grep("D", tempFilteredData$DS)] <- "Dilute"
+tempFilteredData$Bulk[grep("F", tempFilteredData$DS)] <- "Fluc"
+
+tempFilteredData$Rep[grep("a", tempFilteredData$DS)] <- "A"
+tempFilteredData$Rep[grep("b", tempFilteredData$DS)] <- "B"
+
+tempFilteredData$Parent[grep("O1", tempFilteredData$DS)] <- "Oak1"
+tempFilteredData$Parent[grep("W1", tempFilteredData$DS)] <- "Wine1"
+tempFilteredData$Parent[grep("O8", tempFilteredData$DS)] <- "Wine8" #reversing for which chr is PRESENT
+tempFilteredData$Parent[grep("W8", tempFilteredData$DS)] <- "Oak8" #reversing for which chr is PRESENT
+
+tempFilteredData$Dose[grep("C5", tempFilteredData$DS)] <- "C5" 
+tempFilteredData$Dose[grep("C6", tempFilteredData$DS)] <- "C6"
+
+tempFilteredData$ReadCount <- as.numeric(tempFilteredData$ReadCount)
+  
+# #THIS IGNORES REPLICATES
+tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep, Dose) %>% distinct %>% 
+ pivot_wider(names_from = c(Bulk, Parent, Rep, Dose, PAllele), values_from = ReadCount) -> cybr2Data
+
+saveRDS(cybr2Data, file = "AnalysisAndFigures_2023/Data/CuSO4_CSS8_cybr2.rds")
+
+#unique(cybr2Data$CHROM)
+#unique(tempFilteredData$DS)
+```
+
+
+Check Coverage and log(Wine/Oak) of Sequencing Run
+
+```{r}
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Dose", "Allele"), names_sep = "_") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> RawCountSummary
+```
+
+Smooth by rolling mean or median
+
+```{r}
+#Use rolling average of 100 SNPs, finding the mean
+#cybr2Data %>% cybr2_rollmean() -> rollmeanData
+
+#Find the rolling median or change n instead
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+#shows that this is missing 4 and 12
+unique(rollData$CHROM)
+```
+```{r}
+colnames(rollData)
+```
+
+Calculate GLM from rolled data: CuSO4
+
+```{r, warning=FALSE}
+#Change for different datasets
+mydata <- rollData
+
+ #Not used: CuSO4_Wine8_B_C5_Wine and CuSO4_Wine8_B_C5_Oak  
+#Run GLM - options are glmfixed_rep(), glmfixed_rep3(), and glmfixed()
+#IF NOT USING REPS, change 1:5 to 1:4, and remove "Rep" from labels
+mydata %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = CuSO4_Oak8_A_C5_Oak, 
+                           HOWa = CuSO4_Oak8_A_C5_Wine, 
+                           HWOa = CuSO4_Wine8_A_C6_Oak,
+                           HWWa = CuSO4_Wine8_A_C6_Wine,
+                           LOOa = Dilute_Oak8_A_NA_Oak, 
+                           LOWa = Dilute_Oak8_A_NA_Wine,
+                           LWOa = Dilute_Wine8_A_NA_Oak, 
+                           LWWa = Dilute_Wine8_A_NA_Wine,
+                           
+                           HOOb = CuSO4_Oak8_B_C5_Oak, 
+                           HOWb = CuSO4_Oak8_B_C5_Wine, 
+                           HWOb = CuSO4_Wine8_B_C6_Oak,
+                           HWWb = CuSO4_Wine8_B_C6_Wine,
+                           LOOb = Dilute_Oak8_B_NA_Oak,
+                           LOWb = Dilute_Oak8_B_NA_Wine,
+                           LWOb = Dilute_Wine8_B_NA_Oak, 
+                           LWWb = Dilute_Wine8_B_NA_Wine)[1:5],
+                                                   label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
+
+#saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
+saveRDS(GLMdata, file = "Data/CuSO4_CSS8_glm.rds")
+
+```
+Test C5 doses only
+
+```{r}
+
+mydata <- rollData
+
+ #Not used: CuSO4_Wine8_B_C5_Wine and CuSO4_Wine8_B_C5_Oak  
+#Run GLM - options are glmfixed_rep(), glmfixed_rep3(), and glmfixed()
+#IF NOT USING REPS, change 1:5 to 1:4, and remove "Rep" from labels
+mydata %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = CuSO4_Oak8_B_C5_Oak, 
+                           HOW = CuSO4_Oak8_B_C5_Wine, 
+                           HWO = CuSO4_Wine8_B_C5_Oak,
+                           HWW = CuSO4_Wine8_B_C5_Wine,
+                           LOO = Dilute_Oak8_B_NA_Oak,
+                           LOW = Dilute_Oak8_B_NA_Wine,
+                           LWO = Dilute_Wine8_B_NA_Oak, 
+                           LWW = Dilute_Wine8_B_NA_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> GLMdata
+
+#saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
+saveRDS(GLMdata, file = "Data/CuSO4_CSS8_C5norep_glm.rds")
+
+mydata %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed(HOO = CuSO4_Oak8_B_C5_Oak, 
+                           HOW = CuSO4_Oak8_B_C5_Wine, 
+                           HWO = CuSO4_Wine8_B_C6_Oak,
+                           HWW = CuSO4_Wine8_B_C6_Wine,
+                           LOO = Dilute_Oak8_B_NA_Oak,
+                           LOW = Dilute_Oak8_B_NA_Wine,
+                           LWO = Dilute_Wine8_B_NA_Oak, 
+                           LWW = Dilute_Wine8_B_NA_Wine)[1:4],
+                                                   label = c("intercept", "Bulk", "Parent", "Interaction")) -> GLMdata
+
+#saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
+saveRDS(GLMdata, file = "Data/CuSO4_CSS8_D2_norep_glm.rds")
+
+```
+
+Calculate GLM from rolled data: Fluconazole
+
+[25] "Fluc_Oak8_A_NA_Oak"     "Fluc_Oak8_A_NA_Wine"    "Fluc_Oak8_B_NA_Oak"     "Fluc_Oak8_B_NA_Wine"   
+[29] "Fluc_Wine8_A_NA_Oak"    "Fluc_Wine8_A_NA_Wine"   "Fluc_Wine8_B_NA_Oak"    "Fluc_Wine8_B_NA_Wine"  
+
+```{r, warning=FALSE}
+#Change for different datasets
+mydata <- rollData
+
+ #Not used: CuSO4_Wine8_B_C5_Wine and CuSO4_Wine8_B_C5_Oak  
+#Run GLM - options are glmfixed_rep(), glmfixed_rep3(), and glmfixed()
+#IF NOT USING REPS, change 1:5 to 1:4, and remove "Rep" from labels
+mydata %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glmfixed_rep(HOOa = Fluc_Oak8_A_NA_Oak, 
+                           HOWa = Fluc_Oak8_A_NA_Wine, 
+                           HWOa = Fluc_Wine8_A_NA_Oak,
+                           HWWa = Fluc_Wine8_A_NA_Wine,
+                           LOOa = Dilute_Oak8_A_NA_Oak, 
+                           LOWa = Dilute_Oak8_A_NA_Wine,
+                           LWOa = Dilute_Wine8_A_NA_Oak, 
+                           LWWa = Dilute_Wine8_A_NA_Wine,
+                           
+                           HOOb = Fluc_Oak8_B_NA_Oak, 
+                           HOWb = Fluc_Oak8_B_NA_Wine, 
+                           HWOb = Fluc_Wine8_B_NA_Oak,
+                           HWWb = Fluc_Wine8_B_NA_Wine,
+                           LOOb = Dilute_Oak8_B_NA_Oak,
+                           LOWb = Dilute_Oak8_B_NA_Wine,
+                           LWOb = Dilute_Wine8_B_NA_Oak, 
+                           LWWb = Dilute_Wine8_B_NA_Wine)[1:5],
+                                                   label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
+
+#saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
+saveRDS(GLMdata, file = "Data/Fluc_CSS8_glm.rds")
+
+```
+
+
+## Basic Plots
+
+Single GLM Plot for this Data for reference
+
+```{r}
+GLMdata %>% 
+  filter(label != "intercept", CHROM != "M") %>% 
+  
+  ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
+  
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("GLM of Data")
+
+GLMdata %>% 
+  filter(label != "intercept", CHROM != "M") %>% 
+  
+  ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line() + 
+  
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("GLM of Data")
+```
+
+Log Odds of Alleles Plot for reference
+
+```{r}
+RawCountSummary %>% 
+  filter(CHROM != "I", CHROM != "M") %>% 
+  
+  ggplot(aes(x = POS, y = logWineOak, shape = paste(Bulk, Parent, Rep, sep = "_"), color = Bulk)) + 
+  geom_point(alpha = 0.3) + 
+  
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  scale_color_manual(values = c("Violet", "Black"))
+```
+

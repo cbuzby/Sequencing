@@ -1,0 +1,189 @@
+---
+title: "CSS Sequence Analysis Template"
+date: "Jan 2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+#library(cybrBSA)
+
+#install.packages("lme4")
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+################################################################################
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+#glm with replicates
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+################################################################################
+#Define triple replicate function
+glmfixed_rep3 <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                         HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W",
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B",
+                                          "C", "C", "C", "C", "C", "C","C", "C")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                                     HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+```
+
+## I'm an idiot and CuSO4 Chr 8 is the one with weird Chr 12 so.... 
+
+```{r, fig.height=6, fig.width=6}
+Cu <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/CuSO4_CSS8_cybr2.rds")
+
+Cu %>% filter(CHROM == "XII") %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Dose", "Allele"), names_sep = "_", values_to = "Reads") %>% filter(Parent %in% c("Oak8", "Wine8"), Bulk != "Fluc") -> Cu_long
+
+
+Cu_long %>% ggplot(aes(x = POS, y = Reads, color = paste(Bulk, Parent, Dose), shape = Rep)) + geom_point(pch = 1, size = 2) +
+  ggtitle("All Flasks Raw Read Counts")+  theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = LOD, color = paste(Bulk, Parent, Dose), shape = Rep)) + geom_point(pch = 1, size = 2) +
+  ggtitle("All Flasks log(Wine/Oak)")+  theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Just plotting everything
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, LOD, Rep) %>% pivot_wider(names_from = Rep, values_from = LOD) %>% mutate(difference = abs(A - B)) %>%
+  ggplot(aes(x = POS, y = difference, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Difference in LOD between Replicates")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, LOD, Rep) %>% pivot_wider(names_from = Rep, values_from = LOD) %>% mutate(difference = abs(A - B)) %>%
+  ggplot(aes(x = POS, y = difference, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Difference in LOD between Replicates") + scale_color_manual(values = "forestgreen")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Plot coverage by Flask - doesn't look weird at all
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(TotalReads = Oak+Wine) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, TotalReads, Rep) %>%
+  ggplot(aes(x = POS, y = TotalReads, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Coverage of Oak8 C5")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Coverage by replicate? basically no difference
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(TotalReads = Oak+Wine) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, TotalReads, Rep) %>% 
+  pivot_wider(names_from = Rep, values_from = TotalReads) %>% mutate(CoverageRatio = log(A/B)) %>%
+  ggplot(aes(x = POS, y = abs(CoverageRatio), color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Ratio of A and B Replicate Coverage (abs)")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#What do the actual counts look like just within this bulk?
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Oak/Wine)) %>%
+  ggplot(aes(x = POS, y = abs(LOD), color = Rep)) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Flask Oak/Wine LODs")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Oak/Wine)) %>%
+  ggplot(aes(x = POS, y = abs(LOD), color = Rep)) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Wine8 C6 Flask Oak/Wine LODs") +  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  ggplot(aes(x = POS, y = Reads, color = paste(Rep,Allele))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Flask Reads") + scale_color_manual(values = c("firebrick", "salmon", "#014D4E", "turquoise"))+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  ggplot(aes(x = POS, y = Reads, color = paste(Rep,Allele))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Wine8 C6 Flask Reads") + scale_color_manual(values = c("firebrick", "salmon", "#014D4E", "turquoise"))+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+```
+
+
+

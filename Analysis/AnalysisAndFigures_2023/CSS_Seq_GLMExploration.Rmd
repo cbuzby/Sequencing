@@ -22,7 +22,7 @@ library(foreach)
 library(doParallel)
 library(RColorBrewer)
 
-library(cybrBSA)
+#library(cybrBSA)
 
 #install.packages("lme4")
 library(lme4)
@@ -204,6 +204,7 @@ glm_mixed_model_Fluc5_div <- function(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B
                                      F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
                                      F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
                                      F_WI_D_Oak, F_WI_D_Wine))
+  
   combineddata %>% group_by(Bulk, Parent) %>% summarize(key = factor(paste(Bulk, Parent, sep = "_"))) -> combineddata
 
   b <- glmer(Allele ~ Bulk*Parent+(1 | key/Rep), 
@@ -740,7 +741,8 @@ saveRDS(GLM_PivotW_2_VIIb, file = "GLM_PivotW_2_VIIb.rds")
 
 Plotting the only 1| Rep one
 
-```{r}
+```{rm eval = FALSE}
+GLM_PivotW_2_VIIb <- readRDS("GLM_PivotW_2_VIIb.rds")
 GLM_PivotW_2_VIIb %>% ggplot(aes(x = POS, y = E_Bulk)) + 
   geom_ribbon(aes(ymin = E_Bulk - 2*SE_Bulk, ymax = E_Bulk + 2*SE_Bulk), alpha = 0.2) + 
   geom_ribbon(aes(ymin = E_Parent - 2*SE_Parent, ymax = E_Parent + 2*SE_Parent), fill = "orchid", alpha = 0.2) +
@@ -979,7 +981,7 @@ GLMdata_test2_pivot %>% ggplot(aes(x = POS, y = E_Bulk))  + geom_ribbon(aes(ymin
 geom_line(aes(y = E_Parent), color = "orchid") + geom_line()
 ```
 
-```{r}
+```{r, eval = FALSE}
 
 rollData %>% filter(CHROM == "VII") %>% group_by(CHROM, POS) %>% 
   summarise(summary = glm_mixed_model_Fluc4_withSD(D_OI_B_Oak = Dilute_OakI_B_Oak, 
@@ -1031,7 +1033,7 @@ GLMdata_test2_7rep %>% pivot_wider(names_from = label, values_from = summary) %>
 ## Entire Genome
 
 JK just pick a couple of chromosomes
-```{r}
+```{r, eval = FALSE}
 rollData <- readRDS("Fluc_rollData.rds")
 
 rollData %>% filter(CHROM %in% c("I", "XIII", "XIV", "XV")) %>% group_by(CHROM, POS) %>% 
@@ -1268,7 +1270,11 @@ summaries_zeo <- rbind(
   data.frame(summary(d)$coefficients, formula = "D Bulk*Parent+Rep", param = rownames(summary(d)$coefficients)), # Bulk*Parent+Rep
   data.frame(summary(e)$coefficients, formula = "E Bulk*Parent, no rep included", param = rownames(summary(e)$coefficients))) # Bulk*Parent, no rep included
 
-summaries_zeo %>% ggplot(aes(y = param, x = Estimate, color = formula)) + geom_point(size = 4, alpha = 0.5) +
+newkey <- data.frame(param = unique(summaries_zeo$param),
+                     ParamKey = factor(c("Intercept", "Bulk", "Parent", "Interaction", "Rep"),
+                                       levels = c("Bulk", "Parent", "Interaction", "Rep", "Intercept")))
+
+summaries_zeo %>% merge(newkey) %>% ggplot(aes(x = ParamKey, y = abs(Estimate), color = formula)) + geom_point(size = 4, alpha = 0.5) +
   scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + ggtitle("Zeocin Chr XV POS 867041")
 
 lme4::VarCorr(a)
@@ -1316,7 +1322,678 @@ cz %>% ggplot(aes(y = Allele, x = Parent, color = Parent)) +
 #Not separating by Parent
 cz %>% ggplot(aes(y = Allele, x = Bulk, color = Parent)) + 
   geom_jitter(alpha = 0.4, width = .4, height = 0.2) +
-  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041")
+  scale_color_manual(values = c("navy", "firebrick")) + ggtitle("Zeocin Chr XV POS 867041") 
+
+color <- c("steelblue", "orchid4")
 ```
+
+
+## Making a new function that gets SD out
+
+
+```{r}
+glm_mixed_model_Fluc6_div <- function(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine){
+  
+  combineddata <- data.frame(Bulk = factor(c("L", "L","L", "L", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "H", "H","H", "H", 
+                                             "H", "H")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "O", "O",  
+                                             "O", "O", "O", "O", "O", "O", "W", "W", 
+                                             "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W")),
+                           Rep = factor(1, 1, 2,2,
+                                     3,3,4, 4,
+                                     5, 5, 6,6,
+                                     7,7,8, 8,
+                                     9, 9),
+                           Reads = c(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine))
+  
+  combineddata %>% group_by(Bulk, Parent) %>% summarize(key = factor(paste(Bulk, Parent, sep = "_"))) -> combineddata
+
+  b <- glmer(Allele ~ Bulk*Parent+(1+key | Rep), 
+             weights = Reads, family = binomial, 
+              data = combineddata)
+  
+  
+  return(c(summary(b)$coefficients[1:12], #Effects
+             as.vector(attr(lme4::VarCorr(b)$Rep,"stddev"))))
+  
+} 
+
+summary(b)$coefficients
+attr(lme4::VarCorr(b)$Rep,"stddev")
+
+
+```
+Conditions:
+1. Intercept (must be Dilute Oak)
+2. Dilute Wine
+3. Zeocin Oak
+4. Zeocin Wine
+
+So if each of those has a SD, what is the variance of the Bulk vs Parent?
+
+Bulk Zeocin
+Parent Wine
+Zeocin:Wine 
+
+Trying this again in a different way
+
+```{r}
+#
+glmer(Allele ~ Bulk*Parent+(1 | Rep/Condition), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+
+glmer(Allele ~ Bulk*Parent+(Bulk*Parent | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+glmer(Allele ~ Bulk*Parent+(Bulk | Rep) + (Parent | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+```
+## Finding multiple Zeocin datapoints that can be tested
+
+```{r}
+Zeo <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/Zeocin_cybr2.rds")
+
+Zeo %>% filter(CHROM == "XV") %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "Reads") -> Zeo_long
+
+#Figuring out where the disparity is
+Zeo_long %>% filter(POS > 8e+05 & POS < 10e+05) %>% ggplot(aes(x = POS, y = Reads, color = paste(Parent, Rep, Allele))) + geom_point()
+
+Zeo_long %>% filter(POS > 8.5e+05 & POS < 8.52e+05) %>% summarize(positions = unique(POS), cat = "HighRep") -> HighRepPositions
+
+Zeo_long %>% filter(POS > 1.25e+05 & POS < 1.3e+05) %>% summarize(positions = unique(POS), cat = "LowRep") -> LowRepPositions
+
+
+rbind(HighRepPositions, LowRepPositions) -> ZeocinRepTest
+
+Zeo_long %>% filter(POS > 8e+05 & POS < 10e+05) %>% summarize(positions = unique(POS), cat = "EndBunch") -> EndBunchPositions
+```
+
+Looking at this for the bash script
+
+```{r}
+colnames(Zeo)
+```
+
+```{r}
+for(i in 1:length(EndBunchPositions$positions)){
+  Zeo_long %>% filter(POS == EndBunchPositions$positions[i]) -> zdata
+  zdata %>% group_by(Bulk, Parent) %>% summarize(Condition = paste(Bulk, Parent, sep="_")) -> testKEYz
+
+  zdata %>% merge(testKEYz) %>% filter(Bulk != "NA") -> testzdata
+
+  testzdata$Allele <- factor(testzdata$Allele)
+  
+  c <- glmer(Allele ~ Bulk*Parent+(1 | Rep), 
+               weights = Reads, family = binomial, 
+                data = testzdata)
+  a <- glmer(Allele ~ Bulk*Parent+(1 | Condition/Rep), 
+               weights = Reads, family = binomial, 
+                data = testzdata)
+  
+  b <- glmer(Allele ~ Bulk*Parent+(1 +Condition | Rep), 
+               weights = Reads, family = binomial, 
+                data = testzdata)
+  
+  d <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, data = testzdata)
+  
+  e <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, data = testzdata)
+
+  summaries_zeo <- rbind(
+    data.frame(summary(a)$coefficients, formula = "A (1|Condition/Rep)", param = rownames(summary(a)$coefficients)), #(1|Condition/Rep)
+    data.frame(summary(b)$coefficients, formula = "B (Condition | Rep)", param = rownames(summary(b)$coefficients)), #(Condition | Rep)
+    data.frame(summary(c)$coefficients, formula = "C (1 | Rep)", param = rownames(summary(c)$coefficients)), #(1 | Rep)
+    data.frame(summary(d)$coefficients, formula = "D Bulk*Parent+Rep", param = rownames(summary(d)$coefficients)), # Bulk*Parent+Rep
+    data.frame(summary(e)$coefficients, formula = "E Bulk*Parent, no rep included", param = rownames(summary(e)$coefficients))) # Bulk*Parent, no rep included
+  
+  newkey <- data.frame(param = unique(summaries_zeo$param),
+                       ParamKey = factor(c("Intercept", "Bulk", "Parent", "Interaction", "Rep"),
+                                         levels = c("Bulk", "Parent", "Interaction", "Rep", "Intercept")))
+
+  if(i == 1){
+    output <- summaries_zeo %>% merge(newkey) %>% mutate(POS = EndBunchPositions$positions[i])
+  }else{
+    tempoutput <- summaries_zeo %>% merge(newkey) %>% mutate(POS = EndBunchPositions$positions[i])
+    output <- rbind(output, tempoutput)
+  }
+  
+}
+
+output %>% ggplot(aes(x = ParamKey, y = abs(Estimate), color = formula)) + geom_point(size = 4, alpha = 0.5) +
+  scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + theme(legend.position = "bottom")
+
+#Filter all positions by replicate effect
+output %>% filter(param == "RepB") %>% mutate(RepEffect = abs(Estimate) > 0.3) %>% select(POS, RepEffect) -> RepEffect
+
+#Plot distributions of the replicate effects
+output %>% filter(param == "RepB") %>% mutate(RepEffect = abs(Estimate) > 0.3) %>% 
+  ggplot(aes(x = abs(Estimate), color = RepEffect, y = RepEffect)) + 
+  scale_color_manual(values = c("orchid", "black")) + 
+  geom_boxplot(size = 1) + 
+  geom_boxplot(aes(x = abs(Estimate), y = "Combined"), color = "gray", linetype = "dashed", size = 1) + 
+  ggtitle("Separation of Replicate Effects")
+
+output %>% merge(RepEffect) %>% distinct() %>% ggplot(aes(x = abs(Estimate), y = Std..Error, color = formula)) + geom_point(alpha = 0.3) + facet_grid(~RepEffect)+ 
+  scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue"))
+
+output %>% merge(RepEffect) %>% distinct() %>% filter(ParamKey != "Rep") %>% ggplot(aes(x = RepEffect, y = Std..Error, color = formula)) + 
+  geom_boxplot() + 
+  scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) +
+  facet_grid(~ParamKey) + theme(legend.position = "bottom")
+```
+
+```{r}
+# output %>% merge(RepEffect) %>% ggplot(aes(x = ParamKey, y = abs(Estimate), color = formula)) + geom_point(size = 4, alpha = 0.5) +
+#   scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + theme(legend.position = "bottom") + facet_grid(~RepEffect)
+
+output %>% merge(RepEffect) %>% filter(ParamKey != "Rep") %>% ggplot(aes(x = RepEffect, y = abs(Estimate), color = formula)) + geom_boxplot(size = 1, alpha = 0.5) +
+  scale_color_manual(values = c("red", "orange", "gold", "gray", "lightblue")) + theme(legend.position = "bottom") + facet_grid(~ParamKey, scales = "free", space = "free") 
+
+output %>% merge(RepEffect) %>% 
+  filter(ParamKey %in% c("Bulk", "Parent", "Interaction")) %>% 
+  filter(formula != "D Bulk*Parent+Rep") %>% filter(formula != "E Bulk*Parent, no rep included") %>% 
+  ggplot(aes(x = ParamKey, y = abs(Estimate), color = RepEffect)) + 
+  geom_boxplot(size = 1, alpha = 0.5) +
+  scale_color_manual(values = c("orchid", "black")) + 
+  theme(legend.position = "bottom") + facet_grid(~formula, scales = "free", space = "free") +
+  ggtitle("Consequence of Rep Error (TRUE) on Effects")
+```
+## Consensus
+
+The formula 1 + Condition/Rep (red above) adds the uncertainty of the replicate to the standard error, which can then be saved for all chromosomes. Use the following function:
+
+Fluconazole model
+```{r}
+glm_mixed_model_Fluc6_div <- function(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine){
+  
+  combineddata <- data.frame(Bulk = factor(c("L", "L","L", "L", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "H", "H","H", "H", 
+                                             "H", "H")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "O", "O",  
+                                             "O", "O", "O", "O", "O", "O", "W", "W", 
+                                             "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W")),
+                           Rep = factor(1:18),
+                           Reads = c(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine))
+  
+  combineddata %>% group_by(Bulk, Parent) %>% summarize(key = factor(paste(Bulk, Parent, sep = "_"))) %>% merge(combineddata) -> combineddata
+
+  b <- glmer(Allele ~ Bulk*Parent+(1+key | Rep), 
+             weights = Reads, family = binomial, 
+              data = combineddata)
+  
+  
+  return(c(summary(b)$coefficients[1:12]))
+  
+} 
+```
+
+Zeocin model
+```{r}
+glm_mixed_model_Zeo <- function(Dilute_Oak_A_Oak, Dilute_Oak_A_Wine, Dilute_Oak_B_Oak, Dilute_Oak_B_Wine, 
+                                Zeocin_Oak_A_Oak, Zeocin_Oak_A_Wine,Zeocin_Oak_B_Oak, Zeocin_Oak_B_Wine,
+                                Dilute_Wine_A_Oak ,Dilute_Wine_A_Wine, Dilute_Wine_B_Oak, Dilute_Wine_B_Wine,
+                                Zeocin_Wine_A_Oak,Zeocin_Wine_A_Wine, Zeocin_Wine_B_Oak,Zeocin_Wine_B_Wine){
+  
+  combineddata <- data.frame(Bulk = factor(c("L", "L","L", "L", 
+                                             "H", "H","H", "H", 
+                                             "L", "L","L", "L", 
+                                             "H", "H","H", "H")),
+                           Parent = factor(c("O", "O", "O", "O", 
+                                             "O", "O", "O", "O",
+                                             "W", "W", "W", "W", 
+                                             "W", "W", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W",
+                                             "O", "W", "O", "W", 
+                                             "O", "W", "O", "W",
+                                             "O", "W", "O", "W")),
+                           Rep = factor(1:16),
+                           Reads = c(Dilute_Oak_A_Oak, Dilute_Oak_A_Wine, Dilute_Oak_B_Oak, Dilute_Oak_B_Wine, 
+                                Zeocin_Oak_A_Oak, Zeocin_Oak_A_Wine,Zeocin_Oak_B_Oak, Zeocin_Oak_B_Wine,
+                                Dilute_Wine_A_Oak ,Dilute_Wine_A_Wine, Dilute_Wine_B_Oak, Dilute_Wine_B_Wine,
+                                Zeocin_Wine_A_Oak,Zeocin_Wine_A_Wine, Zeocin_Wine_B_Oak,Zeocin_Wine_B_Wine))
+  
+  combineddata %>% group_by(Bulk, Parent) %>% summarize(key = factor(paste(Bulk, Parent, sep = "_"))) %>% merge(combineddata) -> combineddata
+
+  b <- glmer(Allele ~ Bulk*Parent+(1+key | Rep), 
+             weights = Reads, family = binomial, 
+              data = combineddata)
+  
+  
+  return(c(summary(b)$coefficients[1:12]))
+  
+} 
+
+summary(b)$coefficients[1:12]
+
+```
+
+Test this on chr XV of Zeocin and chr VII of Fluconazole
+
+```{r}
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+saveRDS(rollData, file = "Fluc_rollData.rds")
+```
+
+```{r, eval=FALSE}
+rd7 <- rollData %>% filter(CHROM == "VII")
+#Additional Testing
+D_OI_B_Oak = rd7$Dilute_OakI_B_Oak[1]
+D_OI_B_Wine = rd7$Dilute_OakI_B_Wine[1]
+D_WI_B_Oak = rd7$Dilute_WineI_B_Oak[1]
+D_WI_B_Wine = rd7$Dilute_WineI_B_Wine[1]
+D_OI_C_Oak = rd7$Dilute_WineI_C_Oak[1]
+D_OI_C_Wine = rd7$Dilute_WineI_C_Wine[1]
+D_OI_D_Oak = rd7$Dilute_WineI_D_Oak[1]
+D_OI_D_Wine = rd7$Dilute_WineI_D_Wine[1]
+F_OI_B_Oak = rd7$Fluconazole_OakI_B_Oak[1]
+F_OI_B_Wine = rd7$Fluconazole_OakI_B_Wine[1]
+F_OI_C_Oak = rd7$Fluconazole_OakI_C_Oak[1]
+F_OI_C_Wine = rd7$Fluconazole_OakI_C_Wine[1]
+F_OI_D_Oak = rd7$Fluconazole_OakI_D_Oak[1]
+F_OI_D_Wine = rd7$Fluconazole_OakI_D_Wine[1]
+F_WI_C_Oak = rd7$Fluconazole_WineI_C_Oak[1]
+F_WI_C_Wine = rd7$Fluconazole_WineI_C_Wine[1]
+F_WI_D_Oak = rd7$Fluconazole_WineI_D_Oak[1]
+F_WI_D_Wine = rd7$Fluconazole_WineI_D_Wine[1]
+
+```
+
+```{r}
+#Check how many this is
+rollData %>% filter(CHROM == "VII") %>% filter(POS < 2e5) %>% dim()
+
+#Run the function on that data (and next time, time it )
+rollData %>% filter(CHROM == "VII") %>% filter(POS < 2e5) %>% group_by(CHROM, POS) %>% 
+  summarise(summary = glm_mixed_model_Fluc6_div(D_OI_B_Oak = Dilute_OakI_B_Oak, 
+                           D_OI_B_Wine = Dilute_OakI_B_Wine, 
+                           D_WI_B_Oak = Dilute_WineI_B_Oak,
+                           D_WI_B_Wine = Dilute_WineI_B_Wine,
+                           
+                           D_OI_C_Oak = Dilute_WineI_C_Oak,
+                           D_OI_C_Wine = Dilute_WineI_C_Wine,
+                           D_OI_D_Oak = Dilute_WineI_D_Oak, 
+                           D_OI_D_Wine = Dilute_WineI_D_Wine,
+                           
+                           F_OI_B_Oak = Fluconazole_OakI_B_Oak, 
+                           F_OI_B_Wine = Fluconazole_OakI_B_Wine, 
+                           F_OI_C_Oak = Fluconazole_OakI_C_Oak,
+                           F_OI_C_Wine = Fluconazole_OakI_C_Wine,
+                           
+                           F_OI_D_Oak = Fluconazole_OakI_D_Oak,
+                           F_OI_D_Wine = Fluconazole_OakI_D_Wine,
+                           F_WI_C_Oak = Fluconazole_WineI_C_Oak, 
+                           F_WI_C_Wine = Fluconazole_WineI_C_Wine,
+                           
+                           F_WI_D_Oak = Fluconazole_WineI_D_Oak,
+                           F_WI_D_Wine = Fluconazole_WineI_D_Wine),
+                                                   label = c("E_intercept", "E_Bulk", "E_Parent", "E_Interaction",
+                                                             "SE_intercept", "SE_Bulk", "SE_Parent", "SE_Interaction",
+                                                             "Z_intercept", "Z_Bulk", "Z_Parent", "Z_Interaction")) -> GLMdata_F7
+
+GLMdata_F7 %>% pivot_wider(names_from = label, values_from = summary) -> GLM_PivotW_F7
+
+saveRDS(GLM_PivotW_F7, file = "GLM_PivotW_F7.rds")
+```
+
+```{r}
+# GLM_PivotW_F7 %>% ggplot(aes(x = POS, y = E_Bulk)) + geom_line() + geom_ribbon(aes(ymin = E_Bulk - SE_Bulk, ymax = E_Bulk + SE_Bulk, alpha = 0.2)) +
+#   geom_line(aes(x = POS, y = E_Parent), color = "violet") + 
+#   geom_ribbon(aes(ymin = E_Parent - SE_Parent, ymax = E_Parent + SE_Parent, alpha = 0.2), fill = "violet") +
+#   geom_line(aes(x = POS, y = E_Interaction), color = "lightblue") + 
+#   geom_ribbon(aes(ymin = E_Interaction - SE_Interaction, ymax = E_Interaction + SE_Interaction, alpha = 0.2), fill = "lightblue")
+
+#Look at the distribution of effects
+GLM_PivotW_F7 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Param", "Effect"), names_sep = "_") %>% 
+  filter(Effect != "intercept" & Param != "Z") %>% 
+  ggplot(aes(x = value, color = Param)) + geom_density() + facet_grid(~Effect) + xlim(-10,10)
+
+#GLM_PivotW_F7 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Param", "Effect"), names_sep = "_") %>% filter(abs(value) > 10)
+
+GLM_PivotW_F7 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Param", "Effect"), names_sep = "_") %>% 
+  pivot_wider(names_from = Param, values_from = value) %>% 
+  ggplot(aes(x = E, y = SE, color = Effect)) + 
+  geom_point(alpha = 0.5) + 
+  geom_hline(yintercept = 25, linetype = "dashed") + ggtitle("No Filter")
+
+GLM_PivotW_F7 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Param", "Effect"), names_sep = "_") %>% 
+  pivot_wider(names_from = Param, values_from = value) %>% 
+  ggplot(aes(x = E, y = SE, color = Effect)) + 
+  geom_point(alpha = 0.5) + ylim(0, 25) + ggtitle("Filter == 25")
+
+
+readRDS("C:/Users/cassa/Downloads/Fluconazole_ouput.rds")
+
+```
+
+```{r}
+#Look at the results
+GLM_PivotW_F7 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Param", "Effect"), names_sep = "_") %>% pivot_wider(names_from = Param, values_from = value) %>% filter(SE < 25 & Effect != "intercept") %>%
+  ggplot(aes(x = POS, y = abs(E)))+
+  geom_ribbon(aes(ymin = abs(E) - SE, 
+                  ymax = abs(E) + SE, 
+                  fill = Effect), alpha = 0.2) +
+  geom_line(aes(color = Effect)) + xlim(0, max(rollData$POS))+
+  ggtitle("Chr VII Fluconazole | Mixed Effect Model")
+  
+```
+## Full Model
+
+$$ y = \beta_{Bulk} + \beta_{Parent} + \beta_{Bulk*Parent} + \beta_{Day} + \epsilon_{rep} + \epsilon$$
+So this would theoretically account for each day and also each replicate _within_ days. To write this would be something like the following:
+
+```{r}
+#Pseudocode formula
+glmer(formula = Allele ~ Bulk*Parent + Day + (Day|Rep),
+      weights = ReadCounts,
+      data = mydata)
+
+```
+
+3D Plot (yet again)
+
+```{r}
+set.seed(417)
+library(plotly)
+temp <- rnorm(100, mean=30, sd=5)
+pressure <- rnorm(100)
+dtime <- 1:100
+
+plot_ly(x=temp, y=pressure, z=dtime, type="scatter3d", mode="markers", color=temp)
+
+#So let's make this for the axes of Allele (0 or 1), Bulk (0 or 1), and Parent (0 or 1) with a scatter for the number of points
+threedtest <- readRDS("Fluc_rollData.rds")
+
+threedtest %>% pivot_longer(cols = c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Replicate", "Allele"), names_sep = "_", values_to = "Reads") -> test3d
+
+mytest <- subset(test3d, POS == 38108)
+
+plot_ly(x = mytest$Bulk, z = mytest$Allele, y = mytest$Parent, size = mytest$Reads, 
+        type = "scatter3d", shape = mytest$Replicate, color = mytest$Allele)
+```
+
+```{r}
+#A different way to do this
+#devtools::install_github("AckerDWM/gg3D")
+library("gg3D")
+
+ggplot(mytest, aes(x=Bulk, y=Parent, 
+                   color=Allele, 
+                   shape=Replicate, 
+                   size = Reads)) + 
+  geom_jitter(width = .2, height = .2, alpha = 0.6) +
+  scale_color_manual(values = c("darkblue", "firebrick")) +
+  theme_classic()
+  #theme_void() +
+  #axes_3D() +
+  #stat_3D()
+```
+Another way to visualize is the log odds
+
+```{r}
+mytest2 %>% pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(logOdds = log((Wine+1)/(Oak+1))) -> mytest3
+
+ggplot(mytest3, aes(x = Bulk, y = Parent, shape = Replicate, color = logOdds)) + 
+  geom_jitter(size = 6, width = .2, height = .2) +
+scale_colour_gradient2(low = muted("blue"),
+  mid = "white",
+  high = muted("red"),
+  midpoint = 0,
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "colour"
+)
+
+```
+
+
+So to build  a model of the above:
+
+```{r}
+mytest$Bulk <- factor(mytest$Bulk)
+mytest$Parent <- factor(mytest$Parent)
+mytest$Replicate <- factor(mytest$Replicate)
+mytest$Allele <- factor(mytest$Allele)
+
+# mytest$Reads <- mytest$Reads + 1
+# mytest2$Reads <- mytest2$Reads + 1
+
+#Without including a replicate
+glm(data = mytest,
+      formula = Allele ~ Bulk*Parent, 
+      weights = Reads,
+      family = binomial)
+
+#Using Replicate as a nested variable
+glmer(data = mytest,
+      formula = Allele ~ Bulk*Parent+(1|Replicate), 
+      weights = Reads,
+      family = binomial)
+
+#Using flask as a block variable?
+#mytest %>% mutate(Flask = paste(Bulk, Parent, sep = "_")) -> mytest2
+glmer(data = mytest2,
+      formula = Allele ~ Bulk*Parent+(1|Flask), 
+      weights = Reads,
+      family = binomial)
+```
+
+## Making a new function that gets SD out
+
+
+```{r}
+glm_mixed_model_Fluc6_div <- function(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine){
+  
+  combineddata <- data.frame(Bulk = factor(c("L", "L","L", "L", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "H", "H","H", "H", 
+                                             "H", "H")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "O", "O",  
+                                             "O", "O", "O", "O", "O", "O", "W", "W", 
+                                             "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W")),
+                           Rep = factor(1, 1, 2,2,
+                                     3,3,4, 4,
+                                     5, 5, 6,6,
+                                     7,7,8, 8,
+                                     9, 9),
+                           Reads = c(D_OI_B_Oak, D_OI_B_Wine, D_WI_B_Oak,D_WI_B_Wine,
+                                     D_OI_C_Oak,D_OI_C_Wine,D_OI_D_Oak, D_OI_D_Wine,
+                                     F_OI_B_Oak, F_OI_B_Wine, F_OI_C_Oak,F_OI_C_Wine,
+                                     F_OI_D_Oak,F_OI_D_Wine,F_WI_C_Oak, F_WI_C_Wine,
+                                     F_WI_D_Oak, F_WI_D_Wine))
+  
+  combineddata %>% group_by(Bulk, Parent) %>% summarize(key = factor(paste(Bulk, Parent, sep = "_"))) -> combineddata
+
+  b <- glmer(Allele ~ Bulk*Parent+(1+key | Rep), 
+             weights = Reads, family = binomial, 
+              data = combineddata)
+  
+  
+  return(c(summary(b)$coefficients[1:12], #Effects
+             as.vector(attr(lme4::VarCorr(b)$Rep,"stddev"))))
+  
+} 
+
+summary(b)$coefficients
+attr(lme4::VarCorr(b)$Rep,"stddev")
+
+
+```
+Conditions:
+1. Intercept (must be Dilute Oak)
+2. Dilute Wine
+3. Zeocin Oak
+4. Zeocin Wine
+
+So if each of those has a SD, what is the variance of the Bulk vs Parent?
+
+Bulk Zeocin
+Parent Wine
+Zeocin:Wine 
+
+Trying this again in a different way
+
+```{r}
+#
+glmer(Allele ~ Bulk*Parent+(1 | Rep/Condition), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+
+glmer(Allele ~ Bulk*Parent+(Bulk*Parent | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+glmer(Allele ~ Bulk*Parent+(Bulk | Rep) + (Parent | Rep), 
+             weights = Reads, family = binomial, 
+              data = testzdata)
+
+```
+
+## Finding multiple Zeocin datapoints that can be tested
+
+```{r}
+Zeo <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/Zeocin_cybr2.rds")
+
+Zeo %>% filter(CHROM == "XV") %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "Reads") -> Zeo_long
+
+#Figuring out where the disparity is
+Zeo_long %>% filter(POS > 8e+05 & POS < 10e+05) %>% ggplot(aes(x = POS, y = Reads, color = paste(Parent, Rep, Allele))) + geom_point()
+
+Zeo_long %>% filter(POS > 8.5e+05 & POS < 8.52e+05) %>% summarize(positions = unique(POS), cat = "HighRep") -> HighRepPositions
+
+Zeo_long %>% filter(POS > 1.25e+05 & POS < 1.3e+05) %>% summarize(positions = unique(POS), cat = "LowRep") -> LowRepPositions
+
+
+rbind(HighRepPositions, LowRepPositions) -> ZeocinRepTest
+
+Zeo_long %>% filter(POS > 8e+05 & POS < 10e+05) %>% summarize(positions = unique(POS), cat = "EndBunch") -> EndBunchPositions
+```
+
+
+## I'm an idiot and CuSO4 Chr 8 is the one with weird Chr 12 so.... 
+
+```{r, fig.height=6, fig.width=6}
+# Cu <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/CuSO4_CSS8_cybr2.rds")
+# 
+# Cu %>% filter(CHROM == "XII") %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Dose", "Allele"), names_sep = "_", values_to = "Reads") %>% filter(Parent %in% c("Oak8", "Wine8"), Bulk != "Fluc") -> Cu_long
+# 
+
+Cu_long %>% ggplot(aes(x = POS, y = Reads, color = paste(Bulk, Parent, Dose), shape = Rep)) + geom_point(pch = 1, size = 2) +
+  ggtitle("All Flasks Raw Read Counts")+  theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = LOD, color = paste(Bulk, Parent, Dose), shape = Rep)) + geom_point(pch = 1, size = 2) +
+  ggtitle("All Flasks log(Wine/Oak)")+  theme(axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Just plotting everything
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, LOD, Rep) %>% pivot_wider(names_from = Rep, values_from = LOD) %>% mutate(difference = abs(A - B)) %>%
+  ggplot(aes(x = POS, y = difference, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Difference in LOD between Replicates")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Wine/Oak)) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, LOD, Rep) %>% pivot_wider(names_from = Rep, values_from = LOD) %>% mutate(difference = abs(A - B)) %>%
+  ggplot(aes(x = POS, y = difference, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Difference in LOD between Replicates") + scale_color_manual(values = "forestgreen")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Plot coverage by Flask - doesn't look weird at all
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(TotalReads = Oak+Wine) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, TotalReads, Rep) %>%
+  ggplot(aes(x = POS, y = TotalReads, color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Coverage of Oak8 C5")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#Coverage by replicate? basically no difference
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(TotalReads = Oak+Wine) %>%
+  select(CHROM, POS, Bulk, Parent, Dose, TotalReads, Rep) %>% 
+  pivot_wider(names_from = Rep, values_from = TotalReads) %>% mutate(CoverageRatio = log(A/B)) %>%
+  ggplot(aes(x = POS, y = abs(CoverageRatio), color = paste(Bulk, Parent, Dose))) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Ratio of A and B Replicate Coverage (abs)")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+#What do the actual counts look like just within this bulk?
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Oak/Wine)) %>%
+  ggplot(aes(x = POS, y = abs(LOD), color = Rep)) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Flask Oak/Wine LODs")+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(LOD = log(Oak/Wine)) %>%
+  ggplot(aes(x = POS, y = abs(LOD), color = Rep)) + geom_point(pch = 1, size = 2)+ geom_vline(xintercept = 5.6e5) +
+  ggtitle("Wine8 C6 Flask Oak/Wine LODs") +  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Oak8", Dose == "C5") %>%
+  ggplot(aes(x = POS, y = Reads, color = paste(Rep,Allele))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Oak8 C5 Flask Reads") + scale_color_manual(values = c("firebrick", "salmon", "#014D4E", "turquoise"))+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+
+Cu_long %>% filter(Bulk == "CuSO4", Parent == "Wine8", Dose == "C6") %>%
+  ggplot(aes(x = POS, y = Reads, color = paste(Rep,Allele))) + geom_point(pch = 1, size = 2) + geom_vline(xintercept = 5.6e5) +
+  ggtitle("Wine8 C6 Flask Reads") + scale_color_manual(values = c("firebrick", "salmon", "#014D4E", "turquoise"))+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank())
+
+
+```
+
 
 
