@@ -1,0 +1,227 @@
+---
+title: "GLM CB Functions and Use"
+author: "Cassandra Buzby"
+date: "2023-06-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(reshape2)
+require(data.table)
+require(dplyr)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) + theme(legend.position = "bottom", 
+                                                                                 axis.text.x=element_blank(),
+                                                                                 axis.ticks.x=element_blank()))
+```
+
+## Summary
+
+### Sample Data
+
+Our experiment uses Bulk Segregant Analysis (BSA) to identify differences in allele frequencies between a selected and unselected bulk in a cross between two strains of yeast, one derived from an Oak tree ("Oak") and one dervied from a wine barrel ("Wine"). This data looks at S cerevisiae strains that have been grown in Copper Sulfate ("CuSO4") or YPD media ("Dilute") over 24 hours. The "Bulk" column indicates in which of these two conditions the population was grown. The "Parent" column indicates parental background, which in our case is a fixed chromosome I from either an Oak or Wine parent. "Rep" indicates replicate days, and Allele indicates the count for the number of reads aligning to the Oak or the Wine parent. The POS are all of the positions in which these two strains diverge, ie SNPs between Oak and Wine parents. We want to know the interaction between our fixed parental chromosome and the selection, and so we look for the Bulk x Parent effect for this.
+
+### Scripts Overview
+These scripts use the *dplyr* and *reshape2* packages to parallelize a logistic regression using glm(). Rolling the data requires the *data.table* package for frollapply(). 
+
+The glm() function is built in to R, and performs linear regression as a default. Here we use its logistic regression function by setting family to Binomial. Because our data are in read counts per position, we use weights = ReadCount. Our formula here is thus:
+
+$$log(Allele) \sim Bulk + Parent + Bulk \times Parent + Replicate$$ 
+
+For a simple logistic regression, where there is only one factor and replicates, one could use a formula such as: 
+
+$$log(Allele) \sim Effect + Replicate$$ 
+
+These functions cannot be used for mixed models due to the decreased speed.  
+
+## Load glm_cb() Function
+
+```{r}
+#W is required if using a logistic regression with weights
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.75))])
+  
+}
+```
+
+## Setup
+
+Load in data and smooth (pre-smoothed data can also be used)
+
+```{r}
+#Load data with chromosome, position, and identities of groups as the basis of regression, as well as a count column for weights
+sampledata <- readRDS("mysampledata.rds")
+
+head(sampledata)
+```
+
+```{r}
+
+#Smooth data within 200 SNP windows
+sampledata %>% 
+  pivot_wider(names_from = c(Bulk, Parent, Rep, Allele), values_from = ReadCount) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% 
+  #ensure that these are ordered by position for smoothing
+  arrange(POS) %>% 
+  #run frollapply() on each position
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE FOR DIFFERENT SMOOTHING FUNCTIONS
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) %>%
+  pivot_longer(-c(CHROM, POS), 
+               names_to = c("Bulk", "Parent", "Rep", "Allele"),
+               names_sep = "_",
+               values_to = "ReadCount") -> rollsampledata
+  
+
+#Ensure that all categorical columns are encoded as factors
+rollsampledata %>% mutate_if(is.character, as.factor) -> rollsampledata
+
+head(rollsampledata)
+
+```
+
+Define labels and coefficients on a subset
+
+```{r}
+#Define the function outputs on the first POSITION that you have
+samplesubset <- rollsampledata %>% filter(CHROM == "I", POS == 34991)
+
+#Define the formula based on your specific column names
+myformula <- "Allele ~ Bulk*Parent+Rep"
+
+#Run the glm
+glm_fit <- glm(formula = as.formula(myformula), 
+               data = as.data.frame(samplesubset), 
+               weights = ReadCount, #this should be the column which has your reads or numeric data
+               family = binomial)
+
+#View the glm of your first position
+summary(glm_fit)
+
+#Set your labels to be those of your output
+mycoefficients <- names(glm_fit$coefficients) #change the data to just the first group of your input data
+
+```
+
+To understand the function, you can run it on just the first position
+
+```{r}
+testsubset <- glm_cb(Allele = samplesubset$Allele,
+       Bulk = samplesubset$Bulk,
+       Parent = samplesubset$Parent,
+       Rep = samplesubset$Rep,
+       W = samplesubset$ReadCount,
+       formula = myformula)
+
+testsubset
+```
+
+
+Test the glm_cb() function on this subset
+
+```{r}
+samplesubset %>% 
+  #this is how you can parallellize with more positions
+  group_by(CHROM, POS) %>% 
+  #reframe() is the newer version of summarize()
+  reframe(GLMResult = glm_cb(formula = myformula, W = ReadCount,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            coefficient = rep(mycoefficients, 3),
+            label = c(rep("Effect", length(mycoefficients)),
+                      rep("SE", length(mycoefficients)),
+                      rep("Zscore", length(mycoefficients)))) -> glm_subset
+
+#Output is a summary by position, which can be pivoted to give each effect as a different column
+head(glm_subset)
+glm_subset %>% pivot_wider(names_from = label, values_from = GLMResult) -> glm_subset_pivot
+
+#The final result of your first position
+head(glm_subset_pivot)
+  
+```
+
+## Run the GLM function with your saved coefficient and formula
+
+This example uses rollsampledata rather than sampledata for the glm, but since they are in the same format, both will work.
+
+```{r}
+rollsampledata %>% 
+  #subsetting for time; this line can be removed if you want to see the whole genome
+  filter(CHROM %in% c("V", "VI", "VII", "VIII")) %>% 
+  #this is how you can parallellize with more positions
+  group_by(CHROM, POS) %>% 
+  #reframe() is the newer version of summarize()
+  reframe(GLMResult = glm_cb(formula = myformula, W = ReadCount,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            coefficient = rep(mycoefficients, 3),
+            label = c(rep("Effect", length(mycoefficients)),
+                      rep("SE", length(mycoefficients)),
+                      rep("Zscore", length(mycoefficients)))) -> glm_fulldataset
+
+glm_fulldataset %>% pivot_wider(names_from = label, values_from = GLMResult) -> glm_data_pivot
+
+head(glm_data_pivot)
+```
+
+## Plot Data to Visualize
+
+These plots show the direction of the glm effects, but I tend to plot them as abs(Effect) or abs(Zscore) in my posters and presentations. I also take out the Intercept effect for each of these, but if you are interested in that effect, remove the filter().
+
+```{r}
+#Z-Scores
+glm_data_pivot %>% filter(coefficient != "(Intercept)") %>% 
+  ggplot() + 
+  geom_line(aes(x = POS, y = Zscore, color = coefficient)) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+#Effects with Confidence Intervals
+glm_data_pivot %>% filter(coefficient != "(Intercept)") %>% 
+  ggplot() + 
+  geom_ribbon(aes(x = POS, ymin=Effect-(2*SE), ymax=Effect + (2*SE), fill = coefficient), alpha = 0.3) +
+  geom_line(aes(x = POS, y = Effect, color = coefficient)) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+```
+
+Using absolute values and renaming effects
+
+```{r}
+glm_data_pivot %>% mutate(coefficient = case_when(
+    coefficient == "BulkDilute" ~ "Bulk",
+    coefficient == "ParentWine" ~ "Parent",
+    coefficient == "BulkDilute:ParentWine" ~ "Interaction",
+    coefficient == "(Intercept)" ~ "Intercept",
+    coefficient == "RepB" ~ "Replicate",
+    TRUE ~ coefficient  # Keep other values unchanged
+  )) -> glm_data_pivot_renamed
+
+glm_data_pivot_renamed %>% ggplot() + 
+  geom_line(aes(x = POS, y = abs(Zscore), color = coefficient)) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "purple", "gray", "lightblue", "orange"))
+```
+

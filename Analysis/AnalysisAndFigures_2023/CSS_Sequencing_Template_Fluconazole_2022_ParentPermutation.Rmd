@@ -232,75 +232,20 @@ glmfixed_permute <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
 
 ```{r}
 rollData %>% head(1) %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% 
-  pivot_wider(names_from = Allele, values_from = value) %>% mutate(NewRep = c(LETTERS[1:9])) %>% 
-  group_by(Bulk) %>% mutate(NewParent = sample(Parent)) %>%  
+  pivot_wider(names_from = Allele, values_from = value) %>% #mutate(NewRep = c(LETTERS[1:9])) %>% 
+  group_by(Bulk, Rep) %>% mutate(NewParent = sample(Parent)) %>%  
   select(-Parent, -Rep) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele") %>%
-  pivot_wider(names_from = c(Bulk, NewParent, NewRep, Allele), values_from = value) -> permutationcolumns
+  pivot_wider(names_from = c(Bulk, NewParent, Rep, Allele), values_from = value) -> permutationcolumns
 
 mydata <- rollData
 colnames(mydata) <- colnames(permutationcolumns)
 
 ```
 
-New function to just use the names of the columns; runs a LOT slower than it used to, but it's probably fine...?
 
-```{r}
-#First, define the inside of the function to make sure it works
-data = mydata[1,]
-columns = 4
-
-#Copy paste inside of the function (between the ### lines)
-data %>% pivot_longer(-c(CHROM, POS), 
-                        names_to = c(LETTERS[1:columns]), 
-                        names_sep = "_") %>% 
-    mutate_if(is.character, as.factor) -> newdata
-  
-result <- glm(formula = as.formula(paste0("D ~ A*B+", LETTERS[3:(columns-1)])), 
-      data = newdata, 
-      weights = value, 
-      family = binomial)
-
-#Run this part to make sure that you know what the labels and the stats should be
-label = rep(names(result$coefficients),3)
-stat = colnames(summary(result)$coefficients)[1:3]
-
-```
-
-
-```{r}
-
-glm_flex <- function(data, # = mydata[1,], 
-                     columns = 4){
-  ##############################################################################
-  data %>% pivot_longer(-c(CHROM, POS), 
-                        names_to = c(LETTERS[1:columns]), 
-                        names_sep = "_") %>% 
-    mutate_if(is.character, as.factor) -> newdata
-  
-  result <- glm(formula = as.formula(paste0("D ~ A*B+", LETTERS[3:(columns-1)])), 
-        data = newdata, 
-        weights = value, 
-        family = binomial)
-  ##############################################################################
-  
-  return(summary(result)$coefficients[1:(length(summary(result)$coefficients)*0.75)])
-  
-  #for knowing the column names run this once and print
-  #label = rep(names(result$coefficients),3)
-  #stat = colnames(summary(result)$coefficients)[1:3]
-}
-
-mydata %>% filter(CHROM == "II") %>% head(10) %>% group_by(CHROM, POS) %>% summarize(summary = glm_flex(.),
-                                                     label = rep(names(result$coefficients),3),
-                                                     stat = c(rep("Estimate", length(names(result$coefficients))),
-                                                              rep("SE",  length(names(result$coefficients))),
-                                                              rep("ZScore", length(names(result$coefficients))))
-) -> glmflexresults_test
-
+Old script created:
 saveRDS(glmflexresults_II, file = "Fluc_glmflexresults_II.rds")
-```
-
 
 ## New Functions with a different format perhaps
 
@@ -385,7 +330,7 @@ mydatap %>% group_by(CHROM, POS) %>% summarize(summary = glmflex_p(Bulk, Parent,
                                                        rep("Zscore", 6)),
                                              coefficients = rep(mycoefficients, 3)) -> flex_glm_output
 
-saveRDS(flex_glm_output, file = "flex_glm_output_Fluc.rds")
+#saveRDS(flex_glm_output, file = "flex_glm_output_Fluc.rds")
 
 ```
 
@@ -395,6 +340,7 @@ Checking the plot
 flex_glm_output %>% pivot_wider(names_from = label, values_from = summary) %>% filter(coefficients != "(Intercept)", CHROM != "I") %>%
   ggplot(aes(x = POS, y = Effect, color = coefficients)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 ```
+
 Let's try actually changing the formulas to whatever we want...
 
 ```{r}
@@ -406,46 +352,46 @@ glmflex_p(Bulk = datap$Bulk, Parent = datap$Parent, Rep = datap$Rep, Allele = da
           W = datap$value, 
           myformula = "Allele ~ Bulk*Parent + Rep")
 ```
+
 ## Permutations
 
 Now that we have a formula that actually works, let's do the permutation part
 
 ```{r}
 rollData %>% head(1) %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% 
-  pivot_wider(names_from = Allele, values_from = value) %>% mutate(NewRep = c(LETTERS[1:9])) %>% 
-  group_by(Bulk) %>% mutate(NewParent = sample(Parent)) %>%  
+  pivot_wider(names_from = Allele, values_from = value) %>% #mutate(NewRep = c(LETTERS[1:9])) %>% 
+  group_by(Bulk, Rep) %>% mutate(NewParent = sample(Parent)) %>%  
   select(-Parent, -Rep) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele") %>%
-  pivot_wider(names_from = c(Bulk, NewParent, NewRep, Allele), values_from = value) -> permutationcolumns
+  pivot_wider(names_from = c(Bulk, NewParent, Rep, Allele), values_from = value) -> permutationcolumns
 
-mydata <- rollData
-colnames(mydata) <- colnames(permutationcolumns)
+permuteddata <- rollData
+colnames(permuteddata) <- colnames(permutationcolumns)
+
+
+permuteddata %>%pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% mutate_if(is.character, as.factor) -> permuted_md
 
 #Run the original thing
 myformula = "Allele ~ Bulk * Parent + Rep"
 mycoefficients <- rownames(summary(glm(as.formula(myformula), 
                              weights = W, family = binomial, 
-                             data = subset(md, CHROM == "I" & POS == 36313)))$coefficients) #change the data to just the first group of your input data
+                             data = subset(permuted_md, CHROM == "I" & POS == permuted_md$POS[1])))$coefficients) #change the data to just the first group of your input data
 
-glm_fit<-summary((glm(as.formula(myformula), 
-                             weights = W, family = binomial, 
-                             data = subset(md, CHROM == "I" & POS == 36313))))
 
 #Summarize
-mydata %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% mutate_if(is.character, as.factor) -> md
 
-md %>% filter(CHROM == "I" & POS == 36313) %>%  group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
-                                                             formula = "Allele ~ Bulk * Parent + Rep"),
-                                             label = c(rep("Effect", length(mycoefficients)),
-                                                       rep("SE", length(mycoefficients)),
-                                                       rep("Zscore", length(mycoefficients))),
-                                             coefficients = rep(mycoefficients, 3))
-
-md %>% filter(CHROM == "I" & POS == 36313) %>%  group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
-                                                             formula = "Allele ~ Bulk * Parent + Rep"))
+# permuted_md %>% filter(CHROM == "I" & POS == 36313) %>%  group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
+#                                                              formula = "Allele ~ Bulk * Parent + Rep"),
+#                                              label = c(rep("Effect", length(mycoefficients)),
+#                                                        rep("SE", length(mycoefficients)),
+#                                                        rep("Zscore", length(mycoefficients))),
+#                                              coefficients = rep(mycoefficients, 3))
+# 
+# md %>% filter(CHROM == "I" & POS == 36313) %>%  group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
+#                                                              formula = "Allele ~ Bulk * Parent + Rep"))
 
 #OKAY NOW READY TO RUN THE WHOLE THING
-mydata %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% mutate_if(is.character, as.factor) %>%
+permuted_md %>% mutate_if(is.character, as.factor) %>%
   group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
                                                              formula = "Allele ~ Bulk * Parent + Rep"),
                                              label = c(rep("Effect", length(mycoefficients)),
@@ -453,10 +399,74 @@ mydata %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "A
                                                        rep("Zscore", length(mycoefficients))),
                                              coefficients = rep(mycoefficients, 3)) -> testpermutation
 
-saveRDS(testpermutation, file = "testperm_fluc.RDS")
+#saveRDS(testpermutation, file = "testperm_fluc.RDS")
 
 testpermutation %>% pivot_wider(names_from = label, values_from = summary) %>% filter(coefficients != "(Intercept)", CHROM != "I") %>%
   ggplot(aes(x = POS, y = Effect, color = coefficients)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+
+```
+rUN THIS AGAIN
+```{r}
+rollData %>% head(1) %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% 
+  pivot_wider(names_from = Allele, values_from = value) %>% #mutate(NewRep = c(LETTERS[1:9])) %>% 
+  group_by(Bulk, Rep) %>% 
+  #SAMPLING STEP:
+  mutate(NewParent = sample(Parent)) %>%  
+  select(-Parent, -Rep) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele") %>%
+  pivot_wider(names_from = c(Bulk, NewParent, Rep, Allele), values_from = value) -> permutationcolumns
+
+permuteddata <- rollData
+colnames(permuteddata) <- colnames(permutationcolumns)
+
+
+permuteddata %>%pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% mutate_if(is.character, as.factor) -> permuted_md
+
+#Run the original thing
+myformula = "Allele ~ Bulk * Parent + Rep"
+mycoefficients <- rownames(summary(glm(as.formula(myformula), 
+                             weights = W, family = binomial, 
+                             data = subset(permuted_md, CHROM == "I" & POS == permuted_md$POS[1])))$coefficients) #change the data to just the first group of your input data
+
+
+#OKAY NOW READY TO RUN THE WHOLE THING
+permuted_md %>% mutate_if(is.character, as.factor) %>%
+  group_by(CHROM, POS) %>% summarize(summary = myglm(Bulk = Bulk, Parent = Parent, Rep = Rep, Allele = Allele, W = value,
+                                                             formula = "Allele ~ Bulk * Parent + Rep"),
+                                             label = c(rep("Effect", length(mycoefficients)),
+                                                       rep("SE", length(mycoefficients)),
+                                                       rep("Zscore", length(mycoefficients))),
+                                             coefficients = rep(mycoefficients, 3)) -> testpermutation3
+```
+
+Original Data
+
+```{r}
+flex_glm_output %>% pivot_wider(names_from = label, values_from = summary) %>% filter(coefficients != "(Intercept)", CHROM != "I") %>%
+  ggplot(aes(x = POS, y = Effect, color = coefficients)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+```
+
+Compare the different ones
+
+```{r}
+testpermutation3 %>% mutate(dataset = "Permuted3") -> tp3
+testpermutation2 %>% mutate(dataset = "Permuted2") -> tp2
+testpermutation %>% mutate(dataset = "Permuted") -> tp
+flex_glm_output %>% mutate(dataset = "Original") -> fp
+
+rbind(tp2, tp3, tp, fp) %>% 
+  filter((coefficients == "BulkFluconazole:ParentWineI" | coefficients == "BFluconazole:PWineI"), CHROM != "I", CHROM != "M", label == "Effect") %>% 
+  ggplot(aes(x = POS, y = summary, color = dataset)) + geom_line(alpha = 0.4) + facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "lightblue", "lightpink", "orchid"))
+
+rbind(tp2, tp3, tp, fp) %>% filter(CHROM == "VII") %>%
+  filter((coefficients == "BulkFluconazole:ParentWineI" | coefficients == "BFluconazole:PWineI"), CHROM != "I", CHROM != "M", label == "Effect") %>% 
+  ggplot(aes(x = POS, y = summary, color = dataset)) + geom_line(alpha = 0.4) + facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "lightblue", "lightpink", "orchid")) 
+
+```
+
+```{r}
 
 ```
 
