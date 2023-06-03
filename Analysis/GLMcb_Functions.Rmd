@@ -2,7 +2,9 @@
 title: "GLM CB Functions and Use"
 author: "Cassandra Buzby"
 date: "2023-06-03"
-output: html_document
+output: 
+  html_document:
+    code_folding: show
 ---
 
 ```{r setup, include=FALSE}
@@ -33,15 +35,15 @@ The glm() function is built in to R, and performs linear regression as a default
 
 $$log(Allele) \sim Bulk + Parent + Bulk \times Parent + Replicate$$ 
 
-For a simple logistic regression, where there is only one factor and replicates, one could use a formula such as: 
+For a classic BSA run, where there is only the difference between bulks, one could use the following simple logistic regression: 
 
-$$log(Allele) \sim Effect + Replicate$$ 
+$$log(Allele) \sim Bulk$$ 
 
 These functions cannot be used for mixed models due to the decreased speed.  
 
 ## Load glm_cb() Function
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 #W is required if using a logistic regression with weights
 glm_cb <- function(..., W, formula) {
   data <- list(...)
@@ -70,14 +72,14 @@ glm_cb <- function(..., W, formula) {
 
 Load in data and smooth (pre-smoothed data can also be used)
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 #Load data with chromosome, position, and identities of groups as the basis of regression, as well as a count column for weights
 sampledata <- readRDS("mysampledata.rds")
 
 head(sampledata)
 ```
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 
 #Smooth data within 200 SNP windows
 sampledata %>% 
@@ -107,7 +109,7 @@ head(rollsampledata)
 
 Define labels and coefficients on a subset
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #Define the function outputs on the first POSITION that you have
 samplesubset <- rollsampledata %>% filter(CHROM == "I", POS == 34991)
 
@@ -130,7 +132,7 @@ mycoefficients <- names(glm_fit$coefficients) #change the data to just the first
 
 To understand the function, you can run it on just the first position
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 testsubset <- glm_cb(Allele = samplesubset$Allele,
        Bulk = samplesubset$Bulk,
        Parent = samplesubset$Parent,
@@ -144,7 +146,7 @@ testsubset
 
 Test the glm_cb() function on this subset
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 samplesubset %>% 
   #this is how you can parallellize with more positions
   group_by(CHROM, POS) %>% 
@@ -169,7 +171,7 @@ head(glm_subset_pivot)
 
 This example uses rollsampledata rather than sampledata for the glm, but since they are in the same format, both will work.
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 rollsampledata %>% 
   #subsetting for time; this line can be removed if you want to see the whole genome
   filter(CHROM %in% c("V", "VI", "VII", "VIII")) %>% 
@@ -192,7 +194,7 @@ head(glm_data_pivot)
 
 These plots show the direction of the glm effects, but I tend to plot them as abs(Effect) or abs(Zscore) in my posters and presentations. I also take out the Intercept effect for each of these, but if you are interested in that effect, remove the filter().
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 #Z-Scores
 glm_data_pivot %>% filter(coefficient != "(Intercept)") %>% 
   ggplot() + 
@@ -207,9 +209,9 @@ glm_data_pivot %>% filter(coefficient != "(Intercept)") %>%
   facet_grid(~CHROM, scales = "free", space = "free")
 ```
 
-Using absolute values and renaming effects
+Using absolute values and renaming effects can be done as shown:
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 glm_data_pivot %>% mutate(coefficient = case_when(
     coefficient == "BulkDilute" ~ "Bulk",
     coefficient == "ParentWine" ~ "Parent",
