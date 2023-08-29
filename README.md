@@ -1,5 +1,7 @@
 # Sequencing
- Sequencing pipelines for Chromosome Substitution BSA analysis. Reads must be aligned to reference and then variants called through GATK ```haplotypecaller``` before analyzing variants using QTLSeqR. Both CB_Pipeline and Analysis folders are used here. ```NZ_CB_Pipeline``` is obsolete.
+UPDATE: pipeline now uses Nextflow, READ.ME for which is in Nextflow_Pipeline/
+
+Sequencing pipelines for Chromosome Substitution BSA analysis. Reads must be aligned to reference and then variants called through GATK ```haplotypecaller``` before analyzing variants using QTLSeqR. Both CB_Pipeline and Analysis folders are used here. ```NZ_CB_Pipeline``` is obsolete.
 
 ## Pipelines
 1. NZ: Adjusted from Naomi Ziv's 2017 published pipeline using samtools
