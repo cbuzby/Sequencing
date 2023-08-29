@@ -84,6 +84,7 @@ ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
 
 #ChromosomeScale$CHROM
 
+
 ```
 
 # Initial Scripts
@@ -648,7 +649,7 @@ CuSO4_glm2 %>% rbind(ChromosomeScale) %>%
     ylab("") + xlab("")+ ggtitle("")+
   facet_grid(~CHROM, scales = "free", space = "free")  + 
   scale_color_manual(values = c("red","gray",  "black","turquoise")) + 
-  theme(legend.position = "none", axis.text.x=element_blank(),
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
             axis.ticks.x=element_blank()) 
 ```
 
@@ -1830,5 +1831,20 @@ workableCycZeo %>% filter(CHROM != "I", CHROM != "M") %>% ggplot(aes(x = POS, y 
   geom_line() + 
   facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Cycloheximide (NA) and Zeocin log(Wine/Oak)")
 
+```
+
+```{r}
+#R HELP ON GGPLOT
+
+colnames(workableCycZeo)
+
+head(workableCycZeo)
+
+
+
+for(i in c("Oak", "Wine", "LOD")){
+  plot <- ggplot(workableCycZeo, aes(x = POS, y = workableCycZeo[[i]])) + geom_point()
+  print(plot)
+}
 ```
 

@@ -1,0 +1,1285 @@
+---
+title: "Sim"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+library(dplyr)
+library(RColorBrewer)
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+```
+
+
+## Convince yourself that a glm() will balance bulk sizes
+
+One of the issues of the BSA experiment is variation in the number of reads per bulk, and what the confidence intervals are around those values. Let's simulate several bulk sizes of 50/50 reads, and then 20/80 reads.
+
+```{r}
+#Experiment 1: coverage of 100 reads, everything is exactly the same
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = c(50,50,50,50),
+                    Wine = c(50,50,50,50)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+
+```{r}
+#Experiment 2: coverage of 100 or 50 reads, everything is exactly the same
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = c(50,25,50,50),
+                    Wine = c(50,25,50,50)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+```{r}
+#Experiment 3: Need to actually simulate the reads, so that it has variation
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = rnorm(4, mean = 50, sd = 1),
+                    Wine = rnorm(4, mean = 50, sd = 1)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+sdata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) +
+  ylim(0, 0.1)
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+
+```{r}
+#Experiment 3: Need to actually simulate the reads, so that it has variation
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = rnorm(4, mean = 100, sd = 1),
+                    Wine = rnorm(4, mean = 100, sd = 1)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+sdata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) +
+  ylim(0, 0.1)
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+
+```{r}
+#Experiment 3: Need to actually simulate the reads, so that it has variation
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = rnorm(4, mean = 500, sd = 1),
+                    Wine = rnorm(4, mean = 500, sd = 1)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+sdata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) +
+  ylim(0, 0.1)
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+
+```{r}
+#Experiment 3: Need to actually simulate the reads, so that it has variation
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = rnorm(4, mean = 1000, sd = 1),
+                    Wine = rnorm(4, mean = 1000, sd = 1)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+sdata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) +
+  ylim(0, 0.1)
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+```
+## What is the variation like in the actual data?
+
+```{r}
+cybr2Data <- readRDS("Data/Fluconazole_1_cybr2.rds")
+
+#First look at the variation in coverage for each
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"),
+                           names_sep = "_",
+                           values_to = "Reads") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(TotalReads = Oak+Wine) -> cybr2Totals
+  
+#Only looking at TotalReads
+cybr2Totals %>% filter(CHROM != "M") %>% select(-Oak, -Wine) %>% 
+  pivot_wider(names_from = c(Bulk, Parent, Rep), values_from = TotalReads) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median)),
+            SD = frollapply(value, n = 200, FUN = sd)) -> cybr2_froll
+
+cybr2_froll %>% ggplot(aes(x = POS, y = SmoothCount, color = label)) + geom_line() + facet_grid(~CHROM, space = "free", scales = "free")+
+  scale_color_manual(values = c("lightblue", "lightpink", "lightgreen", "papayawhip",
+                                "navy", "darkred", "darkgreen", "purple4", "black"))
+
+cybr2_froll %>% ggplot(aes(x = POS, y = SD, color = label)) + geom_line() + facet_grid(~CHROM, space = "free", scales = "free")+
+  scale_color_manual(values = c("lightblue", "lightpink", "lightgreen", "papayawhip",
+                                "navy", "darkred", "darkgreen", "purple4", "black"))
+
+cybr2_froll %>% filter(CHROM != "I") %>% ggplot(aes(x = SD, y = SmoothCount, color = label)) + geom_point(alpha = 0.2) +
+  scale_color_manual(values = c("lightblue", "lightpink", "lightgreen", "papayawhip",
+                                "navy", "darkred", "darkgreen", "purple4", "black"))
+
+```
+
+LogRatios of Wine and Oak as well, and separating counts by this
+
+```{r}
+#Looking at logRatios
+cybr2Totals %>% filter(CHROM != "M") %>% select(-TotalReads, -Wine) %>% 
+  pivot_wider(names_from = c(Bulk, Parent, Rep), values_from = Oak) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount_Oak = ceiling(frollapply(value, n = 200, FUN = median)),
+            SD_Oak = frollapply(value, n = 200, FUN = sd)) -> cybr2_froll_Oak
+
+cybr2Totals %>% filter(CHROM != "M") %>% select(-TotalReads, -Oak) %>% 
+  pivot_wider(names_from = c(Bulk, Parent, Rep), values_from = Wine) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount_Wine = ceiling(frollapply(value, n = 200, FUN = median)),
+            SD_Wine = frollapply(value, n = 200, FUN = sd)) -> cybr2_froll_Wine
+
+merge(cybr2_froll, cybr2_froll_Oak) %>% merge(cybr2_froll_Wine) -> All_froll
+
+
+
+All_froll %>% ggplot(aes(x = POS, y = SmoothCount, color = label)) + geom_line() + 
+  geom_point(aes(x = POS, y = SmoothCount_Oak), color = "skyblue", alpha = 0.2) +
+  geom_point(aes(x = POS, y = SmoothCount_Wine), color = "darkred", alpha = 0.2) +
+  facet_grid(~CHROM, space = "free", scales = "free")
+
+All_froll %>% filter(CHROM != "I") %>% 
+  mutate(logR = log(SmoothCount_Wine/SmoothCount_Oak)) %>%
+  ggplot() + 
+  geom_point(aes(x = SD, y = abs(logR)), alpha = 0.2) +
+  facet_wrap(facets = "CHROM")
+
+All_froll %>% filter(CHROM != "I") %>% 
+  mutate(logR = log(SmoothCount_Wine/SmoothCount_Oak)) %>%
+  ggplot() + 
+  geom_point(aes(x = SmoothCount, y = abs(logR), color = CHROM), alpha = 0.2)
+
+```
+
+Looking at all of these together
+
+```{r}
+colnames(cybr2_froll_Oak) <- colnames(cybr2_froll)
+colnames(cybr2_froll_Wine) <- colnames(cybr2_froll)
+
+rbind(data.frame(cybr2_froll, Subset = "Total"),
+      data.frame(cybr2_froll_Oak, Subset = "Oak"),
+      data.frame(cybr2_froll_Wine, Subset = "Wine")) -> All_froll_rbind
+
+sdlm_oak <- lm(SD ~ SmoothCount, data = All_froll_rbind, subset = Subset == "Oak")
+sdlm_wine <- lm(SD ~ SmoothCount, data = All_froll_rbind, subset = Subset == "Wine")
+sdlm_t <- lm(SD ~ SmoothCount, data = All_froll_rbind, subset = Subset == "Total")
+
+
+All_froll_rbind %>%
+  ggplot(aes(x = SmoothCount, y = SD, color = Subset)) + geom_point(size = 0.1, alpha = 0.02) +
+  geom_smooth(method = "lm")
+
+All_froll_rbind
+
+```
+
+## Back to simulations
+
+So it looks like the standard deviation within a window depends on the total coverage (which makes sense), and that it's at a pretty consistent slope. The amount of difference between reads then is actually useful, and so if we had reads drawn as proportions of a total, that might simulate it better?
+
+The sampling steps here are:
+1. Cells growing at X rate (biology)
+2. Sequencer reading each position and also each actual read
+3. Variant caller reading each allele
+4. Number of SNPs being smoothed(?)
+
+```{r}
+bulksize <- 1000
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sdata <- data.frame(Bulk = c("D","D","C","C"),
+                    Parent = c("O","W","O","W"),
+                    Oak = rnorm(4, mean = bulksize, sd = mysd),
+                    Wine = rnorm(4, mean = bulksize, sd = mysd)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+sdata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) 
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = sdata))
+
+```
+
+Instead of doing this with the SAME for each, try making the bulks sampled from the same and have a variety of actual coverages and see how diverged those can be?
+
+```{r}
+bulksize <- c(1000, 500, 200, 1000)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = rnorm(1, bulksize, mysd),
+         Wine = rnorm(1, bulksize, mysd)) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+
+ndata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  mutate(logR = log(Wine/Oak)) %>% 
+  ggplot(aes(x = paste(Bulk, Parent), y = abs(logR))) +
+  geom_point(size = 2) 
+
+summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))
+
+```
+
+```{r}
+################################################################################
+#Do this in a loop
+
+loopdata <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+for(i in 1:200){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = ceiling(rnorm(1, bulksize, mysd)),
+         Wine = ceiling(rnorm(1, bulksize, mysd))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+loopdata[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  if(i == 1){
+    tdata <- ndata
+  }else{
+    tdata <- rbind(tdata, ndata)
+  }
+  
+  rm(ndata)
+}
+  
+tdata %>% group_by(Bulk, Parent, Allele) %>% summarize(Mean = mean(Reads), Median = median(Reads), SD = sd(Reads)) -> SmoothedSim
+
+loopdata %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = Effect, color = Stat)) + geom_density()
+
+loopdata %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = SE, color = Stat)) + geom_density()
+
+#What would all of this as one rolled data point look like?
+summary(glm(Allele ~ Bulk * Parent, weights = Median, family = binomial, data = SmoothedSim))$coefficients
+summary(glm(Allele ~ Bulk * Parent, weights = Mean, family = binomial, data = SmoothedSim))$coefficients
+
+```
+Let's simulate this a TON of times, and save each round so that it can be smoothed. Then, can look at the difference between having bulks of the same size or not the same size, and smaller total vs larger total.
+
+```{r, warning=FALSE, message = FALSE}
+#Start with all bulks being size 1000
+bulksize <- c(1000, 1000, 1000, 1000)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+loopdata_1000 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = ceiling(rnorm(1, bulksize, mysd)),
+         Wine = ceiling(rnorm(1, bulksize, mysd))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  loopdata_1000[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  if(i == 1){
+    tdata_1000 <- ndata
+  }else{
+    tdata_1000 <- rbind(tdata_1000, ndata)
+  }
+  
+  rm(ndata)
+}
+
+head(tdata_1000)
+
+```
+
+```{r, warning=FALSE, message = FALSE}
+#Start with all bulks being size 100 instead
+bulksize <- c(100, 100, 100, 100)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+loopdata_100 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = ceiling(rnorm(1, bulksize, mysd)),
+         Wine = ceiling(rnorm(1, bulksize, mysd))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  loopdata_100[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  if(i == 1){
+    tdata_100 <- ndata
+  }else{
+    tdata_100 <- rbind(tdata_100, ndata)
+  }
+  
+  rm(ndata)
+}
+
+head(tdata_100)
+```
+
+Working with this simulated data
+
+```{r}
+
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = Effect, color = Stat)) + geom_density() + ggtitle("Bulk size of 100") + ylab("Effect Size")
+
+loopdata_1000 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = Effect, color = Stat)) + geom_density() + ggtitle("Bulk size of 1000") + ylab("Effect Size")
+
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = SE, color = Stat)) + geom_density() + ggtitle("Bulk size of 100") + ylab("Standard Error")
+
+loopdata_1000 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  ggplot(aes(x = SE, color = Stat)) + geom_density() + ggtitle("Bulk size of 1000") + ylab("Standard Error")
+```
+Looking at this like positions - unsmoothed data ranked by effect size
+
+```{r}
+#Bulk Effects
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100")
+
+loopdata_1000 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 1000")
+
+#Interaction Effects
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 100")
+
+loopdata_1000 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 1000")
+```
+
+Smoothed data ranked by effect size
+
+```{r, warning = FALSE, message=FALSE}
+#Let's actually just re-simulate and start with the medians
+
+#Start with all bulks being size 100 instead
+bulksize <- c(100, 100, 100, 100)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+loopdata_100_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+         Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  loopdata_100_m[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  rm(ndata)
+}
+
+#Start with all bulks being size 100 instead
+bulksize <- c(1000, 1000, 1000, 1000)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+loopdata_1000_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+         Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  loopdata_1000_m[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  rm(ndata)
+}
+```
+
+```{r}
+#Bulk Effects
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100")
+
+#Interaction Effects 
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 100")
+
+#Bulk Effects
+loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100")
+
+#Interaction Effects 
+loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 100")
+```
+
+## Changing these to have different bulk sizes
+
+
+```{r, warning = FALSE, message=FALSE}
+#Let's actually just re-simulate and start with the medians
+
+#Start with all bulks being size 100 instead
+bulksize <- c(100, 100, 100, 20)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+u_loopdata_100_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+         Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  u_loopdata_100_m[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  rm(ndata)
+}
+
+#Start with all bulks being size 100 instead
+bulksize <- c(1000, 1000, 1000, 200)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+u_loopdata_1000_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+ndata <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+  group_by(Bulk, Parent) %>%
+  mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+         Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)
+
+  u_loopdata_1000_m[i,] <- summary(glm(Allele ~ Bulk * Parent, weights = Reads, family = binomial, data = ndata))$coefficients[1:8]
+  
+  rm(ndata)
+}
+```
+
+Plotting these
+
+```{r}
+#Bulk Effects
+u_loopdata_100_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100")
+
+#Interaction Effects 
+u_loopdata_100_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 100")
+
+#Bulk Effects
+u_loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Bulk") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100")
+
+#Interaction Effects 
+u_loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% filter(Stat == "Interaction") %>% mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Interaction Effects, Size = 100")
+```
+
+## Combining Datasets to actually visualize this
+
+```{r}
+u_loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>% 
+  mutate(sim = "Uneven_1000_M") -> d1
+
+u_loopdata_100_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>% 
+  mutate(sim = "Uneven_100_M") -> d2
+
+loopdata_100 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>% 
+  mutate(sim = "100_M") -> d3
+
+loopdata_1000_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>% 
+  mutate(sim = "1000_M") -> d4
+
+rbind(d1,d2,d3,d4) %>% arrange(abs(Effect)) %>%  mutate(Rank = row_number()) %>%
+  ggplot(aes(x = Rank, y = abs(Effect), fill = Stat)) + geom_line(aes(color = Stat), size = 1) + 
+  geom_ribbon(aes(x = Rank, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_grid(Stat ~ sim) +
+  theme(legend.position = "none")
+```
+Are there patterns in interaction effects vs bulk or parent effects?
+
+```{r}
+u_loopdata_1000_m %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred")
+
+u_loopdata_1000_m %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2)
+
+u_loopdata_1000_m %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")
+
+u_loopdata_1000_m %>% mutate(Total_Abs_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Abs_Effect, y = (Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")
+```
+Fuck.
+
+```{r}
+summary(lm(Interaction_Effect ~ Bulk_Effect, data = u_loopdata_1000_m))
+summary(lm(Interaction_Effect ~ Parent_Effect, data = u_loopdata_1000_m))
+summary(lm(Bulk_Effect ~ Parent_Effect, data = u_loopdata_1000_m))
+
+```
+
+
+## Actual Biology
+
+Okay so we can see above that the more extreme the parent effects, the more extreme the interaction effect. This sort of makes sense since the amount of variation present will change the likelihood of that happening, and since none of these are actually significant, it's something that we can just look at as the way a glm works?
+
+But what happens if we add replicates? Does this solve the issue?
+
+```{r}
+bulksize <- c(100, 100, 100, 20)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+rep_u_loopdata_100_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       Rep_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+  ndataA <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  rep_u_loopdata_100_m[i,] <- summary(glm(Allele ~ Bulk * Parent + Rep, weights = Reads, family = binomial, data = repdata))$coefficients[1:10]
+  
+}
+```
+
+```{r}
+rep_u_loopdata_100_m %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred")
+
+rep_u_loopdata_100_m %>% ggplot() + geom_point(aes(x = Rep_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Rep_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred")
+
+rep_u_loopdata_100_m %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2)
+
+rep_u_loopdata_100_m %>% ggplot(aes(x = Rep_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2)
+
+rep_u_loopdata_100_m %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")
+
+rep_u_loopdata_100_m %>% mutate(Diff_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Diff_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")
+```
+```{r}
+rep_u_loopdata_100_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100") +
+  facet_grid(~Stat)
+
+```
+## Using glmer instead of glm
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(100, 100, 100, 20)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+glmer_rep_u_loopdata_100_m <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:2000){
+
+  ndataA <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  glmer_rep_u_loopdata_100_m[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+glmer_rep_u_loopdata_100_m %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Bulk Effects, Size = 100") + xlab("Rank") +
+  facet_grid(~Stat)
+
+glmer_rep_u_loopdata_100_m %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")
+
+
+glmer_rep_u_loopdata_100_m %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2) + geom_smooth(method = "lm")
+
+glmer_rep_u_loopdata_100_m %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")+ geom_smooth(method = "lm")
+
+glmer_rep_u_loopdata_100_m %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+## Simulating in actual effect
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(100, 100, 100, 20)
+effect <- c(1,1,1.3,1.3)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_1p3 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_1p3[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_1p3 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 100, 1.3x Bulk") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_1p3 %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect") + ggtitle("1.3x Bulk Effect")
+
+
+sim_1p3 %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2) + geom_smooth(method = "lm") 
+
+sim_1p3 %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")+ geom_smooth(method = "lm")
+
+sim_1p3 %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(100, 100, 100, 20)
+effect <- c(1,1,2,2)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_2 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) 
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_2[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_2 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 100, 2x Bulk") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_2 %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")+ ggtitle("2x Bulk Effect")
+
+
+sim_2 %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2) + geom_smooth(method = "lm")
+
+sim_2 %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")+ geom_smooth(method = "lm")
+
+sim_2 %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+
+## Simulating an Interaction Effect
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(100, 100, 100, 20)
+effect <- c(1,1,2,1)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_i2 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) 
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_i2[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_i2 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 100, 2x Bulk*Parent") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_i2 %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")+ ggtitle("2x Interaction Effect")
+
+
+sim_i2 %>% ggplot(aes(x = Parent_Effect, y = Bulk_Effect)) + geom_point(alpha = 0.2) + geom_smooth(method = "lm")
+
+sim_i2 %>% mutate(Diff_Effect = Bulk_Effect - Parent_Effect) %>%
+  ggplot(aes(x = Diff_Effect, y = Interaction_Effect)) + geom_point(alpha = 0.2) + ggtitle("Difference in Bulk and Parent")+ geom_smooth(method = "lm")
+
+sim_i2 %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(1000, 1000, 1000, 200)
+effect <- c(1,1,2,1)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_i2_1000 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B"))
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_i2_1000[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_i2_1000 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 1000, 2x Bulk*Parent") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_i2_1000 %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")+ ggtitle("2x Interaction Effect (Bulk Size 1000)")
+
+sim_i2_1000 %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+
+Using 0.3x instead of 2x
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(200, 200, 200, 40)
+effect <- c(1,0.5,0.5,0.5)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_i2_200 <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_i2_200[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_i2_200 %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = abs(Effect) + 2*SE, ymin = abs(Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 1000, 2x Bulk*Parent") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_i2_200 %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")+ ggtitle("2x Interaction Effect (Bulk Size 200)")
+
+sim_i2_200 %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+## Making sure that where there's an interaction, with the SAME sample size, it calls both
+
+```{r, warning = FALSE, message = FALSE}
+bulksize <- c(200, 200, 200, 200)
+effect <- c(1,0.5,0.5,0.5)
+mysd <- coefficients(sdlm_t)[1] + bulksize*coefficients(sdlm_t)[2]
+
+sim_i2_200_c <- data.frame(Intercept_Effect = NA,
+                       Bulk_Effect = NA,
+                       Parent_Effect = NA,
+                       #Rep_Effect = NA,
+                       Interaction_Effect = NA,
+                       Intercept_SE = NA,
+                       Bulk_SE = NA,
+                       Parent_SE = NA,
+                       #Rep_SE = NA,
+                       Interaction_SE = NA)
+
+for(i in 1:1000){
+
+  ndataA <- data.frame(bulksize, effect, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "A") %>%
+    mutate_if(is.character, as.factor)
+  
+  ndataB <- data.frame(bulksize, mysd, Bulk = c("A","A","B","B"), Parent = c("A","B","A","B")) %>% 
+    group_by(Bulk, Parent) %>%
+    mutate(Oak = median(ceiling(rnorm(200, bulksize*effect, mysd))),
+           Wine = median(ceiling(rnorm(200, bulksize, mysd)))) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% mutate(Rep = "B") %>%
+    mutate_if(is.character, as.factor)
+
+  repdata <- rbind(ndataA, ndataB)
+
+  sim_i2_200_c[i,] <- summary(glmer(Allele ~ Bulk * Parent + (1|Rep), weights = Reads, family = binomial, data = repdata))$coefficients[1:8]
+  
+}
+```
+
+```{r}
+sim_i2_200_c %>% pivot_longer(cols = everything(), names_to = c("Stat", ".value"), names_sep = "_", values_drop_na = TRUE) %>%
+  arrange(abs(Effect)) %>% 
+  mutate(POS = row_number()) %>%
+  ggplot(aes(x = POS, y = (Effect))) + geom_line() + geom_ribbon(aes(x = POS, ymax = (Effect) + 2*SE, ymin = (Effect) - 2*SE), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") + ggtitle("Abs Effects, Size = 1000, 2x Bulk*Parent") + xlab("Rank") +
+  facet_grid(~Stat)
+
+sim_i2_200_c %>% ggplot() + geom_point(aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2) +
+  geom_point(aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Bulk_Effect), alpha = 0.2, color = "black")+
+  geom_smooth(method = "lm", aes(x = Interaction_Effect, y = Parent_Effect), alpha = 0.2, color = "darkred") +
+  ylab("Parent or Bulk Effect") + xlab("Interaction Effect")+ ggtitle("2x Interaction Effect (Bulk Size 200)")
+
+sim_i2_200_c %>% mutate(Total_Effect = abs(Bulk_Effect) + abs(Parent_Effect)) %>%
+  ggplot(aes(x = Total_Effect, y = abs(Interaction_Effect))) + geom_point(alpha = 0.2) + ggtitle("Total Effects of Bulk + Parent")+ geom_smooth(method = "lm") 
+
+```
+
+## Combinations of Genotypes to find Variation
+
+This shows that we can simulate two loci which each contribute to the probability of survival in a certain bulk. The effect sizes of these loci are weird because I don't really know how they end up giving a probability difference? How does that relate to percent selection? It's like the fitness changes in one bulk but not the other?
+
+```{r}
+#Each locus provides an increase in probability of survival under selection
+Effects <- c(1.2, 2, 5) #C,A,B
+
+#Then, you get a BUNCH of progeny that could be sampled, of either A/B, A/b, a/B, or a/b, and each one has a different probability
+# population_s <- sample(size = 100000, x = c("CAB", "CAb", "CaB", "Cab", "cAB", "cAb", "caB", "cab"), 
+#                        prob = c(3*1.5*2, 3*1.5, 3*2, 3*1,1.5*2, 1.5, 2, 1), replace = TRUE)
+
+population_s <- sample(size = 100000, x = c("CAB", "CAb", "CaB", "Cab", 
+                                            "cAB", "cAb", "caB", "cab"), 
+                       prob = c(prod(Effects[c(1:3)]), prod(Effects[c(1:2)]),prod(Effects[c(1,3)]), prod(Effects[c(1)]),
+                                prod(Effects[c(2:3)]), prod(Effects[c(2)]), prod(Effects[c(3)]), prod(1)), 
+                       replace = TRUE)
+
+population_d <- sample(size = 100000, x = c("CAB", "CAb", "CaB", "Cab", "cAB", "cAb", "caB", "cab"), replace = TRUE)
+
+#You can now count the number of each genoytpe
+# as.data.frame(table(population_s)) %>% mutate(Baseline = 0) %>% pivot_longer(c(Baseline, Freq)) %>% mutate(Timepoint = as.numeric(name == "Freq")) %>%
+#   ggplot(aes(x = Timepoint, y = value, color = population_s)) + geom_line() + ggtitle("Fitness as Slope")
+# 
+# as.data.frame(table(population_d)) %>% mutate(Baseline = 0) %>% pivot_longer(c(Baseline, Freq)) %>% mutate(Timepoint = as.numeric(name == "Freq")) %>%
+#   ggplot(aes(x = Timepoint, y = value, color = population_d)) + geom_line(linetype = "dashed") + ggtitle("Fitness as Slope")
+
+#And the number of each actual allele in each
+alleletable_s <- as.data.frame(table(population_s)) %>% 
+  select(Pop = population_s, Freq) %>%
+  mutate(Cc = c("c","c","c","c","C","C","C","C"),
+         Aa = c("a", "a", "A", "A","a", "a", "A", "A"), 
+         Bb = c("b", "B", "b", "B","b", "B", "b", "B"),
+         Bulk = "S")
+
+alleletable_d <- as.data.frame(table(population_d)) %>% 
+  select(Pop = population_d, Freq) %>%
+  mutate(Cc = c("c","c","c","c","C","C","C","C"),
+         Aa = c("a", "a", "A", "A","a", "a", "A", "A"), 
+         Bb = c("b", "B", "b", "B","b", "B", "b", "B"),
+         Bulk = "D")
+
+rbind(alleletable_s, alleletable_d) %>% mutate_if(is.character, as.factor) -> BSA_Data
+
+BSA_Data %>% mutate(Baseline = 0) %>% pivot_longer(c(Baseline, Freq)) %>% mutate(Timepoint = as.numeric(name == "Freq")) %>%
+  ggplot(aes(x = Timepoint, y = value, color = Pop, linetype = Bulk)) + geom_line() + ggtitle("Fitness as Slope")
+
+#Now we can count the number of A's and a's
+# alleletable_s %>% group_by(Aa) %>% summarise(A = sum(Freq))
+# alleletable_s %>% group_by(Bb) %>% summarise(B = sum(Freq))
+
+#So our output would be the fitness of B over b and A over a, right?
+#Or would it be the slope for the timepoint? Which would just be them subtracted?
+#But we can also see what the allele frequencies are for each in the different groups
+
+#BSA_Data
+
+#A = 1.5x
+A <- coefficients(glm(Aa ~ Bulk, data = BSA_Data, weights = Freq, family = binomial))[2]
+
+#B = 2x
+B <- coefficients(glm(Bb ~ Bulk, data = BSA_Data, weights = Freq, family = binomial))[2]
+
+#C = 3x
+C <- coefficients(glm(Cc ~ Bulk, data = BSA_Data, weights = Freq, family = binomial))[2]
+
+summary <- data.frame(Locus = c("C","A","B"),
+           Times = Effects,
+           Effect = c(C,A,B))
+
+summary$PercentDiff <- summary$Times - 1
+
+summary$Times_Prop <- summary$Times/sum(summary$Times)
+summary$Effect_Prop <- summary$Effect/sum(summary$Effect)
+summary$PercentDiff_Prop <- summary$PercentDiff/sum(summary$PercentDiff)
+summary
+
+plot(summary$Effect_Prop, summary$Times_Prop)
+points(summary$Effect_Prop, summary$PercentDiff_Prop, col = "red")
+abline(a = 0, b = 1)
+
+```
+
+## Sample as if there is only one allele, and it's at 2x the other allele
+
+```{r}
+sampleAa <- data.frame(Bulk = c("S","S","D","D"),
+                       Allele = c("A","a","A","a"), 
+                       Freq = c(200,100,150,150)) %>% mutate_if(is.character,as.factor)
+
+summary(glm(Allele ~ Bulk, weights = Freq, family = binomial, data = sampleAa))
+```
+
+Imagine now that the total totals for the dilute bulk are smaller
+
+```{r}
+sampleAa <- data.frame(Bulk = c("S","S","D","D"),
+                       Allele = c("A","a","A","a"),
+                       Freq = c(200,100,100,100)) %>% mutate_if(is.character,as.factor)
+
+summary(glm(Allele ~ Bulk, weights = Freq, family = binomial, data = sampleAa))
+```
+

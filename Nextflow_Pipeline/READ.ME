@@ -1,0 +1,21 @@
+## Running Nextflow for Sequencing
+
+#Change the .q file to represent the config file, then run the .q to start
+sbatch nextflow_runner_CSSVIII_CuSO4_A23.q
+
+#This will run the following:
+#nextflow.CSS8_CuSO4_Apr23.config
+
+#And will make a directory based on this config file. There, you'll have all of the outputs in the /out folder
+
+#Next, you have to merge and split them manually by doing the following WITHIN the folder:
+
+sbatch CB_2.1_merge.split.q out/bqsr_bams/*bam
+
+sbatch CB_3.0_Index.q *bam
+
+#This wasn't done last time apparently but look it up...?
+sbatch CB_4.0_CallVariants_T.q HVYTYDRX2.REF_NC_001133.9.bam
+
+sbatch CB_5.0_zip.concat.sort.q HVYTYDRX2
+

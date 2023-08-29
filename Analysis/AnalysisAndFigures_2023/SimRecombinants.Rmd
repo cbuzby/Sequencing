@@ -484,7 +484,7 @@ for(i in 1:sims){
 
   savedata[[i]] <- rec2_selected_pop_freq
   if(i == 1){
-      plot(rec2_selected_pop_freq$LOD, col = loci_100+2, ylim = c(0,3),
+      plot(rec2_selected_pop_freq$LOD, col = loci_100+2, ylim = c(0,5 ),
            main = "Log Odds of 'Reads' from Recombination with Noise")
   }else{
     points(rec2_selected_pop_freq$LOD, col = loci_100+2)
@@ -494,24 +494,83 @@ for(i in 1:sims){
 
 
 ```
-
-## Adding in correct probabilities into the recombination
-
 ```{r}
 plot(loci_100, loci_100 + rnorm(length(loci_100),0,sd = 0.1))
 
 unlist(savedata)
 savedata[1]
 
-count <- sum(sapply(savedata, function(df) max(df[40,6])) == max(df[,6]))
-
 mycount <- 0
 for(i in 1:sims){
-  if(max(savedata[[i]]$LOD) == savedata[[1]]$LOD[40]){
+  if(max(savedata[[i]]$LOD) == savedata[[i]]$LOD[40]){
     mycount <- mycount+1
   }
 }
 
+#if sims == mycount, then all of them are the max number
 mycount
 ```
+
+Doing this again but with an order of magnitude fewer individuals
+
+```{r}
+savedata2 <- list()
+sims <- 10
+for(i in 1:sims){
+  num_individuals <- 20000
+  matrix_result <- replicate(num_individuals, recombine_twice(100)) #20 individuals, 100 loci
+  rec_pop <- cbind(matrix_result, 1-matrix_result) #40 individuals, 100 loci
+
+  rec2_population <- t(rec_pop)
+  
+  #Population of 1000 individuals that match
+  rec2_phenotype <- rec2_population %*% (loci_100 + rnorm(length(loci_100),
+                                                          0,
+                                                          sd = 0.1))
+  
+  #Add noise; how much for a normally distributed chromosome of effects?
+  rec2_phenotype <- rec2_phenotype + rnorm(n = length(rec2_phenotype),
+                                           mean = 0,
+                                           sd = 1)
+  
+  #Which genotypes are enriched in the top 10% of the phenotype?
+  rec2_cutoff <- quantile(rec2_phenotype, probs = 0.9) #1.297661 
+  rec2_selected_pop <- rec2_population[rec2_phenotype > rec2_cutoff,]
+  
+  rec2_selected_pop %>% as.data.frame() %>% colSums() %>% as.data.frame() %>% 
+    mutate(A = .+1, R = 1 + length(rec2_selected_pop[,1]) -.) %>%
+    mutate(alt = A/length(rec2_selected_pop[,1]), ref = R/length(rec2_selected_pop[,1])) %>%
+    mutate(LOD = log(alt/ref)) -> rec2_selected_pop_freq
+
+  savedata2[[i]] <- rec2_selected_pop_freq
+  if(i == 1){
+      plot(rec2_selected_pop_freq$LOD, col = loci_100+2, ylim = c(0,5 ),
+           main = "Log Odds of 'Reads' from Recombination with Noise")
+  }else{
+    points(rec2_selected_pop_freq$LOD, col = loci_100+2)
+  }
+
+}
+
+```
+```{r}
+plot(loci_100, loci_100 + rnorm(length(loci_100),0,sd = 0.1))
+
+# unlist(savedata2)
+# savedata2[1]
+
+mycount2 <- 0
+for(i in 1:sims){
+  if(max(savedata2[[i]]$LOD) == savedata2[[i]]$LOD[40]){
+    mycount2 <- mycount2+1
+  }
+}
+
+#if sims == mycount, then all of them are the max number
+mycount2
+```
+
+## Adding in correct probabilities into the recombination
+
+
 

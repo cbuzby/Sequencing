@@ -1,0 +1,1081 @@
+---
+title: "CSS Mixed GLM Exploration"
+date: "Aug 2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+#library(cybrBSA)
+
+#install.packages("lme4")
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+################################################################################
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+#glm with replicates
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+################################################################################
+#Define triple replicate function
+glmfixed_rep3 <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                         HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W",
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B",
+                                          "C", "C", "C", "C", "C", "C","C", "C")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                                     HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+```
+
+Smooth by rolling mean or median
+
+```{r, eval = FALSE}
+cybr2Data <- readRDS("Data/Fluconazole_1_cybr2.rds")
+
+#Use rolling average of 100 SNPs, finding the mean
+#cybr2Data %>% cybr2_rollmean() -> rollmeanData
+
+#Find the rolling median or change n instead
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+saveRDS(rollData, file = "Fluc_rollData.rds")
+```
+
+# Using the new glm function to do a mixed model
+
+```{r}
+cybr2Data <- readRDS("Data/Fluconazole_1_cybr2.rds")
+
+#Use rolling average of 100 SNPs, finding the mean
+#cybr2Data %>% cybr2_rollmean() -> rollmeanData
+
+#Find the rolling median or change n instead
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+saveRDS(rollData, file = "Fluc_rollData.rds")
+```
+
+```{r}
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(coefficients(glm_fit))
+  
+}
+```
+
+
+```{r}
+mixedglm <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  #glm_fit <- lme4(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  b <- glmer(glm_formula, 
+             weights = W, family = binomial, 
+              data = as.data.frame(data), nAGQ=20)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  #return(coefficients(glm_fit))
+  
+  # return(c(summary(b)$coefficients, #Effects
+  #            as.vector(attr(lme4::VarCorr(b)$Rep,"stddev"))))
+  
+  return(as.vector(summary(b)$coefficients))
+  
+}
+
+```
+
+### Fluconazole 
+
+```{r, warning=FALSE, message =FALSE, eval = FALSE}
+
+rollData <- readRDS("Fluc_rollData.rds")
+
+rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "Reads") %>% filter(POS == 36313) %>% mutate_if(is.character, as.factor)-> testfluc
+
+b <- glmer(Allele ~ Bulk*Parent+(1 | Rep), 
+             weights = Reads, family = binomial, 
+              data = as.data.frame(testfluc), nAGQ=20)
+
+summary(b)#$coefficients
+
+coefficients(b)
+
+################################################################################
+
+rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+  mutate_if(is.character, as.factor) %>%
+  filter(CHROM == "I") %>%
+  group_by(CHROM, POS) %>%
+  reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                         Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+          Effect = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+          Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> Fluc_GLMER_23_1
+
+saveRDS(Fluc_GLMER_23, file = "Fluc_GLMER_23.rds")
+
+```
+
+```{r, warning=FALSE, message=FALSE, eval = FALSE}
+################################################################################
+#Alternative loop
+
+for(i in 1:16){
+  mychrom <- as.character(as.roman(i))
+  rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+    mutate_if(is.character, as.factor) %>%
+    filter(CHROM == mychrom) %>%
+    group_by(CHROM, POS) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            Effect = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> newdata
+  if(i == 1){
+    olddata <- newdata
+  }else{
+    olddata <- rbind(olddata,newdata)
+  }
+  
+  saveRDS(olddata, file = "Fluconazole_glmer.rds")
+  print(mychrom)
+}
+
+#FlucGlmer <- olddata
+
+```
+
+
+
+
+Doing the normal GLM with confidence intervals
+
+```{r}
+glm_ci <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(as.vector(summary(glm_fit)$coefficients))
+  
+}
+  
+  
+rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+  mutate_if(is.character, as.factor) %>%
+  group_by(CHROM, POS) %>%
+  reframe(GLM = glm_ci(W = Reads, formula = "Allele ~ Bulk*Parent",
+                         Allele = Allele, Bulk = Bulk, Parent = Parent),
+          Effect = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+          Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> Fluc_GLM_ci
+
+# summary(glm(data = test, weights = Reads, formula = Allele ~ Bulk * Parent + Rep, family = binomial))$coefficients
+# as.vector(coefficients(glm(data = test, weights = Reads, formula = Allele ~ Bulk * Parent + Rep, family = binomial)))
+```
+
+Plotting CI for the non-Rep ones - this clearly isn't worth doing because the confidence intervals are ridiculous on them...
+
+```{r, warning=FALSE, message =FALSE}
+Fluc_GLM_ci %>% mutate(Param = Effect) %>% select(-Effect) %>% pivot_wider(names_from = Type, values_from = GLM) -> FlucGlmciPivot
+
+FlucGlmciPivot %>% filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1.2) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+
+FlucGlmciPivot %>% filter(CHROM != "I", CHROM != "III", Param == "Parent") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1.2) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+```
+
+### CuSO4 B
+
+Run this overnight since it'll take a while probably.
+
+Note: if there are 0s in the data, it will give an error, so adding 1 to everything makes it work (but everything will be slightly off); could also just remove loci with 0 reads since it's smoothed anyways? *Do that next*
+
+```{r, warning=FALSE, message=FALSE, eval = FALSE}
+#file.choose()
+Datac <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_2_cybr2.rds")
+
+Datac %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac
+################################################################################
+
+for(i in 1:16){
+  mychrom <- as.character(as.roman(i))
+  rollDatac %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+    mutate(Rep = paste(Bulk, Parent, R, sep = "_")) %>%
+    mutate(Reads = Reads+1) %>%
+    mutate_if(is.character, as.factor) %>%
+    #filter(POS == 904) %>% 
+    filter(CHROM == mychrom) %>%
+    group_by(CHROM, POS) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> newdata
+  if(i == 1){
+    olddata <- newdata
+  }else{
+    olddata <- rbind(olddata,newdata)
+  }
+  
+  saveRDS(olddata, file = "CuSO4B_glmer.rds")
+  print(mychrom)
+}
+
+
+```
+
+```{r, warning=FALSE, message =FALSE}
+CuSO4B_glmer <- readRDS("CuSO4B_glmer.rds")
+CuSO4B_glmer %>%  pivot_wider(names_from = Type, values_from = GLM) -> CuBGlmerPivot
+
+CuBGlmerPivot %>% filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+CuBGlmerPivot %>% filter(CHROM != "I", CHROM != "III", Param == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+### CSS 8
+
+```{r, warning=FALSE, message =FALSE, eval = FALSE}
+Datac8 <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_CSS8_cybr2.rds")
+
+Datac8 %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac8
+
+################################################################################
+
+for(i in 1:16){
+  mychrom <- as.character(as.roman(i))
+  rollDatac8 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Dose", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+    filter(Parent == "Oak8" | Parent == "Wine8", Bulk != "Fluc") %>% 
+    mutate(Rep = paste(Bulk, Parent, Dose, R, sep = "_")) %>%
+    mutate(Reads = Reads+1) %>%
+    mutate_if(is.character, as.factor) %>%
+    #filter(POS == 904) %>% 
+    filter(CHROM == mychrom) %>%
+    group_by(CHROM, POS) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> newdata
+  if(i == 1){
+    olddata <- newdata
+  }else{
+    olddata <- rbind(olddata,newdata)
+  }
+  
+  saveRDS(olddata, file = "CuSO4_P8_glmer.rds")
+  print(mychrom)
+}
+
+################################################################################
+# glm_formula = "Allele ~ Bulk*Parent+(1 | Rep)"
+# W = "Reads"
+# data <- rollDatac8 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Dose", "Allele"), 
+#                           names_sep = "_", values_to = "Reads") %>% 
+#   filter(Parent == "Oak8" | Parent == "Wine8", Bulk != "Fluc") %>% 
+#     mutate(Rep = paste(Bulk, Parent, Dose, R, sep = "_")) %>%
+#     mutate(Reads = Reads+1) %>%
+#     mutate_if(is.character, as.factor) %>%
+#     filter(POS == 64781)
+# 
+# b <- glmer(glm_formula, 
+#              weights = Reads, family = binomial, 
+#               data = as.data.frame(data), nAGQ=20)
+################################################################################
+
+```
+
+```{r}
+CuSO4p8_glmer <- readRDS("CuSO4_P8_glmer.rds")
+CuSO4p8_glmer %>%  pivot_wider(names_from = Type, values_from = GLM) -> Cu_p8GlmerPivot
+
+Cu_p8GlmerPivot %>% filter(CHROM != "VIII", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+Cu_p8GlmerPivot %>% filter(CHROM != "VIII", CHROM != "III", Param == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+
+### CSS1 from first and last experiments
+
+```{r, warning=FALSE, message=FALSE, eval = FALSE}
+Datac1 <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_1_cybr2.rds")
+
+#Load in original Chr I dataset
+Datac1 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac1
+
+rollDatac1 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>%
+  mutate(Parent = paste(Parent, 1, sep = "")) %>%
+  mutate(R = "B") %>%
+  select(CHROM, POS, Bulk, Parent, R, Allele, Reads) -> CuSO41_Smoothed
+  
+for(i in 1:16){
+  mychrom <- as.character(as.roman(i))
+  rollDatac8 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Dose", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+    filter(Parent == "Oak1" | Parent == "Wine1", Bulk != "Fluc") %>% 
+    select(-Dose) %>%
+    rbind(CuSO41_Smoothed) %>%
+    #Make sure there are SNPs in common
+    pivot_wider(names_from = c(Bulk, Parent, R, Allele), names_sep = "_", values_from = Reads) %>%
+    na.omit() %>%
+    pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Allele"), names_sep = "_", values_to = "Reads") %>%
+    #Back to regular code
+    mutate(Rep = paste(Bulk, Parent, R, sep = "_")) %>%
+    mutate(Reads = Reads+1) %>%
+    mutate_if(is.character, as.factor) %>%
+    #filter(POS == 904) %>% 
+    
+    filter(CHROM == mychrom) %>%
+    group_by(CHROM, POS) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> newdata
+  if(i == 1){
+    olddata <- newdata
+  }else{
+    olddata <- rbind(olddata,newdata)
+  }
+  
+  saveRDS(olddata, file = "CuSO4_P1comb_glmer.rds")
+  print(mychrom)
+}
+
+################################################################################
+# glm_formula = "Allele ~ Bulk*Parent+(1 | Rep)"
+# W = "Reads"
+# data <- rollDatac8 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Dose", "Allele"), 
+#                           names_sep = "_", values_to = "Reads") %>% 
+#   filter(Parent == "Oak8" | Parent == "Wine8", Bulk != "Fluc") %>% 
+#     mutate(Rep = paste(Bulk, Parent, Dose, R, sep = "_")) %>%
+#     mutate(Reads = Reads+1) %>%
+#     mutate_if(is.character, as.factor) %>%
+#     filter(POS == 64781)
+# 
+# b <- glmer(glm_formula, 
+#              weights = Reads, family = binomial, 
+#               data = as.data.frame(data), nAGQ=20)
+################################################################################
+
+```
+
+```{r}
+CuSO4p1_glmer <- readRDS("CuSO4_P1comb_glmer.rds")
+CuSO4p1_glmer %>%  pivot_wider(names_from = Type, values_from = GLM) -> Cu_p1GlmerPivot
+
+Cu_p1GlmerPivot %>% filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+Cu_p1GlmerPivot  %>% filter(CHROM != "I", CHROM != "III", Param == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+
+## Putting all of the CuSO4 CSSI experiments together
+
+```{r, warning=FALSE, message =FALSE, eval = FALSE}
+Datac8 <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_CSS8_cybr2.rds")
+Datac1 <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_1_cybr2.rds")
+Datac2 <- readRDS("C:\\Users\\cassa\\OneDrive\\Documents\\GitHub\\Sequencing\\Analysis\\AnalysisAndFigures_2023\\Data\\CuSO4_2_cybr2.rds")
+
+#Chr 8 experiment for those other Chr 1 samples
+Datac8 %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac8
+
+#The middle experiment with replicates
+Datac2 %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac1b
+
+#Load in original Chr I dataset
+Datac1 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollDatac1a
+
+#################################################################################
+
+
+rollDatac1b %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>%
+  mutate(Parent = paste(Parent, 1, sep = "")) %>%
+  select(CHROM, POS, Bulk, Parent, R, Allele, Reads) %>%
+  mutate(R = paste(R, "C", sep = "")) -> CuSO42Smoothed
+
+rollDatac1a %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>%
+  mutate(Parent = paste(Parent, 1, sep = "")) %>%
+  mutate(R = "B") %>%
+  select(CHROM, POS, Bulk, Parent, R, Allele, Reads) -> CuSO41_Smoothed
+
+  
+for(i in 1:16){
+  mychrom <- as.character(as.roman(i))
+  rollDatac8 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Dose", "Allele"), 
+                          names_sep = "_", values_to = "Reads") %>% 
+    filter(Parent == "Oak1" | Parent == "Wine1", Bulk != "Fluc") %>% 
+    select(-Dose) %>%
+    rbind(CuSO41_Smoothed) %>%
+    rbind(CuSO42Smoothed) %>%
+    #Make sure there are SNPs in common
+    pivot_wider(names_from = c(Bulk, Parent, R, Allele), names_sep = "_", values_from = Reads) %>%
+    na.omit() %>%
+    pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "R", "Allele"), names_sep = "_", values_to = "Reads") %>%
+    #Back to regular code
+    mutate(Rep = paste(Bulk, Parent, R, sep = "_")) %>%
+    mutate(Reads = Reads+1) %>%
+    mutate_if(is.character, as.factor) %>%
+    #filter(POS == 904) %>% 
+    
+    filter(CHROM == mychrom) %>%
+    group_by(CHROM, POS) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4))) -> newdata
+  if(i == 1){
+    olddata <- newdata
+  }else{
+    olddata <- rbind(olddata,newdata)
+  }
+  
+  saveRDS(olddata, file = "CuSO4_CSSI_all_glmer.rds")
+  print(mychrom)
+}
+```
+
+```{r}
+AllCuI <- readRDS("CuSO4_CSSI_all_glmer.rds")
+
+AllCuI %>%  pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1) +
+  geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Combining all CSSI CuSO4 Experiments") 
+
+```
+
+```{r}
+AllCuI %>% select(CHROM, POS) %>% distinct() %>% 
+  mutate(Num = row_number()) %>% 
+  merge(AllCuI) %>% 
+  mutate(Remainder = Num%%100) %>% 
+  filter(Remainder == 0) -> Every40_CuI
+
+Every40_CuI %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", 
+        # CHROM != "III", 
+         Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_point(aes(color = Param), size = 1) +
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Combining all CSSI CuSO4 Experiments") 
+```
+```{r}
+tests <- length(unique(Every40_CuI$Num))
+Every40_CuI %>%  pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = -log(pval))) + 
+  geom_point(aes(color = Param), size = 1) +
+  # geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = -log(0.05/tests), linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Combining all CSSI CuSO4 Experiments") 
+
+```
+
+```{r}
+Every40_CuI %>% group_by(CHROM) %>% summarize(tests = length(unique(POS))) -> TestsNum
+
+Every40_CuI %>%  pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = -log(pval))) + 
+  geom_point(aes(color = Param), size = 1) +
+  # geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(data = TestsNum, aes(yintercept = -log(0.05/tests))) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Combining all CSSI CuSO4 Experiments") 
+
+
+```
+
+## Doing this with Fluconazole
+
+```{r, warning=FALSE, message =FALSE}
+
+#FlucGlmer <- readRDS("Fluconazole_glmer.rds")
+#FlucGlmer %>% mutate(Param = Effect) %>% select(-Effect) -> FlucGlmer
+
+FlucGlmer %>% pivot_wider(names_from = Type, values_from = GLM) -> FlucGlmerPivot
+  
+FlucGlmer %>% 
+  select(CHROM, POS) %>% distinct() %>% 
+  mutate(Num = row_number()) %>% 
+  merge(FlucGlmer) %>% 
+  mutate(Remainder = Num%%100) %>% 
+  filter(Remainder == 0) -> Every40_FlucGlmerPivot
+
+FlucGlmerPivot %>% filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect))) + 
+  geom_line(aes(color = Param), size = 1.2) +
+  geom_ribbon(aes(ymin = abs(Effect) - (2*SE), ymax = abs(Effect) + (2*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = 0) +
+  facet_grid(Param~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") + ggtitle("Fluconazole GLMER Effect Size")
+
+
+tests_f <- length(unique(Every40_FlucGlmerPivot$Num))
+
+Every40_FlucGlmerPivot %>%  pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = -log(pval))) + 
+  geom_point(aes(color = Param), size = 1) +
+  # geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(yintercept = -log(0.05/tests_f), linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Fluconazole Experiments") 
+
+Every40_FlucGlmerPivot %>% group_by(CHROM) %>% summarize(tests = length(unique(POS))) -> TestsNum_Fluc
+
+Every40_FlucGlmerPivot %>%  pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  ggplot(aes(x = POS, y = -log(pval))) + 
+  geom_point(aes(color = Param), size = 1) +
+  geom_hline(data = TestsNum_Fluc, aes(yintercept = -log(0.05/tests))) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Fluconazole Experiments") 
+```
+
+## Okay so... Chr 8 with interactions?
+
+```{r}
+CuSO4p8_glmer <- readRDS("CuSO4_P8_glmer.rds")
+CuSO4p8_glmer %>%  pivot_wider(names_from = Type, values_from = GLM) -> Cu_p8GlmerPivot
+
+CuSO4p8_glmer %>% 
+  select(CHROM, POS) %>% distinct() %>% 
+  mutate(Num = row_number()) %>% 
+  merge(FlucGlmer) %>% 
+  mutate(Remainder = Num%%100) %>% 
+  filter(Remainder == 0) -> Every40_CuSO4p8_glmer
+
+tests_c8 <- length(unique(Every40_CuSO4p8_glmer$Num))
+Every40_CuSO4p8_glmer %>% group_by(CHROM) %>% summarize(tests = length(unique(POS))) -> TestsNum_c8
+
+
+Every40_CuSO4p8_glmer %>% filter(CHROM != "I", CHROM != "III", Param != "Intercept") %>%
+  pivot_wider(names_from = Type, values_from = GLM) %>%
+  ggplot(aes(x = POS, y = -log(pval))) + 
+  geom_point(aes(color = Param), size = 1) +
+  geom_hline(yintercept = -log(0.05/tests_f), linetype = "dashed") +
+  geom_hline(data = TestsNum_c8, aes(yintercept = -log(0.05/tests))) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+
+```
+
+## What if we sampled randomly from the original numbers to find a null?
+
+
+```{r}
+rollData <- readRDS("Fluc_rollData.rds")
+
+rollData %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
+  filter(Bulk == "Dilute") %>%
+  pivot_wider(names_from = Allele, values_from = value) -> Null_Fluc
+
+Null_Fluc %>% filter(Parent == "OakI") %>% count() -> OakNulls
+Null_Fluc %>% filter(Parent == "WineI") %>% count() -> WineNulls
+
+Null_Fluc %>% filter(Parent == "OakI") -> Oaks
+Null_Fluc %>% filter(Parent == "WineI") -> Wines
+
+for(i in 1:1000){
+  Oaks[sample(length(Oaks$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Oak1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> O
+  
+  Wines[sample(length(Wines$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Wine1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> W
+  
+  rbind(O,W) %>% 
+  mutate_if(is.character, as.factor) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk2, Parent = Parent2, Rep = Rep2),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4)),
+            POS = i) -> newdata
+  
+  if(i == 1){
+    final = newdata
+  }else{
+    final = rbind(final, newdata)
+  }
+}
+
+#Plot just to see
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_point(alpha = 0.3)
+
+#Calculate cutoffs for Z scores
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Zscore), c(0.95, 0.99)),
+                                                                                              label = c("95%","99%")) -> fcutoffs
+
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+    group_by(Param) %>%
+  arrange(abs(Zscore)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Zscore), color = Param)) + geom_point(alpha = 0.3) +
+  geom_hline(data = fcutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  facet_grid(~Param)
+
+#Ordering by SE but plotting Z score
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  group_by(Param) %>%
+  arrange(abs(SE)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Zscore), color = Param)) + geom_point(alpha = 0.3) +
+  geom_hline(data = fcutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  facet_grid(~Param)
+
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Effect), c(0.95, 0.99)),
+                                                                                              label = c("95%","99%")) -> ecutoffs
+
+```
+
+Looking at SE instead; it seems that ridiculously high scores have ridiculous SE, but there are a few intermediate ones that look reasonable and would be significant if using the standard error crossing 0 cutoff. 
+
+```{r}
+#Ordering by SE and plotting effect size
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  group_by(Param) %>%
+  arrange(abs(SE)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Effect), color = Param)) + geom_point(alpha = 0.3) +
+  geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(data = fcutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  ylim(c(0,50))+
+  facet_grid(~Param)
+
+#Ordering by Effect and plotting effect size
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  group_by(Param) %>%
+  arrange(abs(Effect)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Effect))) + geom_line(aes(color = Param)) +
+  geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(data = fcutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  ylim(c(0,20))+
+  facet_grid(~Param)
+
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>%
+  ggplot(aes(x = abs(Effect), y = log(SE), color = Param)) + geom_point(alpha = 0.5)
+
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% filter(abs(Effect) < 30) %>%
+  ggplot(aes(x = abs(Effect), y = (abs(Effect) - (1.96*SE)), color = Param)) + geom_point(alpha = 0.5)
+
+final %>% pivot_wider(names_from = Type, values_from = GLM) %>% filter(log(SE) < 5) %>%
+  ggplot(aes(x = abs(Effect), y = (1.96*SE), color = Param)) + geom_point(alpha = 0.5)
+  
+```
+Try running this longer but then filtering by the ones that don't cross 0?
+
+```{r}
+for(i in 1:50000){
+  Oaks[sample(length(Oaks$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Oak1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> O
+  
+  Wines[sample(length(Wines$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Wine1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> W
+  
+  rbind(O,W) %>% 
+  mutate_if(is.character, as.factor) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk2, Parent = Parent2, Rep = Rep2),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4)),
+            POS = i) -> newdata
+  
+  if(i == 1){
+    final2 = newdata
+  }else{
+    final2 = rbind(final2, newdata)
+  }
+}
+
+#Ordering by Effect and plotting effect size
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  group_by(Param) %>%
+  arrange(abs(Effect)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Effect))) + geom_line(aes(color = Param)) +
+  geom_ribbon(aes(ymin = abs(Effect) - (1.96*SE), ymax = abs(Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+  geom_hline(data = fcutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  ylim(c(0,50))+
+  facet_grid(~Param)
+```
+```{r}
+#Looking at the distribution of SE and Effects
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% ggplot(aes(x = Effect, y = SE, color = Param)) + geom_point(alpha = 0.5)
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% ggplot(aes(x = Effect, y = log(SE), color = Param)) + geom_point(alpha = 0.5)
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(log(SE) < 3) %>%
+  ggplot(aes(x = Effect, y = SE, color = Param)) + geom_point(alpha = 0.5)
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  #filter(log(SE) < 3) %>%
+  ggplot(aes(x = pval, y = SE, color = Param)) + geom_point(alpha = 0.5) + ggtitle("Unfiltered")
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(log(SE) < 3) %>%
+  ggplot(aes(x = pval, y = SE, color = Param)) + geom_point(alpha = 0.5) + ggtitle("Filtered")
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  #filter(log(SE) < 3) %>%
+  ggplot(aes(x = Zscore, y = SE, color = abs(Effect))) + geom_point(alpha = 0.5) + ggtitle("Unfiltered")
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  filter(log(SE) < 3) %>%
+  ggplot(aes(x = Zscore, y = SE, color = abs(Effect))) + geom_point(alpha = 0.5) + ggtitle("Filtered")
+```
+So it looks like the p-values and z-scores account for the crazy standard errors - let's see what the cutoff would be for those?
+
+```{r}
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Effect), c(0.95, 0.99)),
+                                                                                              label = c("5% FDR","1% FDR")) -> e2cutoffs
+
+final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
+  group_by(Param) %>%
+  arrange(abs(Zscore)) %>% mutate(order = row_number()) %>%
+  ggplot(aes(x = order, y = abs(Zscore), color = Param)) + geom_point(alpha = 0.1) +
+  geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label)) +
+  theme(legend.position = "bottom") +
+  facet_grid(~Param)
+```
+
+## Let's apply this cutoff to the real data
+
+```{r}
+CuSO4p8_glmer <- readRDS("CuSO4_P8_glmer.rds")
+CuSO4p8_glmer %>%  pivot_wider(names_from = Type, values_from = GLM) -> Cu_p8GlmerPivot
+
+Cu_p8GlmerPivot %>% ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_line() +
+    geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+Cu_p8GlmerPivot %>% 
+  filter(CHROM != "VIII") %>%
+  ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_line() +
+    geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") + 
+  facet_grid(Param~CHROM, scales = "free", space = "free")
+```
+```{r}
+Fluc_glmer <- readRDS("Fluconazole_glmer.rds")
+Fluc_glmer %>% mutate(Param = Effect) %>% select(-Effect) %>% pivot_wider(names_from = Type, values_from = GLM) -> Fluc_glmerPivot
+
+Fluc_glmerPivot %>% 
+  filter(CHROM != "I") %>%
+  ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_line() +
+    geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") + 
+  facet_grid(Param~CHROM, scales = "free", space = "free")
+
+Fluc_glmerPivot %>% 
+  filter(CHROM != "I") %>%
+  ggplot(aes(x = POS, y = (Effect))) + geom_line(aes(color = Param)) +
+    geom_ribbon(aes(ymin = (Effect) - (1.96*SE), ymax = (Effect) + (1.96*SE), fill = Param), alpha = 0.2) + 
+    #geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") + 
+  facet_grid(Param~CHROM, scales = "free", space = "free")
+```
+
+## What are the cutoffs like if we use the CSS8 data instead of Fluc?
+
+```{r}
+cybr2_c8 <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
+
+cybr2_c8 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData_c8
+
+rollData_c8 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Dose","Allele"), names_sep = "_") %>%
+  filter(Bulk == "Dilute", Parent != "Oak1", Parent != "Wine1") %>%
+  pivot_wider(names_from = Allele, values_from = value) -> Null_c8
+
+Null_c8 %>% filter(Parent == "Oak8") %>% count() -> OakNulls
+Null_c8 %>% filter(Parent == "Wine8") %>% count() -> WineNulls
+
+Null_c8 %>% filter(Parent == "Oak8") -> Oaks
+Null_c8 %>% filter(Parent == "Wine8") -> Wines
+
+
+for(i in 1:50000){
+  Oaks[sample(length(Oaks$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Oak1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> O
+  
+  Wines[sample(length(Wines$POS), size = 4, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1),
+           Rep2 = c(0,0,1,1),
+           Parent2 = "Wine1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> W
+  
+  rbind(O,W) %>% 
+  mutate_if(is.character, as.factor) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk2, Parent = Parent2, Rep = Rep2),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4)),
+            POS = i) -> newdata
+  
+  if(i == 1){
+    final2 = newdata
+  }else{
+    final2 = rbind(final2, newdata)
+  }
+}
+
+```
+
