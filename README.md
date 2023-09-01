@@ -9,19 +9,26 @@ UPDATE: pipeline now uses Nextflow, READ.ME for which is in Nextflow_Pipeline/
 java -jar /share/apps/picard/2.17.11/picard.jar CreateSequenceDictionary
 R=GCF_000146045.2_R64_genomic.fna O=GCF_000146045.2_R64_genomic.dict
 ``` 
+
+2. Prepare parent sequences; Oak is ```SRR5331805```, Wine is ```SRR5331804```
+```
+module load sra-tools/2.10.9
+prefetch SRR5331804
+```
+3. Run the following on the parent sequences, except for the end where you just make a VCF of these locations to call.
    
-2. Change the directory that you're creating by making a new .config file (```cp x.config y.config``` and then ```vi y.config```)
-3. Make a new .q executable file for running this new config file; run this on the HPC using slurm:
+4. Change the directory that you're creating by making a new .config file (```cp x.config y.config``` and then ```vi y.config```)
+5. Make a new .q executable file for running this new config file; run this on the HPC using slurm:
    ```
    sbatch newexecutablefile.q
    ```
    and then monitor using ```watch sbatch --me```
    
-7. Once the new folder has the trimmed, aligned, sorted, and bqsr folders, with the correct number of files in each, copy the files in Nextflow_Pipeline/ into that new folder and ```cd``` into it
-8. Merge and split them all: ```sbatch CB_2.1_merge.split.q```
-9. Index the files: ```for i in *bam; do sbatch CB_3.0_Index.q $i; done```
-10. Call variants in a loop: ```for i in *bam; do sbatch CB_4.0_CallVariants_T.q $i; done```
-11. Sort and merge all of the files, with last argument being the final name. This will also run the gatk vcftotable so that the final output can be loaded directly into R: ```sbatch CB_5.0_zip.concat.sort.q HVYTYDRX2``` 
+6. Once the new folder has the trimmed, aligned, sorted, and bqsr folders, with the correct number of files in each, copy the files in Nextflow_Pipeline/ into that new folder and ```cd``` into it
+7. Merge and split them all: ```sbatch CB_2.1_merge.split.q```
+8. Index the files: ```for i in *bam; do sbatch CB_3.0_Index.q $i; done```
+9. Call variants in a loop: ```for i in *bam; do sbatch CB_4.0_CallVariants_T.q $i; done```
+10. Sort and merge all of the files, with last argument being the final name. This will also run the gatk vcftotable so that the final output can be loaded directly into R: ```sbatch CB_5.0_zip.concat.sort.q HVYTYDRX2``` 
 
 ## Pipelines
 1. NZ: Adjusted from Naomi Ziv's 2017 published pipeline using samtools
