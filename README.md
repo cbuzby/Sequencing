@@ -1,6 +1,20 @@
 # Sequencing
 UPDATE: pipeline now uses Nextflow, READ.ME for which is in Nextflow_Pipeline/
 
+## Nextflow Start from Scratch
+
+1. Prepare reference: we used R64 as a reference as file ```GCF_000146045.2_R64_genomic.fna``` in folder Reference. Alignment requires that the reference have an index, which can be completed using ```samtools faidx Reference/*fna```. The BQSR step requires a dictionary, which can be completed using picard tools; ```java -jar /share/apps/picard/2.17.11/picard.jar CreateSequenceDictionary R=GCF_000146045.2_R64_genomic.fna O=GCF_000146045.2_R64_genomic.dict```
+2. Ensure that the files at the top of the Nextflow pipeline are all being referenced; just ```ll <copy path> | wc -l``` to check.
+3. Change the directory that you're creating by making a new .config file (```cp x.config y.config``` and then ```vi y.config```)
+4. Make a new .q executable file for running this new config file
+5. ```sbatch newexecutablefile.q``` and then monitor using ```watch sbatch --me```
+6. Once the new folder has the trimmed, aligned, sorted, and bqsr folders, with the correct number of files in each, copy the files in Nextflow_Pipeline/ into that new folder
+7. Merge them all: ```sbatch CB_2.1_merge.split.q```
+8. Index the merged files: ```sbatch CB_3.0_Index.q```
+9. Split the files? <- NOT SURE
+10. Call variants in a loop: ```for i in *bam; do sbatch CB_4.0_CallVariants_T.q $i; done```
+11. Sort the final file (last argument is the name of it): ```sbatch CB_5.0_zip.concat.sort.q HVYTYDRX2``` <- NOT SURE
+
 Sequencing pipelines for Chromosome Substitution BSA analysis. Reads must be aligned to reference and then variants called through GATK ```haplotypecaller``` before analyzing variants using QTLSeqR. Both CB_Pipeline and Analysis folders are used here. ```NZ_CB_Pipeline``` is obsolete.
 
 ## Pipelines
