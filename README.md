@@ -14,6 +14,7 @@ R=GCF_000146045.2_R64_genomic.fna O=GCF_000146045.2_R64_genomic.dict
 ```
 module load sra-tools/2.10.9
 prefetch SRR5331804
+fastq-dump --split-files --fasta 60 SRR5331804
 ```
 3. Run the following on the parent sequences, except for the end where you just make a VCF of these locations to call.
    
