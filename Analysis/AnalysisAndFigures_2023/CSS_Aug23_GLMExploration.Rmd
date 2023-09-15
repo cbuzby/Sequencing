@@ -933,6 +933,8 @@ for(i in 1:50000){
   }
 }
 
+saveRDS(final2, file = "Fluc_50k_resamplingnulls.rds")
+
 #Ordering by Effect and plotting effect size
 final2 %>% pivot_wider(names_from = Type, values_from = GLM) %>% 
   group_by(Param) %>%
@@ -1025,6 +1027,8 @@ Fluc_glmerPivot %>%
 
 ## What are the cutoffs like if we use the CSS8 data instead of Fluc?
 
+Once in a while it gives this: Downdated VtV is not positive definite (but doesn't happen when removing chr 8 and 3)
+
 ```{r}
 cybr2_c8 <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
 
@@ -1038,7 +1042,8 @@ cybr2_c8 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
 
 rollData_c8 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Dose","Allele"), names_sep = "_") %>%
   filter(Bulk == "Dilute", Parent != "Oak1", Parent != "Wine1") %>%
-  pivot_wider(names_from = Allele, values_from = value) -> Null_c8
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  filter(CHROM != "III", CHROM != "VIII") -> Null_c8
 
 Null_c8 %>% filter(Parent == "Oak8") %>% count() -> OakNulls
 Null_c8 %>% filter(Parent == "Wine8") %>% count() -> WineNulls
@@ -1071,11 +1076,130 @@ for(i in 1:50000){
             POS = i) -> newdata
   
   if(i == 1){
-    final2 = newdata
+    final4 = newdata
+    #final4 = rbind(final4, newdata)
   }else{
-    final2 = rbind(final2, newdata)
+    final4 = rbind(final4, newdata)
   }
 }
 
+saveRDS(final4, file = "C8_50k_resamplingnulls.rds")
+
+```
+
+Plotting with these cutoffs now (from ~50000 runs; 5k saved)
+
+```{r}
+tail(final4)
+final4 %>% #filter(POS != 1) %>% 
+  pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Zscore), c(0.95, 0.99)),
+                                                                                              label = c("5% FDR","1% FDR")) -> z4cutoffs
+
+Cu_p8GlmerPivot %>% ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_line() +
+    geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+Cu_p8GlmerPivot %>% 
+  filter(CHROM != "VIII") %>%
+  ggplot(aes(x = POS, y = abs(Zscore), color = Param)) + geom_line() +
+    geom_hline(data = e2cutoffs, aes(yintercept = Z_cutoff, linetype = label, color = Param)) +
+    theme(legend.position = "bottom") + 
+  facet_grid(Param~CHROM, scales = "free", space = "free")
+```
+
+What happens if we add more replicates?
+
+```{r}
+#4 replicates each instead of 2
+for(i in 1:50000){
+  Oaks[sample(length(Oaks$POS), size = 8, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1,0,1,0,1),
+           Rep2 = c(0,0,1,1,2,2,3,3),
+           Parent2 = "Oak1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> O
+  
+  Wines[sample(length(Wines$POS), size = 8, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1,0,1,0,1),
+           Rep2 = c(0,0,1,1,2,2,3,3),
+           Parent2 = "Wine1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> W
+  
+  rbind(O,W) %>% 
+  mutate_if(is.character, as.factor) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk2, Parent = Parent2, Rep = Rep2),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4)),
+            POS = i) -> newdata
+  
+  if(i == 1){
+    final_4reps = newdata
+    #final4 = rbind(final4, newdata)
+  }else{
+    final_4reps = rbind(final_4reps, newdata)
+  }
+}
+
+final_4reps %>% #filter(POS != 1) %>% 
+  pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Zscore), c(0.95, 0.99)),
+                                                                                              label = c("5% FDR","1% FDR")) -> final_4reps_cutoffs
+```
+
+```{r}
+#6 replicates each instead of 2
+for(i in 1:50000){
+  Oaks[sample(length(Oaks$POS), size = 12, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1,0,1,0,1,0,1,0,1),
+           Rep2 = c(0,0,1,1,2,2,3,3,4,4,5,5),
+           Parent2 = "Oak1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> O
+  
+  Wines[sample(length(Wines$POS), size = 12, replace = FALSE),] %>% ungroup %>% 
+    mutate(Bulk2 = c(0,1,0,1,0,1,0,1,0,1,0,1),
+           Rep2 = c(0,0,1,1,2,2,3,3,4,4,5,5),
+           Parent2 = "Wine1") %>% 
+    pivot_longer(c(Oak, Wine)) %>% 
+    select(Bulk2, Parent2, Rep2, Allele = name, Reads = value) -> W
+  
+  rbind(O,W) %>% 
+  mutate_if(is.character, as.factor) %>%
+    reframe(GLM = mixedglm(W = Reads, formula = "Allele ~ Bulk*Parent+(1 | Rep)",
+                           Allele = Allele, Bulk = Bulk2, Parent = Parent2, Rep = Rep2),
+            Param = rep(c("Intercept","Bulk", "Parent", "Interaction"),4),
+            Type = c(rep("Effect",4), rep("SE",4), rep("Zscore", 4), rep("pval", 4)),
+            POS = i) -> newdata
+  
+  if(i == 1){
+    final_6reps = newdata
+    #final4 = rbind(final4, newdata)
+  }else{
+    final_6reps = rbind(final_6reps, newdata)
+  }
+}
+
+final_6reps %>% #filter(POS != 1) %>% 
+  pivot_wider(names_from = Type, values_from = GLM) %>% group_by(Param) %>% summarize(Z_cutoff = quantile(abs(Zscore), c(0.95, 0.99)),
+                                                                                              label = c("5% FDR","1% FDR")) -> final_6reps_cutoffs
+
+saveRDS(final_6reps, file = "final_6reps.rds")
+```
+
+Comparing cutoffs
+
+```{r}
+#saveRDS(final_4reps, file = "final_4reps.rds")
+#saveRDS(final_6reps, file = "final_6reps.rds")
+
+rbind(data.frame(z4cutoffs, Reps = 2),
+      data.frame(final_4reps_cutoffs, Reps = 4),
+      data.frame(final_6reps_cutoffs, Reps = 6)) %>%
+  ggplot(aes(x = paste(label, "| R", Reps), y = Z_cutoff, shape = label, color = Param)) + 
+  geom_point(size = 4, alpha = 0.4) + 
+  xlab("FDR | Replicates") +
+  ggtitle("Do more replicates change the cutoffs? 50k Trials")
 ```
 

@@ -1,0 +1,820 @@
+---
+title: "SimulatingRecombination_Aug23"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(RColorBrewer)
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(coefficients(glm_fit))
+  
+}
+
+```
+
+## Simulating Recombination
+
+There is a 20 gene locus where only two genes have an effect of p1 and p2. These genes increase the representation of the cell in the population. We "sporulate" 10 cells and then sample their rows at the phenotypes given, then count the alleles.
+
+```{r}
+
+popsize <- 100
+gs1 <- matrix(rep(1,20), ncol = 1)
+gs2 <- matrix(rep(0,20), ncol = 1)
+
+p1 <- 0.4
+p2 <- 1.0
+
+phenotypes <- matrix(c(0,0,0,0,p1,
+                       0,0,0,0,p2,
+                       0,0,0,0,0,
+                       0,0,0,0,0), ncol = 1)
+
+# samplelocus <- sample(1:20, 1)
+# 
+# newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):20]),nrow = 1)
+# newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):20]),nrow = 1)
+# 
+# newg1 %*% phenotypes
+
+#Set up saving data
+savegenotypes_g1 <- t(data.frame(1:20))
+savegenotypes_g2 <- t(data.frame(1:20))
+
+savephenotypes_g1 <- vector()
+savephenotypes_g2 <- vector()
+
+for(i in 1:popsize){
+  samplelocus <- sample(1:19, 1)
+  newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):20]),nrow = 1)
+  newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):20]),nrow = 1)
+  
+  if(i == 1){
+    g1data <- newg1
+    g2data <- newg2
+  }else{
+    g1data <- rbind(g1data, newg1)
+    g2data <- rbind(g2data, newg2)
+
+  }
+  
+  savephenotypes_g1[i] <- newg1 %*% phenotypes
+  savephenotypes_g2[i] <- newg2 %*% phenotypes
+
+}
+```
+
+Now we want to sample each row by the proportion extra that it has.
+
+```{r}
+rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+
+A <- colSums(rbind(g1data, g2data)[rows,])
+B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+
+plot(log(A/B))
+
+replogs <- log(A/B)
+
+```
+
+Let's do this in a massive loop
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 0.4
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 1)
+    newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+Making these loci the same effect size
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 1.0
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 1)
+    newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+Separating out the loci a little bit
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 180
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 0.4
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 1)
+    newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+Separating them out AND making them equal
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 180
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 1.0
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 1)
+    newg1 <- matrix(c(gs1[1:samplelocus], gs2[(samplelocus+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:samplelocus], gs1[(samplelocus+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+## Let's double the recombination number
+
+The original parameters:
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 0.4
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+
+Now let's put the QTL really close together
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 32
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 0.4
+p2 <- 1.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+Now let's make it so that they're really large effects?
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 4.0
+p2 <- 2.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+What if it's just one peak but it's MASSIVE? Like the QTL that we see:
+
+The original parameters:
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+What if it's a huge peak but this one is also like 10x?
+
+The original parameters:
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 10.0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```
+
+Now if the effects are 50 and 100?
+
+```{r}
+#SETUP
+popsize <- 1000
+
+loci <- 200
+x <- 30
+y <- 80
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 50.0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+reps <- 100
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    if(i == 1){
+      g1data <- newg1
+      g2data <- newg2
+    }else{
+      g1data <- rbind(g1data, newg1)
+      g2data <- rbind(g2data, newg2)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1 %*% phenotypes
+    savephenotypes_g2[i] <- newg2 %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste(reps, "Replicates, Population Size", popsize))
+```

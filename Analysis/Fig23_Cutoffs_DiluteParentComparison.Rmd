@@ -1,0 +1,660 @@
+---
+title: "Unselected Comparisons of Parental Backgorunds"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(stringr)
+#library(cybrBSA)
+
+#install.packages("lme4")
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+################################################################################
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+#glm with replicates
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+```
+
+
+## Load in Data for each experiment
+
+```{r, eval = FALSE}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023")
+
+dir("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Data/")
+
+Fluc_1 <- readRDS("Data/Fluconazole_1_cybr2.rds")
+Cu_1_A <- readRDS("Data/CuSO4_1_cybr2.rds")
+Cu_1_B <- readRDS("Data/CuSO4_2_cybr2.rds")
+CycZeo_1 <- readRDS("Data/Zeocin_cybr2.rds")
+Cu_8 <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
+HZeo_18 <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/H2O2_Zeocin_CSS_cybr2.rds")
+
+```
+## Select only the dilute groups
+
+```{r, eval = FALSE}
+Fluc_1 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> Fluc_1_Dilute
+
+Cu_1_A %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> Cu_1_A_Dilute
+
+Cu_1_B %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> Cu_1_B_Dilute
+
+CycZeo_1 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> CycZeo_1_Dilute
+
+Cu_8 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Dose", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> Cu_8_Dilute
+
+HZeo_18 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
+                        names_sep = "_",
+                        values_to = "Reads") %>% filter(Bulk == "Dilute") -> HZeo_18_Dilute
+
+
+```
+
+
+```{r, eval = FALSE}
+Fluc_1_Dilute %>% mutate(across('Parent', str_replace, "OakI" ,"O1"),
+                         across('Parent', str_replace, "WineI" ,"W1")) %>%
+  mutate(exp = "F1") -> F1
+
+Cu_1_A_Dilute %>% mutate(across('Parent', str_replace, "Oak" ,"O1"),
+                         across('Parent', str_replace, "Wine" ,"W1")) %>%
+  mutate(Rep = NA) %>%
+  mutate(exp = "C1A") %>%
+  select(CHROM, POS, Bulk, Parent, Rep, Allele, Reads, exp) -> C1A
+
+Cu_1_B_Dilute %>% mutate(across('Parent', str_replace, "Oak" ,"O1"),
+                         across('Parent', str_replace, "Wine" ,"W1")) %>%
+  mutate(exp = "C1B")-> C1B
+
+CycZeo_1_Dilute %>% mutate(across('Parent', str_replace, "Oak" ,"O1"),
+                         across('Parent', str_replace, "Wine" ,"W1")) %>%
+  mutate(exp = "Z1")-> Z1
+
+Cu_8_Dilute %>% mutate(across('Parent', str_replace, "Oak1" ,"O1"),
+                        across('Parent', str_replace, "Wine1" ,"W1"),
+                       across('Parent', str_replace, "Oak8" ,"O8"),
+                        across('Parent', str_replace, "Wine8" ,"W8"))%>%
+  mutate(exp = "C8") %>%
+  select(-Dose)-> C8
+
+HZeo_18_Dilute %>% mutate(across('Parent', str_replace, "Oak1" ,"O1"),
+                        across('Parent', str_replace, "Wine1" ,"W1"),
+                       across('Parent', str_replace, "Oak8" ,"O8"),
+                        across('Parent', str_replace, "Wine8" ,"W8"))%>%
+  mutate(exp = "HZ8") -> HZ8
+
+rbind(F1, C1A, C1B, Z1, C8, HZ8) -> AllDilute
+
+saveRDS(AllDilute, file = "2023_Dilute_Consolidated_Sept.rds")
+
+# table(HZ8$Parent, HZ8$Rep)
+# table(HZeo_18_Dilute$Parent, HZeo_18_Dilute$Rep)
+
+```
+
+## Load in file from before
+
+```{r}
+#AllDilute <- readRDS("2023_Dilute_Consolidated.rds")
+AllDilute <- readRDS("2023_Dilute_Consolidated_Sept.rds")
+
+```
+
+
+
+## Smooth all of these to compare
+
+This step takes a little bit
+
+```{r}
+AllDilute %>% pivot_wider(names_from = c(Bulk, Parent, Rep, exp, Allele), values_from = Reads) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  na.omit() %>%
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Exp", "Allele"), names_sep = "_", values_to = "Reads")  -> dilute_combineddata
+
+#unique(dilute_combineddata$CHROM)
+```
+
+## Doing the log ratios again smoothed
+
+Diagnostics for finding weird experiments
+
+```{r, eval = FALSE}
+# dilute_combineddata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+#   filter(CHROM != "I", CHROM != "M", CHROM != "VIII") %>%
+#   mutate(logRatio = abs(log(Wine/Oak))) %>%
+#   ggplot(aes(x = POS, y = logRatio, color = paste(Exp, Rep), linetype = Parent)) + geom_line(alpha = 0.4) + facet_grid(~CHROM, space = "free", scales = "free") +
+#   theme(legend.position = "bottom") +
+#   scale_color_manual(values = c("gray", "gray", "violet", "violet", "gray",
+#                                 "gray", "black", "black", "black", "black"))
+
+dilute_combineddata %>% pivot_wider(names_from = Allele, values_from = Reads) -> dilute_combined_wider
+
+for(i in unique(dilute_combineddata$CHROM)){
+  dilute_combined_wider %>%
+  filter(CHROM == i) %>%
+  mutate(logRatio = abs(log(Wine/Oak))) %>%
+  ggplot(aes(x = POS, y = logRatio, color = Rep)) + geom_point(alpha = 0.3, size = 0.4) + facet_grid(Parent~Exp) + 
+  theme(legend.position = "bottom")  + scale_color_manual(values = c("lightblue", "maroon", "navy", "darkorange", "black", "green", "blue", "purple")) +
+    ggtitle(paste("Chromosome", i, sep = " ")) -> plot
+  print(plot)
+}
+
+```
+
+Let's plot these again but try to visualize them in chromosomes
+
+```{r, eval = FALSE}
+dilute_combineddata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  filter(CHROM != "I", CHROM != "M", CHROM != "VIII", CHROM != "III") %>%
+  mutate(logRatio = abs(log(Wine/Oak))) %>%
+  ggplot(aes(x = POS, y = logRatio, color = paste(Parent, Exp, Rep))) + 
+  geom_point(size = 0.2, alpha = 0.2) + 
+  facet_wrap(facets = "CHROM", scales = "free") +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("blue1", "blue2", "blue3", "blue4", "darkblue", "gray20","black",#O1
+                                "darkturquoise", "turquoise",  #O8
+                                "red1", "red2", "red3", "red4", "firebrick", "darkred", "maroon", "orchid","violet", #W1
+                                "gold", "orange",#W8
+                                "gray", "gray","gray","gray","gray","gray","gray","gray","gray","gray","gray","gray")) + #W8
+  ggtitle("Dilute Chromosomes by Parent")
+
+#Making sure the colors line up
+dilute_combineddata %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  filter(CHROM == "IV") %>%
+  mutate(logRatio = abs(log(Wine/Oak))) %>%
+  ggplot(aes(x = POS, y = logRatio, color = paste(Parent, Exp, Rep))) + 
+  geom_point(size = 0.2, alpha = 0.2) + 
+  facet_grid(Exp~Parent) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("blue1", "blue2", "blue3", "blue4", "darkblue", "gray20","black",#O1
+                                "darkturquoise", "turquoise",  #O8
+                                "red1", "red2", "red3", "red4", "firebrick", "darkred", "maroon", "orchid","violet", #W1
+                                "gold", "orange",
+                                "gray", "gray","gray","gray","gray","gray","gray","gray","gray","gray","gray")) + #W8
+  ggtitle("Chr IV to check colors")
+```
+
+
+
+
+## Doing a GLM for the dilute samples
+
+Combine all data sets into **cd**
+
+```{r}
+#Testing why H2O2 data is being weird
+table(dilute_combineddata$Parent, dilute_combineddata$Exp, dilute_combineddata$Rep)
+```
+
+```{r}
+dilute_combineddata %>% mutate(RepSpec = paste(Rep, Exp, sep = "")) %>% na.omit() %>% select(-Bulk, -Rep) %>%
+  pivot_wider(names_from = c(Parent, Exp, RepSpec, Allele), values_from = Reads) %>%
+  na.omit() -> dilute_glmready
+
+#colnames(dilute_glmready)
+
+#Test a single glm with this
+
+dilute_glmready %>% #head(1) %>%
+  pivot_longer(c(-CHROM, -POS), names_to = c("Parent", "Exp", "Rep", "Allele"), names_sep = "_", values_to = "Reads") %>% mutate_if(is.character, as.factor) -> cd
+
+```
+
+***
+
+
+
+## Doing this the way I sent Randi
+
+```{r}
+#W is required if using a logistic regression with weights
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(coefficients(glm_fit))
+  
+}
+
+
+#Define the formula based on your specific column names
+myformula <- "Allele ~ Parent+Exp+Rep"
+
+b <- glm(myformula, weights = Reads, family = binomial, 
+              data = cd)
+myrownames <- rownames(as.data.frame(coefficients(b)))
+
+
+#Run the glm
+glm_fit <- glm(formula = as.formula(myformula), 
+               data = as.data.frame(cd), 
+               weights = Reads, #this should be the column which has your reads or numeric data
+               family = binomial)
+
+```
+
+```{r}
+cd %>% 
+  #subsetting for time; this line can be removed if you want to see the whole genome
+  #filter(CHROM %in% c("I")) %>% 
+  #this is how you can parallellize with more positions
+  group_by(CHROM, POS) %>% 
+  #reframe() is the newer version of summarize()
+  reframe(GLMResult = glm_cb(formula = myformula, W = Reads,
+                               Allele = Allele, Parent = Parent, Exp = Exp, Rep = Rep),
+          labels = myrownames) -> glm_fulldataset
+
+```
+
+
+
+### Should any experiments be thrown out?
+
+Check effects of each experiment, and if one is consistently significant(?) then maybe remove from all other analyses.
+
+```{r}
+cd %>% 
+  #make your rownames first
+  filter(CHROM == "I", POS == 64781) -> test
+
+myrownames <- names(coefficients(glm("Allele ~ Exp", 
+                                     data = as.data.frame(test), 
+                                     weights = Reads, family = binomial)))
+
+
+cd %>% 
+  #this is how you can parallelize with more positions
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Exp", 
+                             W = Reads,
+                               Allele = Allele, Exp = Exp),
+          labels = myrownames) -> glm_D
+
+#Plot it
+glm_D %>% filter(CHROM != "I", CHROM != "III", CHROM != "M", CHROM != "VIII", labels != "(Intercept)") %>%
+  ggplot(aes(x = POS, y = abs(GLMResult), color = labels)) + geom_line(size = 1) + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("gray", "red", "darkturquoise", "black", "violet"))+
+  ggtitle("Effect of each Experiment") +
+  ylab("glm(Allele ~ Experiment) Estimate")
+
+```
+
+
+## Using Replicates as Randomized Parent
+
+```{r}
+unique(cd$Rep)
+#TESTING
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AC1B,
+         B = BC1B) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  
+  #TESTING
+  filter(POS == 64781) -> Test
+
+glm_test <- glm("Allele ~ Bulk*Parent", data = as.data.frame(Test), weights = Reads, family = binomial)
+names(coefficients(glm_test))
+
+################################################################################
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AC1B,
+         B = BC1B) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_C1B_rand
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AZ1,
+         B = BZ1) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_Z1_rand
+
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AC8,
+         B = BC8) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #This one only
+  filter(Parent == "O8" | Parent == "W8") %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_C8_rand_chr8
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = CF1,
+         B = BF1) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_F1_CB_rand
+
+# cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+#   #pick which columns here
+#   select(CHROM, POS, Parent, Exp, Allele, 
+#          A = CF1,
+#          B = DF1) %>%
+#   pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+#   mutate_if(is.character, as.factor) %>%
+#   na.omit() %>%
+#   #run the GLM here
+#   group_by(CHROM, POS) %>% 
+#   reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+#                              W = Reads,
+#                                Allele = Allele, Bulk = Bulk, Parent = Parent),
+#           labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_F1_CD_rand #BROKEN
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = BF1,
+         B = DF1) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_F1_BD_rand
+
+#H2O2 Add in
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  filter(Parent != "O1", Parent != "W1") %>% 
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AHZ8,
+         B = BHZ8) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_H8_AB_rand
+
+cd %>% pivot_wider(names_from = Rep, values_from = Reads) %>%
+  filter(Parent != "O8", Parent != "W8") %>% 
+  #pick which columns here
+  select(CHROM, POS, Parent, Exp, Allele, 
+         A = AHZ8,
+         B = CHZ8,
+         C = EHZ8) %>%
+  pivot_longer(c(A,B), names_to = "Bulk", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor) %>%
+  na.omit() %>%
+  #run the GLM here
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glm_cb(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> glm_H1_ACE_rand
+
+
+
+```
+
+Figuring out the H2O2 thing
+
+```{r, eval = FALSE}
+unique(cd$Exp)
+cd %>% filter(Exp == "HZ8") %>% filter(Parent != "O1", Parent != "W1") -> CSS8
+unique(CSS8$Rep)
+#A and B work for Chr 8
+
+cd %>% filter(Exp == "HZ8") %>% filter(Parent != "O8", Parent != "W8") -> CSS1
+unique(CSS1$Rep)
+#AHZ8, C, and E work for Chr 1
+
+table(testH$Parent, testH$Bulk)
+table(CSS8$Parent, CSS8$Rep)
+```
+
+
+```{r}
+# rbind(data.frame(glm_C1B_rand, Exp = "C1B"),
+#       data.frame(glm_Z1_rand, Exp = "Z1"),
+#       data.frame(glm_C8_rand_chr8, Exp = "C8"),
+#       data.frame(glm_F1_CB_rand, Exp = "F1_CB"),
+#       data.frame(glm_F1_BD_rand, Exp = "F1_BD")) -> RepAsBulk
+
+rbind(data.frame(glm_C1B_rand, Exp = "C1B"),
+      data.frame(glm_Z1_rand, Exp = "Z1"),
+      data.frame(glm_C8_rand_chr8, Exp = "C8"),
+      data.frame(glm_F1_CB_rand, Exp = "F1_CB"),
+      
+      data.frame(glm_H8_AB_rand, Exp = "H8_AB"),
+      data.frame(glm_H1_ACE_rand, Exp = "H1_ACE"),
+
+      data.frame(glm_F1_BD_rand, Exp = "F1_BD")) -> RepAsBulk
+
+#data.frame(glm_H8_AB_rand, Exp = "TEST") -> RepAsBulk
+```
+
+
+### Bulk Effects
+
+```{r, eval = FALSE}
+
+RepAsBulk%>%
+  filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  filter(labels == "Bulk") %>%
+  ggplot(aes(x = POS, y = GLMResult, color = Exp)) + geom_line() + facet_grid(~CHROM, scale = "free", space = "free") +
+  ggtitle("BULK EFFECTS | Replicates as Bulk * Parent Interaction")
+
+RepAsBulk %>% filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  filter(labels == "Bulk") %>%
+  group_by(Exp) %>%
+  summarize(Lower = quantile(GLMResult, 0.05, na.rm = TRUE),
+            Upper = quantile(GLMResult, 0.95, na.rm = TRUE),
+            Abs = quantile(abs(GLMResult), 0.975, na.rm = TRUE)) %>%
+  na.omit() -> RepAsBulk_Quant
+
+RepAsBulk %>% filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  na.omit() %>%
+  filter(labels == "Bulk") %>%
+  ggplot(aes(x = abs(GLMResult), color = Exp)) + 
+  geom_density(size = 1.2) +
+  geom_vline(data = RepAsBulk_Quant, aes(xintercept = Abs, color = Exp), linetype = "dashed", size = 1.2) +
+  ggtitle("BULK EFFECTS | Replicates as Bulk * Parent Interaction")
+
+```
+
+### Interaction Effects
+
+```{r, eval = FALSE}
+RepAsBulk%>%
+  filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  filter(labels == "Interaction") %>%
+  ggplot(aes(x = POS, y = GLMResult, color = Exp)) + geom_line() + facet_grid(~CHROM, scale = "free", space = "free") +
+  ggtitle("INTERACTION EFFECTS | Replicates as Bulk * Parent Interaction")
+
+RepAsBulk %>% filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  filter(labels == "Interaction") %>%
+  group_by(Exp) %>%
+  summarize(Lower = quantile(GLMResult, 0.05, na.rm = TRUE),
+            Upper = quantile(GLMResult, 0.95, na.rm = TRUE),
+            Abs = quantile(abs(GLMResult), 0.975, na.rm = TRUE)) %>%
+  na.omit() -> RepAsBulk_Quant
+
+RepAsBulk %>% filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  na.omit() %>%
+  filter(labels == "Interaction") %>%
+  ggplot(aes(x = abs(GLMResult), color = Exp)) + 
+  geom_density(size = 1.2) +
+  geom_vline(data = RepAsBulk_Quant, aes(xintercept = Abs, color = Exp), linetype = "dashed", size = 1.2) +
+  ggtitle("INTERACTION EFFECTS | Replicates as Bulk * Parent Interaction")
+
+```
+
+#### Calculate the FDR for each cutoff from 0 to 0.6
+
+```{r}
+RepAsBulk %>% filter(CHROM != "I", CHROM != "M", CHROM !="VIII") %>%
+  group_by(Exp, labels) %>%
+  reframe(Cutoff_Abs = quantile(abs(GLMResult), seq(0, 1, length.out = 1001), na.rm = TRUE),
+            Quant = seq(0, 1, length.out = 1001)) %>%
+  na.omit() -> RepAsBulk_FDR
+
+  #Trying new code for slicing
+RepAsBulk_FDR %>%
+  group_by(Exp, labels) %>% filter(labels != "Intercept", labels != "Parent") %>% filter(Quant >= 0.95) %>% slice(which.min(Cutoff_Abs)) -> Cutoff_95
+RepAsBulk_FDR %>%
+  group_by(Exp, labels) %>% filter(labels != "Intercept", labels != "Parent") %>% filter(Quant >= 0.99) %>% slice(which.min(Cutoff_Abs)) -> Cutoff_99
+
+
+################################################################################
+# saveRDS(Cutoff_95, file = "9-12-23_DiluteCutoff_95.rds")
+# saveRDS(Cutoff_99, file = "9-12-23_DiluteCutoff_99.rds")
+################################################################################
+
+RepAsBulk_FDR %>% filter(labels != "Intercept", labels != "Parent") %>%
+  ggplot(aes(x = Cutoff_Abs , y = Quant, color = Exp, linetype = labels)) + geom_line(size= 1.2, alpha = 0.2) +
+  geom_hline(yintercept = c(0.95, 0.99)) +
+  geom_vline(data = Cutoff_95, aes(xintercept = Cutoff_Abs, color = Exp, linetype = labels), size = 1.2)+
+  ggtitle("5% False Discovery on Replicates as Bulk Effect") +
+  ylim(0.8, 1)
+
+RepAsBulk_FDR %>% filter(labels != "Intercept", labels != "Parent") %>%
+  ggplot(aes(x = Cutoff_Abs , y = Quant, color = Exp)) + geom_line(size= 1.2, alpha = 0.2) +
+  geom_hline(yintercept = c(0.95, 0.99)) +
+  geom_vline(data = Cutoff_99, aes(xintercept = Cutoff_Abs, color = Exp, linetype = labels), size = 1.2)+
+  ggtitle("1% False Discovery on Replicates as Bulk Effect") +
+    facet_grid(rows = vars(labels))
+
+#Just looking at H2O2 Experiments
+RepAsBulk_FDR %>% filter(labels != "Intercept", labels != "Parent") %>%
+  filter(Exp %in% c("H1_ACE", "H8_AB")) %>%
+  ggplot(aes(x = Cutoff_Abs , y = Quant, color = Exp, linetype = labels)) + geom_line(size= 1.2, alpha = 0.2) +
+  geom_hline(yintercept = c(0.95, 0.99)) +
+  geom_vline(data = Cutoff_99[Cutoff_99$Exp %in% c("H1_ACE", "H8_AB"),], aes(xintercept = Cutoff_Abs, color = Exp, linetype = labels), size = 1.2)+
+  ggtitle("1% False Discovery on Replicates as Bulk Effect") +
+  facet_grid(rows = vars(labels))
+```
+

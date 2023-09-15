@@ -1,0 +1,376 @@
+---
+title: "CSS Sequence Analysis Template for Cu Experiment"
+date: "Jan 2023"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(stringr)
+
+#library(cybrBSA)
+
+#ggplot2::theme_set(theme_classic())
+ggplot2::theme_set(theme_light())
+#ggplot2::theme_set(theme_minimal())
+
+################################################################################
+glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W")),
+                           Reads = c(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW))
+
+  b <- glm(Allele ~ Bulk*Parent, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+################################################################################
+#glm with replicates
+glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", "B", "B", "B", "B","B", "B", "B", "B")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+cybr2_rollmean <- function(dataframe){
+  dataframe %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, CHROM = CHROM, SmoothCount = ceiling(frollmean(value, n = 100))) %>% na.omit() %>% pivot_wider(names_from = label,values_from = SmoothCount)
+}
+
+################################################################################
+#Define triple replicate function
+glmfixed_rep3 <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                         HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                         HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc){
+  
+  combineddata <- data.frame(Bulk = factor(c("H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L", 
+                                             "H", "H","H", "H", "L", "L","L", "L")),
+                           Parent = factor(c("O", "O", "W", "W", "O", "O", "W", "W", 
+                                             "O", "O", "W", "W", "O", "O", "W", "W",
+                                             "O", "O", "W", "W", "O", "O", "W", "W")),
+                           Allele = factor(c("O", "W", "O", "W","O", "W", "O", "W", 
+                                             "O", "W", "O", "W","O", "W", "O", "W",
+                                             "O", "W", "O", "W","O", "W", "O", "W")),
+                           Rep = factor(c("A", "A", "A", "A","A", "A", "A", "A", 
+                                          "B", "B", "B", "B","B", "B", "B", "B",
+                                          "C", "C", "C", "C", "C", "C","C", "C")),
+                           Reads = c(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa, 
+                                     HOOb, HOWb, HWOb, HWWb, LOOb, LOWb, LWOb, LWWb,
+                                     HOOc, HOWc, HWOc, HWWc, LOOc, LOWc, LWOc, LWWc))
+
+  b <- glm(Allele ~ Bulk*Parent+Rep, weights = Reads, family = binomial, 
+              data = combineddata)
+
+  summary(b)$coefficients[
+    ((length(summary(b)$coefficients)/4)*2+1):
+      ((length(summary(b)$coefficients)/4)*3)]
+}
+
+#W is required if using a logistic regression with weights
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.75))])
+  
+}
+
+#W is required if using a logistic regression with weights
+glmer_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glmer(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(c(summary(glm_fit)$coefficients))
+  
+}
+
+```
+
+## Smoothing
+
+Smooth by rolling mean or median
+
+```{r}
+#Load in previously done CuSO4 data
+#Cu2 <- readRDS("../Data/CuSO4_2_cybr2.rds")
+CuAll <- readRDS("../2023/CuSO4_all_smoothed.rds")
+```
+
+
+```{r}
+#cybr2Data <- readRDS("Cu_Zeocin_CSS_cybr2.rds")
+#Use rolling average of 100 SNPs, finding the mean
+#cybr2Data %>% cybr2_rollmean() -> rollmeanData
+
+#Find the rolling median or change n instead
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+
+```
+
+Calculate GLM from rolled data
+
+## Downsampling DILUTE Oak8 Bulk A and Smoothing
+
+```{r}
+#cybr2Data <- readRDS("Cu_Zeocin_CSS_cybr2.rds")
+cybr2Data %>% select(CHROM, POS, Dilute_Oak8_A_Oak, Dilute_Oak8_A_Wine) %>% pivot_longer(c(-CHROM, -POS)) %>%
+  group_by(CHROM, POS) %>% summarize(bulk = name,
+                                     value = value,
+                                     reads = sum(value)) %>% 
+  group_by(CHROM, POS, bulk) %>% 
+  reframe(subsample = sum(sample(c(1,0), size = 1+floor((reads+1)/4), prob = c(value, (reads+1)-value), replace = TRUE))) %>%
+  pivot_wider(names_from = bulk, values_from = subsample) -> subOak8A
+
+cybr2Data %>% select(-Dilute_Oak8_A_Oak, -Dilute_Oak8_A_Wine) %>% merge(subOak8A) -> cybr2Data_SUB
+
+#Find the rolling median or change n instead
+cybr2Data_SUB %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
+```
+
+
+## GLMs for all data
+
+CSS8
+
+```{r, warning=FALSE, message=FALSE}
+
+#Define the function outputs on the first POSITION that you have
+
+CuAll %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
+  mutate_if(is.character, as.factor) %>%
+   filter(CHROM == "I", POS == rollData$POS[1]) -> samplesubset
+
+#Define the formula based on your specific column names
+#myformula <- "Allele ~ Bulk*Parent+Rep"
+myformula <- "Allele ~ Bulk*Parent+(1 |Rep)"
+
+#Run the glm
+glm_fit <- glmer(formula = as.formula(myformula), 
+               data = as.data.frame(samplesubset), 
+               weights = ReadCount, #this should be the column which has your reads or numeric data
+               family = binomial)
+
+#View the glm of your first position
+mycoefficients <- rownames(as.data.frame(summary(glm_fit)$coefficients))
+
+CuAll %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
+  mutate_if(is.character, as.factor) %>%
+  group_by(CHROM, POS) %>% 
+  reframe(GLMResult = glmer_cb(formula = myformula, W = ReadCount,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+            coefficient = rep(mycoefficients, 4),
+            label = c(rep("Effect", length(mycoefficients)),
+                      rep("SE", length(mycoefficients)),
+                      rep("Zscore", length(mycoefficients)),
+                      rep("Pval", length(mycoefficients)))) -> glm_fulldataset
+
+saveRDS(glm_fulldataset, file = "Cu_CSS1_glmer.rds")
+
+```
+
+```{r, fig.width=16, fig.height=4}
+glm_fulldataset %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
+  filter(CHROM != "I", CHROM != "M", coefficient != "(Intercept)") %>%
+  ggplot(aes(x = POS, y = abs(Zscore), color = coefficient)) + geom_line() +
+  geom_hline(yintercept = 1.96) +
+  geom_hline(yintercept = max(glm_fulldataset$GLMResult[glm_fulldataset$CHROM == "III" & glm_fulldataset$coefficient != "(Intercept)"]),
+             linetype = "dashed") +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("black", "darkorchid", "gray")) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+glm_fulldataset_8 %>% select(CHROM, POS) %>% distinct() %>% filter(row_number()%%50 == 0) -> POStoKeep
+tests <- dim(POStoKeep)[1]
+
+alpha = 0.05
+mycutoff <- -log(alpha/tests)
+
+merge(POStoKeep, glm_fulldataset_8) %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
+  filter(CHROM != "VIII", CHROM != "M", coefficient != "(Intercept)") %>%
+  ggplot(aes(x = POS, y = abs(-log(Pval)), color = coefficient)) + geom_point() +
+  geom_hline(yintercept = mycutoff) +
+  theme(legend.position = "bottom") +
+  #scale_color_manual(values = c("black", "violet", "gray")) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+plot(1:1000, -log(0.05/1:1000))
+abline(h = -log(0.05/100))
+abline(h = -log(0.05/500))
+```
+
+#Peak-Calling Function
+
+```{r}
+
+
+glm_fulldataset %>% pivot_wider(names_from = label, values_from = GLMResult) -> piv_glm
+
+piv_glm %>% filter(CHROM == "III", coefficient != "(Intercept)") %>%
+  summarize(Score = max(abs(Effect))) -> Cutoff
+
+piv_glm%>%
+  filter(CHROM != "I", coefficient != "(Intercept)") %>% 
+  filter(abs(Effect) > Cutoff$Score) %>%
+  group_by(CHROM, coefficient) %>% 
+  summarize(Effect = max(abs(Effect))) %>%
+  right_join(piv_glm)
+
+################################################################################
+dataset <- glm_fulldataset
+
+cybr_callpeaks_chr3 <- function(dataset, 
+                                statistic = "Effect", 
+                                statistic_col = "label", 
+                                value_col = "GLMResult",
+                                exclude = "(Intercept)"){
+  
+  #Make dataset
+  dataset %>% pivot_wider(names_from = statistic_col, values_from = value_col) %>% 
+    select(CHROM, POS, coefficient, statistic = statistic) -> piv_glm
+
+  #Set cutoff
+  piv_glm %>% filter(CHROM == "III", coefficient != "(Intercept)") %>%
+    summarize(X = max(abs(statistic))) -> Cutoff
+
+  #Find peaks
+  piv_glm%>%
+    filter(coefficient %in% exclude == FALSE) %>% 
+    filter(abs(statistic) > Cutoff$X) %>%
+    group_by(CHROM, coefficient) %>% 
+    summarize(statistic = max(abs(statistic))) %>%
+    right_join(piv_glm) -> output
+  
+  colnames(output)[colnames(output) == "statistic"] = statistic
+  
+  return(output)
+}
+
+cybr_callpeaks_chr3(glm_fulldataset)
+```
+
+## Basic Plots
+
+Single GLM Plot for this Data for reference
+
+```{r, fig.width=16, fig.height=5, eval = FALSE}
+#Plotting the weird one
+glm_fulldataset_8REP %>% 
+  filter(CHROM != "M") %>% 
+  filter(label == "Zscore") %>%
+  ggplot(aes(x = POS, y = abs(GLMResult), color = coefficient)) + geom_line(size = 1) + 
+  scale_color_manual(values = c("lightblue", "black", "firebrick", "orchid", "darkorchid", "gray", "gray", "gray", "yellow")) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) + ggtitle("GLM of both combined")
+
+rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
+  pivot_wider(names_from = Allele, values_from = ReadCount) %>% mutate(logAllele = log(Wine/Oak)) -> logALL
+
+logALL %>% filter(CHROM %in% c("I", "VIII", "M") == FALSE, Bulk != "Zeocin") %>%
+  ggplot(aes(x = POS, y = abs(logAllele), color = Bulk, linetype = Rep)) + geom_line(size = 1) +
+  scale_color_manual(values = c("gray", "#005254")) +
+  facet_grid(Parent~CHROM, space = "free", scales = "free")
+
+logALL %>% filter(CHROM %in% c("I", "VIII", "M") == FALSE, Bulk != "Zeocin", Parent == "Oak8") %>%
+  ggplot(aes(x = POS, y = abs(logAllele), color = Bulk)) + geom_line(size = 1) +
+  scale_color_manual(values = c("gray", "#005254")) +
+  facet_grid(Rep~CHROM, space = "free", scales = "free")
+
+logALL %>% filter(CHROM %in% c("I", "VIII", "M") == FALSE, Bulk != "Zeocin") %>%
+  ggplot(aes(x = POS, y = abs(logAllele), color = Parent, linetype = Rep)) + geom_line(size = 1) +
+  scale_color_manual(values = c("black", "red", "gray", "navy"))+
+  facet_grid(Bulk~CHROM, space = "free", scales = "free")
+
+#LOOKING AT THE UNSMOOTHED DATA JUST IN CASE
+cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
+  pivot_wider(names_from = Allele, values_from = ReadCount) %>% mutate(logAllele = log(Wine/Oak)) -> unrolledALL
+
+unrolledALL$CHROM <- factor(unrolledALL$CHROM, levels = as.character(as.roman(1:16), "M"))
+
+unrolledALL %>% filter(CHROM %in% c("I", "VIII", "NA") == FALSE, Bulk != "Zeocin") %>%
+  ggplot(aes(x = POS, y = abs(logAllele), color = Parent, linetype = Rep)) + geom_point(alpha = 0.1) +
+  scale_color_manual(values = c("black", "red", "gray", "navy"))+
+  facet_grid(Bulk~CHROM, space = "free", scales = "free")
+
+#LOOKING AT COVERAGE
+logALL %>% mutate(Coverage = Oak+Wine) %>% filter(CHROM != "M") %>%
+  ggplot(aes(x = POS, y = Coverage, linetype = paste(Bulk, Rep), color = Parent)) + geom_line(size = 1) + ylim(0,800) +
+  facet_grid(~CHROM, space = "free", scales = "free")
+```
+

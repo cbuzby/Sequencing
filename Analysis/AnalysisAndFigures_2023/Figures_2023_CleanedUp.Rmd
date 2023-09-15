@@ -21,7 +21,7 @@ library(foreach)
 library(doParallel)
 library(RColorBrewer)
 
-library(cybrBSA)
+#library(cybrBSA)
 
 ggplot2::theme_set(theme_light() + theme(text = element_text(size = 20)))
 
@@ -938,3 +938,24 @@ CUSO4c %>% filter(label != "Rep") %>% ggplot(aes(x = POS, y = abs(summary), colo
             axis.ticks.x=element_blank()) 
 
 ```
+
+## Zeocin Data
+
+```{r, fig.width=17,fig.height=8}
+Zeocin_CSS8 <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/Zeocin_CSS8_glm.rds")
+Zeocin_CSS8 %>% filter(coefficient != "(Intercept)", CHROM != "VIII") %>% mutate(coefficient = str_replace(coefficient, "BulkZeocin", "Bulk"),
+                             coefficient = str_replace(coefficient, "ParentWine8", "Parent"),
+                             coefficient = str_replace(coefficient, ":", ""),
+                             coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+  filter(label == "Zscore") %>% transmute(CHROM = CHROM, POS = POS, summary = GLMResult, label = coefficient) -> Z8
+
+rbind(data.frame(Z8, Exp = "CSS8"),
+      data.frame(Zeocin_glm, Exp = "CSS1")) -> ZeoAll
+
+ZeoAll %>% filter(CHROM != "M") %>% ggplot(aes(x = POS, y = abs(summary), color = label)) + geom_line(linewidth = 1, alpha = 0.8) +
+  facet_grid(Exp~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom", axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+  scale_color_manual(values = c("black", "purple", "gray", "lightpink"))
+```
+
