@@ -1,11 +1,43 @@
 # Sequencing
- Sequencing pipelines for Chromosome Substitution BSA analysis. Reads must be aligned to reference and then variants called through GATK ```haplotypecaller``` before analyzing variants using QTLSeqR. Both CB_Pipeline and Analysis folders are used here. ```NZ_CB_Pipeline``` is obsolete.
+UPDATE: pipeline now uses Nextflow, READ.ME for which is in Nextflow_Pipeline/
+
+## Nextflow Start from Scratch
+
+1. Prepare reference: we used R64 as a reference as file ```GCF_000146045.2_R64_genomic.fna``` in folder Reference. Alignment requires that the reference have an index, which can be completed using ```samtools faidx Reference/*fna```. The BQSR step requires a dictionary, which can be completed using picard tools. Ensure that the files at the top of the Nextflow pipeline are all being referenced; just ```ll <copy path> | wc -l``` to check
+
+```
+java -jar /share/apps/picard/2.17.11/picard.jar CreateSequenceDictionary
+R=GCF_000146045.2_R64_genomic.fna O=GCF_000146045.2_R64_genomic.dict
+``` 
+
+2. Prepare parent sequences; Oak is ```SRR5331805```, Wine is ```SRR5331804```
+```
+module load sra-tools/2.10.9
+prefetch SRR5331804
+fastq-dump --split-files --fasta 60 SRR5331804
+```
+3. Run the following on the parent sequences, except for the end where you just make a VCF of these locations to call.
+   
+4. Change the directory that you're creating by making a new .config file (```cp x.config y.config``` and then ```vi y.config```)
+5. Make a new .q executable file for running this new config file; run this on the HPC using slurm:
+   ```
+   sbatch newexecutablefile.q
+   ```
+   and then monitor using ```watch sbatch --me```
+   
+6. Once the new folder has the trimmed, aligned, sorted, and bqsr folders, with the correct number of files in each, copy the files in Nextflow_Pipeline/ into that new folder and ```cd``` into it
+7. Merge and split them all: ```sbatch CB_2.1_merge.split.q```
+8. Index the files: ```for i in *bam; do sbatch CB_3.0_Index.q $i; done```
+9. Call variants in a loop: ```for i in *bam; do sbatch CB_4.0_CallVariants_T.q $i; done```
+10. Sort and merge all of the files, with last argument being the final name. This will also run the gatk vcftotable so that the final output can be loaded directly into R: ```sbatch CB_5.0_zip.concat.sort.q HVYTYDRX2``` 
 
 ## Pipelines
 1. NZ: Adjusted from Naomi Ziv's 2017 published pipeline using samtools
 2. GATK (g): Adjusted from Mohammed Khalfan's GATK variant calling pipeline
 3. **CB_Pipeline**: using a variety of gatk tools, but adjusted for specific sequences
 4. **Analysis**: uses QTLSeqR for analysis
+
+Sequencing pipelines for Chromosome Substitution BSA analysis. Reads must be aligned to reference and then variants called through GATK ```haplotypecaller``` before analyzing variants using QTLSeqR. Both CB_Pipeline and Analysis folders are used here. ```NZ_CB_Pipeline``` is obsolete.
 
 ### CB_Pipeline
 
