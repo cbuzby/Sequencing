@@ -154,6 +154,7 @@ H2O2 dataset only: checking why so many aren't being picked up as oak/wine paren
 
 ```{r, warning=FALSE, message=FALSE}
 setwd("../../../../GitHub/Sequencing/Analysis/")
+getwd()
 
 parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
 
