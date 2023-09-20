@@ -163,19 +163,60 @@ parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length
 #mydatatotest = "Data/HKTFTDRX2.SortedCat.vcf.output.table"
 mydatatotest = "newHJ5HKDRX3.SortedCat.vcf.output.table"
 
+setwd("../../../../GitHub/Sequencing/Analysis/")
 
-FilteredData_UNFILTERED <- cybrInputGATKTable(mydatatotest) %>% 
-  cybrQualityFilter(GQcutoff = 50) %>% 
+FilteredData_8 <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% filter(., grepl("8_([ABCE])",Dataset)) %>%
+  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) 
+
+FilteredData_1 <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% filter(., grepl("1_([ABCE])",Dataset)) %>%
   cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) 
 
 FilteredData_NOOMISSION <- cybrInputGATKTable(mydatatotest) %>% 
-  cybrQualityFilter() %>% 
-  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE)
+  cybrQualityFilter()
+  #cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE)
+
+FilteredData_NOOMISSION %>% filter(., grepl("1_([ABCE])",Dataset)) 
 
 dim(FilteredData_UNFILTERED) # did not clean data by quality scores
 dim(FilteredData_NOOMISSION) #did not remove unidentified alleles
 dim(FilteredData) #original
 
+```
+
+
+
+Testing why some of the SNPs aren't showing up?
+
+```{r, fig.width=16, fig.height=4}
+pSNPs %>% select(CHROM, POS) %>% mutate(PAllele = "OG", Parent = NA) -> pSNPs_edit
+FilteredData %>% select(CHROM, POS, PAllele) %>% distinct() %>%
+  rbind(pSNPs_edit) %>%
+  ggplot(aes(x = POS, y = PAllele, color = PAllele)) + geom_jitter(size = 0.1, alpha = 0.1, height = 0.1) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+rbind(data.frame(FilteredData_1, Parent = "1"), data.frame(FilteredData_1, Parent = "8")) %>% 
+  select(CHROM, POS, PAllele, Parent) %>% distinct() %>%
+  rbind(pSNPs_edit) %>%
+  filter(CHROM == "IX") %>%
+  #experimental
+  group_by(Parent, PAllele) %>%
+  filter(POS < unique(POS)[50]) %>%
+  filter(POS < 75000) %>%
+  ggplot(aes(x = POS, y = PAllele, color = PAllele)) + geom_point(size = 3, alpha = 0.8) +
+  facet_grid(Parent~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+rbind(data.frame(FilteredData_1, Parent = "1"), data.frame(FilteredData_1, Parent = "8")) %>% 
+  select(CHROM, POS, PAllele, Parent) %>% distinct() %>%
+  rbind(pSNPs_edit) %>%
+  filter(CHROM == "IX") %>%
+  filter(POS < 28500, POS > 28000) %>%
+  ggplot(aes(x = POS, y = PAllele, color = PAllele)) + geom_point(size = 3, alpha = 0.8) +
+  facet_grid(Parent~CHROM, scales = "free",  space = "free") +
+  theme(legend.position = "none")
 ```
 
 ```{r}
@@ -249,10 +290,19 @@ FilteredData <- cybrInputGATKTable(mydatatotest) %>%
   cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) %>% 
   na.omit()
 
+FilteredData_8 <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% filter(., grepl("8_([ABCE])",Dataset)) %>%
+  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) 
+
+FilteredData_1 <- cybrInputGATKTable(mydatatotest) %>% 
+  cybrQualityFilter() %>% filter(., grepl("1_([ABCE])",Dataset)) %>%
+  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) 
+
+rbind(FilteredData_1, FilteredData_8)
 #Using Gsub for this
 gsub(FilteredData$Dataset, "HJ5HKDRX3_n01_", "") #CHANGE THIS
 
-FilteredData %>% mutate(DShort = gsub("HJ5HKDRX3_n01_", "", Dataset),
+rbind(FilteredData_1, FilteredData_8) %>% mutate(DShort = gsub("HJ5HKDRX3_n01_", "", Dataset),
                        DS = gsub(".fastq", "", DShort)) %>% select(-Dataset, -DShort) -> tempFilteredData
 
 tempFilteredData$Bulk <- NA
@@ -280,7 +330,7 @@ tempFilteredData$Parent[grep("08", tempFilteredData$DS)] <- "Oak8"
 tempFilteredData$ReadCount <- as.numeric(tempFilteredData$ReadCount)
   
 # #THIS IGNORES REPLICATES
-tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %>% distinct %>% 
+tempFilteredData %>% na.omit() %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %>% distinct %>% 
  pivot_wider(names_from = c(Bulk, Parent, Rep, PAllele), values_from = ReadCount) -> cybr2Data
 
 #MAKE SEPARATE DATASETS FOR EACH EXPERIMENT
@@ -293,14 +343,14 @@ tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %
 #   pivot_wider(names_from = c(Bulk, Parent, Rep, PAllele), values_from = ReadCount) -> cybr2Data_CSS8
   
 
-saveRDS(object = cybr2Data, file = "H2O2_Zeocin_CSS_cybr2.rds")
+saveRDS(object = cybr2Data, file = "H2O2_Zeocin_CSS_cybr2_sep18.rds")
 #getwd()
 #saveRDS(object = cybr2Data_CSS1, file = "H2O2_CSS1_cybr2.rds")
 #saveRDS(object = cybr2Data_CSS8, file = "H2O2_CSS8_cybr2.rds")
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 #unique(tempFilteredData$DS)
 unique(tempFilteredData$Parent)
 unique(FilteredData$Dataset)
@@ -336,7 +386,7 @@ cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 50, FUN = median))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 
@@ -372,7 +422,7 @@ cybr2Data_SUB %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 50, FUN = median))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 ```
@@ -409,7 +459,8 @@ rollData %>%
   filter(Parent %in% c("Oak8", "Wine8"), Bulk != "Zeocin") %>%
   mutate_if(is.character, as.factor) %>%
   #subsetting for time; this line can be removed if you want to see the whole genome
-  #filter(CHROM %in% c("I"), POS == 56351) %>% 
+  #filter(CHROM %in% c("VII"), POS == 1083086) %>% 
+  mutate(ReadCount = ReadCount + 1) %>%
   #this is how you can parallellize with more positions
   group_by(CHROM, POS) %>% 
   #reframe() is the newer version of summarize()
@@ -421,122 +472,36 @@ rollData %>%
                       rep("Zscore", length(mycoefficients)),
                       rep("Pval", length(mycoefficients)))) -> glm_fulldataset_8
 
-saveRDS(glm_fulldataset_8, file = "H2O2_CSS8_glm_SUB.rds")
+saveRDS(glm_fulldataset_8, file = "H2O2_CSS8_glm_SUB_50.rds")
 
 ```
 
 ```{r, fig.width=16, fig.height=4}
-glm_fulldataset_8 %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
-  filter(CHROM != "VIII", CHROM != "M", coefficient != "(Intercept)") %>%
-  ggplot(aes(x = POS, y = abs(Effect), color = coefficient)) + geom_line() +
-  geom_hline(yintercept = 1.96) +
-  theme(legend.position = "bottom") +
-  scale_color_manual(values = c("black", "violet", "gray")) +
-  facet_grid(~CHROM, scales = "free", space = "free")
-
-glm_fulldataset_8 %>% select(CHROM, POS) %>% distinct() %>% filter(row_number()%%50 == 0) -> POStoKeep
-tests <- dim(POStoKeep)[1]
-
-alpha = 0.05
-mycutoff <- -log(alpha/tests)
-
-merge(POStoKeep, glm_fulldataset_8) %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
-  filter(CHROM != "VIII", CHROM != "M", coefficient != "(Intercept)") %>%
-  ggplot(aes(x = POS, y = abs(-log(Pval)), color = coefficient)) + geom_point() +
-  geom_hline(yintercept = mycutoff) +
-  theme(legend.position = "bottom") +
-  #scale_color_manual(values = c("black", "violet", "gray")) +
-  facet_grid(~CHROM, scales = "free", space = "free")
-
-plot(1:1000, -log(0.05/1:1000))
-abline(h = -log(0.05/100))
-abline(h = -log(0.05/500))
-```
-
-```{r}
-################################################################################
-#DOING THIS WITH REPLICATE EXCLUSIONS BUT WITH BOTH CHROMOSOMES SUBSTITUTED
-rollData %>% 
-  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
-  filter(Bulk != "Zeocin") %>%
-  mutate_if(is.character, as.factor) %>%
-   filter(CHROM == "I", POS == 56351) -> samplesubset
-
-#Define the formula based on your specific column names
-#myformula <- "Allele ~ Bulk*Parent+Rep"
-myformula <- "Allele ~ Bulk*Parent+(1 |Rep)"
-
-
-#Run the glm
-glm_fit <- glmer(formula = as.formula(myformula), 
-               data = as.data.frame(samplesubset), 
-               weights = ReadCount, #this should be the column which has your reads or numeric data
-               family = binomial)
-
-#View the glm of your first position
-mycoefficients <- rownames(as.data.frame(summary(glm_fit)$coefficients))
-
-rollData %>% select(-H2O2_Oak8_A_Wine) %>%
-  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
-  filter(Bulk != "Zeocin") %>%
-  mutate_if(is.character, as.factor) %>%
-  #subsetting for time; this line can be removed if you want to see the whole genome
-  #filter(CHROM %in% c("I"), POS == 55256) %>% 
-  #this is how you can parallellize with more positions
-  group_by(CHROM, POS) %>% 
-  #reframe() is the newer version of summarize()
-  reframe(GLMResult = glmer_cb(formula = myformula, W = ReadCount,
-                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
-            coefficient = rep(mycoefficients, 4),
-            label = c(rep("Effect", length(mycoefficients)),
-                      rep("SE", length(mycoefficients)),
-                      rep("Zscore", length(mycoefficients)),
-                      rep("Pval", length(mycoefficients)))) -> glm_fulldataset_8REP
-
-saveRDS(glm_fulldataset_8REP, file = "H2O2_MixedRepsChromosomes.rds")
-
-################################################################################
-#NOW doing this without the one replicate for CSS8
-rollData %>% select(-H2O2_Oak8_A_Wine) %>%
-  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
-  filter(Bulk != "Zeocin", Parent %in% c("Oak8", "Wine8")) %>%
-  mutate_if(is.character, as.factor) %>%
-   filter(CHROM == "I", POS == 56351) -> samplesubset
-
-#Define the formula based on your specific column names
-#myformula <- "Allele ~ Bulk*Parent+Rep"
-myformula <- "Allele ~ Bulk*Parent+(1 |Rep)"
-
-
-#Run the glm
-glm_fit <- glmer(formula = as.formula(myformula), 
-               data = as.data.frame(samplesubset), 
-               weights = ReadCount, #this should be the column which has your reads or numeric data
-               family = binomial)
-
-#View the glm of your first position
-mycoefficients <- rownames(as.data.frame(summary(glm_fit)$coefficients))
-
-rollData %>% select(-H2O2_Oak8_A_Wine) %>%
-  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
-  filter(Bulk != "Zeocin", Parent %in% c("Oak8", "Wine8")) %>%
-  mutate_if(is.character, as.factor) %>%
-  #subsetting for time; this line can be removed if you want to see the whole genome
-  #filter(CHROM %in% c("I"), POS == 55256) %>%  
-  #this is how you can parallellize with more positions
-  group_by(CHROM, POS) %>% 
-  #reframe() is the newer version of summarize()
-  reframe(GLMResult = glmer_cb(formula = myformula, W = ReadCount,
-                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
-            coefficient = rep(mycoefficients, 4),
-            label = c(rep("Effect", length(mycoefficients)),
-                      rep("SE", length(mycoefficients)),
-                      rep("Zscore", length(mycoefficients)),
-                      rep("Pval", length(mycoefficients)))) -> glm_fulldataset_8REPex
-
-saveRDS(glm_fulldataset_8REPex, file = "H2O2_8_ExclRep.rds")
-
-
+# glm_fulldataset_8 %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
+#   filter(CHROM != "VIII", CHROM != "M", coefficient != "(Intercept)") %>%
+#   ggplot(aes(x = POS, y = abs(Effect), color = coefficient)) + geom_line() +
+#   geom_hline(yintercept = 1.96) +
+#   theme(legend.position = "bottom") +
+#   scale_color_manual(values = c("black", "violet", "gray")) +
+#   facet_grid(~CHROM, scales = "free", space = "free")
+# 
+# glm_fulldataset_8 %>% select(CHROM, POS) %>% distinct() %>% filter(row_number()%%50 == 0) -> POStoKeep
+# tests <- dim(POStoKeep)[1]
+# 
+# alpha = 0.05
+# mycutoff <- -log(alpha/tests)
+# 
+# merge(POStoKeep, glm_fulldataset_8) %>% pivot_wider(names_from = label, values_from = GLMResult) %>%
+#   filter(CHROM != "VIII", CHROM != "M", coefficient != "(Intercept)") %>%
+#   ggplot(aes(x = POS, y = abs(-log(Pval)), color = coefficient)) + geom_point() +
+#   geom_hline(yintercept = mycutoff) +
+#   theme(legend.position = "bottom") +
+#   #scale_color_manual(values = c("black", "violet", "gray")) +
+#   facet_grid(~CHROM, scales = "free", space = "free")
+# 
+# plot(1:1000, -log(0.05/1:1000))
+# abline(h = -log(0.05/100))
+# abline(h = -log(0.05/500))
 ```
 
 CSS I
@@ -546,7 +511,7 @@ rollData %>%
   pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
   filter(Parent %in% c("Oak1", "Wine1"), Bulk != "Zeocin") %>%
   mutate_if(is.character, as.factor) %>%
-   filter(CHROM == "I", POS == 55256) -> samplesubset
+   filter(CHROM == "I", POS == 30076) -> samplesubset
 
 #Define the formula based on your specific column names
 #myformula <- "Allele ~ Bulk*Parent+Rep"
@@ -568,6 +533,7 @@ rollData %>%
   mutate_if(is.character, as.factor) %>%
   #subsetting for time; this line can be removed if you want to see the whole genome
   #filter(CHROM %in% c("V", "VI", "VII", "VIII")) %>% 
+  mutate(ReadCount = ReadCount + 1) %>%
   #this is how you can parallellize with more positions
   group_by(CHROM, POS) %>% 
   #reframe() is the newer version of summarize()
@@ -579,7 +545,10 @@ rollData %>%
                       rep("Zscore", length(mycoefficients)),
                       rep("Pval", length(mycoefficients)))) -> glm_fulldataset_1
 
-saveRDS(glm_fulldataset_1, file = "H2O2_CSS1_glm.rds")
+saveRDS(glm_fulldataset_1, file = "H2O2_CSS1_glm50.rds")
+
+rm(glm_fit)
+rm(samplesubset)
 ```
 
 Zeocin CSS8
@@ -592,7 +561,7 @@ rollData %>%
   filter(Parent %in% c("Oak8", "Wine8"), Bulk != "H2O2") %>%
   mutate(Bulk = str_replace(Bulk, "NA", "Zeocin")) %>%
   mutate_if(is.character, as.factor) %>%
-   filter(CHROM == "I", POS == 55256) -> samplesubset
+   filter(CHROM == "I", POS == 30076) -> samplesubset
 
 #Define the formula based on your specific column names
 #myformula <- "Allele ~ Bulk*Parent+Rep"
@@ -615,7 +584,7 @@ rollData %>%
   mutate(Bulk = str_replace(Bulk, "NA", "Zeocin")) %>%
   #subsetting for time; this line can be removed if you want to see the whole genome
   #filter(CHROM %in% c("IV"), POS == 1501882) %>% 
-  #this is how you can parallellize with more positions
+  mutate(ReadCount = ReadCount + 1) %>%
   group_by(CHROM, POS) %>% 
   #reframe() is the newer version of summarize()
   reframe(GLMResult = glmer_cb(formula = myformula, W = ReadCount,
@@ -626,8 +595,10 @@ rollData %>%
                       rep("Zscore", length(mycoefficients)),
                       rep("Pval", length(mycoefficients)))) -> glm_fulldataset_zeocin8
 
-saveRDS(glm_fulldataset_zeocin8, file = "Zeocin_CSS8_glm.rds")
+saveRDS(glm_fulldataset_zeocin8, file = "Zeocin_CSS8_glm50.rds")
 
+rm(glm_fit)
+rm(samplesubset)
 #getwd()
 ```
 
@@ -656,14 +627,14 @@ Single GLM Plot for this Data for reference
 
 ```{r, fig.width=16, fig.height=5}
 #Plotting the weird one
-glm_fulldataset_8REP %>% 
-  filter(CHROM != "M") %>% 
-  filter(label == "Zscore") %>%
-  ggplot(aes(x = POS, y = abs(GLMResult), color = coefficient)) + geom_line(size = 1) + 
-  scale_color_manual(values = c("lightblue", "black", "firebrick", "orchid", "darkorchid", "gray", "gray", "gray", "yellow")) +
-  facet_grid(~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + ggtitle("GLM of both combined")
+# glm_fulldataset_8REP %>% 
+#   filter(CHROM != "M") %>% 
+#   filter(label == "Zscore") %>%
+#   ggplot(aes(x = POS, y = abs(GLMResult), color = coefficient)) + geom_line(size = 1) + 
+#   scale_color_manual(values = c("lightblue", "black", "firebrick", "orchid", "darkorchid", "gray", "gray", "gray", "yellow")) +
+#   facet_grid(~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "bottom", axis.text.x=element_blank(),
+#             axis.ticks.x=element_blank()) + ggtitle("GLM of both combined")
 
 rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_", values_to = "ReadCount") %>%
   pivot_wider(names_from = Allele, values_from = ReadCount) %>% mutate(logAllele = log(Wine/Oak)) -> logALL
