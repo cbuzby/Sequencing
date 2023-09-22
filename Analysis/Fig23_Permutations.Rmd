@@ -68,7 +68,7 @@ glm_option_cb_short <- function(..., W, formula, glmer = FALSE) {
 #size = 100
 
 #FUNCTION
-permute_glm <- function(rollData, size = 100, parentvector = c("Oak1", "Wine1"), repvector = c("A","B","C","D", "E")){
+permute_glm <- function(rollData, size = 100, parentvector = c("Oak1", "Wine1"), repvector = c("A","B","C","D", "E"), formula = NULL){
   rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
   filter(Bulk == "Dilute", CHROM != "I", CHROM != "VIII", CHROM != "III", CHROM != "M") %>%
   pivot_wider(names_from = Allele, values_from = value) %>%
@@ -88,11 +88,14 @@ permute_glm <- function(rollData, size = 100, parentvector = c("Oak1", "Wine1"),
   for(i in 1:size){
     PermutedrollData %>% filter(POS %in% mysample[i,]) %>%
       pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "ReadCount") %>%
-      mutate(POS = as.factor(POS)) %>%
+      mutate(Bulk = as.factor(POS)) %>%
       mutate_if(is.character, as.factor) %>%
       filter(Parent %in% parentvector, Rep %in% repvector) -> test
     
-    savedatahere <- coefficients(glm(formula = "Allele ~ POS*Parent + Rep", data = as.data.frame(test), weights = ReadCount, family = binomial))
+    if(is.null(formula) == TRUE){
+      formula <- "Allele ~ Bulk*Parent + Rep"
+    }
+    savedatahere <- coefficients(glm(formula = formula, data = as.data.frame(test), weights = ReadCount, family = binomial))
   
     if(i == 1){
       PermutedGLM <- savedatahere
@@ -139,7 +142,7 @@ Fluc_1_perm <- permute_glm(rollData = fluc1_rolldata, parentvector = c("OakI", "
 ```
 
 ```{r}
-Cu_1_B %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+Cu_1_A %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
@@ -147,7 +150,19 @@ Cu_1_B %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> cua1_rolldata
 
-Cu_1_B_perm <- permute_glm(rollData = cua1_rolldata, parentvector = c("Oak", "Wine"), repvector = c("A", "B", "C", "D"), size = 500)
+Cu_1_A_perm <- permute_glm(rollData = cua1_rolldata, parentvector = c("Oak", "Wine"), repvector = c("A", "B", "C", "D"), size = 500, formula = )
+
+
+
+Cu_1_B %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> cub1_rolldata
+
+Cu_1_B_perm <- permute_glm(rollData = cub1_rolldata, parentvector = c("Oak", "Wine"), repvector = c("A", "B", "C", "D"), size = 500)
 #Cu_1_B_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> Cu_1_B_perm
 ```
 
@@ -219,11 +234,28 @@ All Finished
 
 rbind(data.frame(Q = quantile(Fluc_1_perm[,ncol(Fluc_1_perm)], 0.99), Exp = "Fluc_1_perm"),
       data.frame(Q = quantile(CycZeo_1_perm[,ncol(CycZeo_1_perm)], 0.99), Exp = "CycZeo_1_perm"),
+      data.frame(Q = quantile(Cu_1_A_perm[,ncol(Cu_1_A_perm)], 0.99), Exp = "Cu_1_A_perm"),
       data.frame(Q = quantile(Cu_1_B_perm[,ncol(Cu_1_B_perm)], 0.99), Exp = "Cu_1_B_perm"),
       data.frame(Q = quantile(H_8_perm[,ncol(H_8_perm)], 0.99), Exp = "H_8_perm"),
-      data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 0.99), Exp = "Cu_Fluc_8_perm")) -> Cutoffs_perm
+      data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 0.99), Exp = "Cu_Fluc_8_perm")) #-> Cutoffs_perm
 
-save(Cutoffs_perm, file = "NewCutoffs_perm.rds")
+rbind(data.frame(Q = quantile(Fluc_1_perm[,ncol(Fluc_1_perm)], 0.996), Exp = "Fluc_1_perm"),
+      data.frame(Q = quantile(CycZeo_1_perm[,ncol(CycZeo_1_perm)], 0.996), Exp = "CycZeo_1_perm"),
+      data.frame(Q = quantile(Cu_1_A_perm[,ncol(Cu_1_A_perm)], 0.996), Exp = "Cu_1_A_perm"),
+      data.frame(Q = quantile(Cu_1_B_perm[,ncol(Cu_1_B_perm)], 0.996), Exp = "Cu_1_B_perm"),
+      data.frame(Q = quantile(H_8_perm[,ncol(H_8_perm)], 0.996), Exp = "H_8_perm"),
+      data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 0.996), Exp = "Cu_Fluc_8_perm"))
+
+rbind(data.frame(Q = quantile(Fluc_1_perm[,ncol(Fluc_1_perm)], 1), Exp = "Fluc_1_perm"),
+      data.frame(Q = quantile(CycZeo_1_perm[,ncol(CycZeo_1_perm)], 1), Exp = "CycZeo_1_perm"),
+      data.frame(Q = quantile(Cu_1_A_perm[,ncol(Cu_1_A_perm)], 1), Exp = "Cu_1_A_perm"),
+      data.frame(Q = quantile(Cu_1_B_perm[,ncol(Cu_1_B_perm)], 1), Exp = "Cu_1_B_perm"),
+      data.frame(Q = quantile(H_8_perm[,ncol(H_8_perm)], 1), Exp = "H_8_perm"),
+      data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 1), Exp = "Cu_Fluc_8_perm"))
+
+saveRDS(Cutoffs_perm, file = "NewCutoffs_perm.rds")
+
+getwd()
 
 ```
 
