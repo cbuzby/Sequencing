@@ -11,6 +11,8 @@ output:
 ---
 
 ```{r, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
 #Load packages
 library(ggplot2)
 library(tidyr)
@@ -23,7 +25,7 @@ library(foreach)
 library(doParallel)
 library(RColorBrewer)
 library(scales)
-require(circlize)
+require(circlize) 
 library(stringr)
 
 #library(cybrBSA)
@@ -204,7 +206,7 @@ engineered <- data.frame(Locus = c("URA3", "MATalpha"),
 
 ```
 
-```{r, eval = FALSE}
+```{r}
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 
 cybrConvertParentalAlleles <- function(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"),
@@ -263,8 +265,8 @@ pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
 pSNPs_all <- rbind(data.frame(pSNPs[,1:2], E = "A_REF"),
                    data.frame(H2O2_glmer[,1:2], E = "H1"),
                    data.frame(H2O2_8_glmer[,1:2], E = "H8"),
-                   data.frame(C8[,1:2], E = "C8"),
-                   data.frame(C1B[,1:2], E = "C1"),
+                   data.frame(CuSO4_8_glm[,1:2], E = "C8"),
+                   data.frame(CuSO4_1_glmer[,1:2], E = "C1"),
                    data.frame(Fluc_1_glmer[,1:2], E = "F1"),
                    data.frame(Fluc_8_glm[,1:2], E = "F8"),
                    data.frame(Zeocin_8_glmer[,1:2], E = "Z8"),
@@ -339,8 +341,7 @@ cybr_callpeaks <- function(dataset, param = NULL, threshold = NULL, include_all 
 
 ```{r}
 
-
-#GLM PEAKS
+#Chr III Cutoff Peaks
 F_1_intpeaks <- cybr_callpeaks(Fluc_glm, param = "Interaction")
 C_1_intpeaks <- cybr_callpeaks(CuSO4_glm, param = "Interaction")
 H_8_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction")
@@ -349,7 +350,7 @@ C_8_intpeaks <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction")
 F_8_intpeaks <- cybr_callpeaks(Fluc_8_glm, param = "Interaction")
 Z_8_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction")
 
-#GLM PEAKS
+#Don't just find point
 F_1_intpeaks_all <- cybr_callpeaks(Fluc_glm, param = "Interaction", include_all = TRUE)
 C_1_intpeaks_all <- cybr_callpeaks(CuSO4_glm, param = "Interaction", include_all = TRUE)
 H_8_intpeaks_all <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction", include_all = TRUE)
@@ -437,7 +438,7 @@ Z_1_intpeaks_perm_b <- cybr_callpeaks(Zeocin_glm, param = "Interaction", thresho
 
 ### Parent SNP Loci
 
-```{r, fig.width=16, fig.height=4, eval = FALSE}
+```{r, fig.width=16, fig.height=4}
 
 centromeres <- data.frame(CHROM = as.character(as.roman(1:16)),
                           POS = c(151465,238207,114385,449711,151987,148510,496920,105586,
@@ -622,12 +623,12 @@ f8p <- cybr_callpeaks(Fluc_8_glm, param = "Interaction", threshold = 0.4839316, 
 
 #PLOT NEW CUTOFFS
 cybrPurple(CuSO4_glm, peakslist = c1p, cutoff = 0.4098215)
-cybrPurple(CuSO4_8_glm, peakslist = c8p, cutoff = 0.4839316, peakcolor = "#ED7B01")
+cybrPurple(CuSO4_8_glm, peakslist = c8p, cutoff = 0.4839316, peakcolor = "#ED7B0190")
 cybrPurple(Fluc_glm, peakslist = f1p, cutoff = 0.4260583)
 cybrPurple(Zeocin_glm, peakslist = z1p, cutoff = 0.4024422)
-cybrPurple(H2O2_8_glmer, peakslist = h8p, peakcolor = "#ED7B01", cutoff = 2.0160408)
-cybrPurple(Zeocin_8_glmer, peakslist = z8p, peakcolor = "#ED7B01", cutoff = 2.0160408)
-cybrPurple(Fluc_8_glm, peakslist = f8p, peakcolor = "#ED7B01", cutoff = 0.4839316)
+cybrPurple(H2O2_8_glmer, peakslist = h8p, peakcolor = "#ED7B0190", cutoff = 2.0160408)
+cybrPurple(Zeocin_8_glmer, peakslist = z8p, peakcolor = "#ED7B0190", cutoff = 2.0160408)
+cybrPurple(Fluc_8_glm, peakslist = f8p, peakcolor = "#ED7B0190", cutoff = 0.4839316)
 
 
 ```
@@ -778,20 +779,6 @@ cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL,
 
 ```
 
-LM PEAKS
-F_1_intpeaks <- cybr_callpeaks(Fluc_glm, param = "Interaction")
-C_1_intpeaks <- cybr_callpeaks(CuSO4_glm, param = "Interaction")
-Z_1_intpeaks <- cybr_callpeaks(Zeocin_glm, param = "Interaction")
-C_8_intpeaks <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction")
-F_8_intpeaks <- cybr_callpeaks(Fluc_8_glm, param = "Interaction")
-
-GLMER PEAKS
-H8g_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction")
-C1g_intpeaks <- cybr_callpeaks(CuSO4_1_glmer, param = "Interaction")
-H1g_intpeaks <- cybr_callpeaks(H2O2_glmer, param = "Interaction")
-Z8g_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction")
-F1g_intpeaks <- cybr_callpeaks(Fluc_1_glmer, param = "Interaction")
-
 
 ```{r, warning=FALSE, message=FALSE, fig.width=6, fig.height=6}
 
@@ -855,9 +842,10 @@ cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2),
 
 ```
 
-```{r, eval = FALSE}
+```{r, fig.width=6, fig.height=6}
 ################################################################################
 #MULT PEAKS
+#Fluconazole
 cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
             d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
             peaklist1 = f1p, 
@@ -866,6 +854,12 @@ cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2),
 
 #CuSO4 (glmer)
 cybr_circos(d1 = rbind(CuSO4_1_glmer, ChromosomeScale2), 
+            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
+            peaklist1 = c1p, 
+            peaklist8 = c8p,
+            maxy = 4, opacity = "02")
+
+cybr_circos(d1 = rbind(CuSO4_glm, ChromosomeScale2), 
             d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
             peaklist1 = c1p, 
             peaklist8 = c8p,
@@ -885,11 +879,6 @@ cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2),
             peaklist8 = z8p,
             maxy = 4, opacity = "02")
 
-cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2), 
-            d8 = rbind(Zeocin_8_glmer, ChromosomeScale2), 
-            peaklist1 = z1p, 
-            peaklist8 = z8p,
-            maxy = 4, opacity = "02")
 
 ```
 
@@ -950,7 +939,7 @@ CUSO4b %>% ggplot(aes(x = POS, y = abs(summary), color = label))+
 
 ## Copper QTLs: Load in datasets
 
-```{r, warning=FALSE, message=FALSE, eval = FALSE}
+```{r, warning=FALSE, message=FALSE}
 copperdata <- read.csv("CopperGenes_gdoc.csv")
 
 copperdata %>% filter(StudyType == "QTL") %>% transmute(CHROM = as.character(as.roman(CHROM)), POS = StartLocation, Study = StudyType, Gene = Gene) -> copperdata2
