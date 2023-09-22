@@ -85,6 +85,7 @@ CycZeo_1 <- readRDS("Data/Zeocin_cybr2.rds")
 Cu_8 <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
 HZeo_18 <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/H2O2_Zeocin_CSS_cybr2.rds")
 
+#ADD IN FLUCONAZOLE 8
 ```
 ## Select only the dilute groups
 
@@ -715,7 +716,7 @@ CuSO4 Data CHr 8
 
 ```{r}
 #Roll
-C8 %>% filter(CHROM != "I", CHROM != "III") %>% #remove the fixed chromosome and MATalpha locus
+C8 %>% filter(CHROM != "VIII", CHROM != "III") %>% #remove the fixed chromosome and MATalpha locus
   pivot_wider(names_from = c(Bulk, Parent, Rep, exp, Allele), values_from = Reads) %>%
   pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
   group_by(CHROM, label) %>% arrange(POS) %>% 
@@ -797,11 +798,18 @@ Combine these
 
 ```{r}
 permutation_cutoffs <- rbind(data.frame(C1A_glmer_perm, Exp = "C1A_glmer_perm"),
-      data.frame(C8_glmer_perm, Exp = "C8_glmer_perm"),
-      #data.frame(F8_glmer_perm, Exp = "F8_glmer_perm"),
-      data.frame(Z1_glmer_perm, Exp = "Z1_glmer_perm"),
-      data.frame(HZ8_glmer_perm, Exp = "HZ8_glmer_perm"),
-      data.frame(F1_glmer_perm, Exp = "F1_glmer_perm")) %>%
+                              data.frame(C8_glmer_perm, Exp = "C8_glmer_perm"),
+                              #data.frame(F8_glmer_perm, Exp = "F8_glmer_perm"),
+                              data.frame(Z1_glmer_perm, Exp = "Z1_glmer_perm"),
+                              data.frame(HZ8_glmer_perm, Exp = "HZ8_glmer_perm"),
+                              data.frame(F1_glmer_perm, Exp = "F1_glmer_perm"),
+                             
+                              data.frame(C1A_glm_perm, Exp = "C1A_glm_perm"),
+                              data.frame(C8_glm_perm, Exp = "C8_glm_perm"),
+                              #data.frame(F8_glm_perm, Exp = "F8_glm_perm"),
+                              data.frame(Z1_glm_perm, Exp = "Z1_glm_perm"),
+                              data.frame(HZ8_glm_perm, Exp = "HZ8_glm_perm"),
+                              data.frame(F1_glm_perm, Exp = "F1_glm_perm")) %>%
   group_by(Exp, labels) %>% summarize(cutoff_99 = quantile(GLMResult, 0.99),
                                                  cutoff_95 = quantile(GLMResult, 0.95))
 

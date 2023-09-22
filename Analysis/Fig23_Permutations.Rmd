@@ -1,0 +1,229 @@
+---
+title: "Fig23_PermutationsNew"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load packages
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
+
+library(dplyr)
+library(foreach)
+library(doParallel)
+library(RColorBrewer)
+
+library(stringr)
+#library(cybrBSA)
+
+#install.packages("lme4")
+library(lme4)
+
+ggplot2::theme_set(theme_light())
+
+```
+
+## Functions
+
+```{r}
+glm_option_cb_short <- function(..., W, formula, glmer = FALSE) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  if(glmer == FALSE){
+    #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+    glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  }else{
+    glm_fit <- glmer(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  }
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))])  
+}
+
+```
+
+## Function to Permute
+
+```{r}
+#TESTING
+#fluc1_rolldata -> rollData
+#size = 100
+
+#FUNCTION
+permute_glm <- function(rollData, size = 100, parentvector = c("Oak1", "Wine1"), repvector = c("A","B","C","D", "E")){
+  rollData %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
+  filter(Bulk == "Dilute", CHROM != "I", CHROM != "VIII", CHROM != "III", CHROM != "M") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  select(-Bulk) %>%
+  group_by(Parent, Rep) %>%
+  summarize(Parent = Parent, Rep = Rep, Oak = Oak, Wine = Wine, POS = sample(POS)) %>%
+  ungroup() %>%
+  arrange(POS) -> PermutedrollData
+
+  #Next group by position and assign either A or B...?
+  mysample <- data.frame(POS1 = NA, POS2 = NA)
+  for(i in 1:size){
+    mysample[i,] <- sample(PermutedrollData$POS, 2)
+  }
+  
+  
+  for(i in 1:size){
+    PermutedrollData %>% filter(POS %in% mysample[i,]) %>%
+      pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "ReadCount") %>%
+      mutate(POS = as.factor(POS)) %>%
+      mutate_if(is.character, as.factor) %>%
+      filter(Parent %in% parentvector, Rep %in% repvector) -> test
+    
+    savedatahere <- coefficients(glm(formula = "Allele ~ POS*Parent + Rep", data = as.data.frame(test), weights = ReadCount, family = binomial))
+  
+    if(i == 1){
+      PermutedGLM <- savedatahere
+    }else{
+      PermutedGLM <- rbind(PermutedGLM, savedatahere)
+    }
+  }
+  
+  return(as.data.frame(PermutedGLM))
+}
+
+
+```
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023")
+
+#dir("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/")
+
+Fluc_1 <- readRDS("Data/Fluconazole_1_cybr2.rds")
+#Fluc_8 <- readRDS("")
+Cu_1_A <- readRDS("Data/CuSO4_1_cybr2.rds")
+Cu_1_B <- readRDS("Data/CuSO4_2_cybr2.rds")
+CycZeo_1 <- readRDS("Data/Zeocin_cybr2.rds")
+Cu_8 <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
+HZeo_18 <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/H2O2_Zeocin_CSS_cybr2.rds")
+```
+
+```{r}
+
+Fluc_1 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> fluc1_rolldata
+
+Fluc_1_perm <- permute_glm(rollData = fluc1_rolldata, parentvector = c("OakI", "WineI"), repvector = c("A", "B", "C", "D"), size = 500)
+#Fluc_1_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> Fluc_1_perm
+#Fluc_8 <- permute_glm(rollData = rollData, parentvector = c("Oak8", "Wine8"), repvector = c("A", "B"))
+
+
+```
+
+```{r}
+Cu_1_B %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> cua1_rolldata
+
+Cu_1_B_perm <- permute_glm(rollData = cua1_rolldata, parentvector = c("Oak", "Wine"), repvector = c("A", "B", "C", "D"), size = 500)
+#Cu_1_B_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> Cu_1_B_perm
+```
+
+```{r}
+CycZeo_1 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> cua1_rolldata
+
+CycZeo_1_perm <- permute_glm(rollData = cua1_rolldata, parentvector = c("Oak", "Wine"), repvector = c("A", "B", "C", "D"), size = 500)
+#CycZeo_1_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> CycZeo_1_perm
+```
+
+```{r}
+Cu_8 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> cu8_rolldata
+
+cu8_rolldata %>% ungroup() %>% select(-contains("C5"), -contains("C6")) %>% pivot_longer(c(-CHROM, -POS)) %>%
+  separate(name,into = c("B", "P", "R", "D", "A"), sep = "_") %>% select(-D) %>% filter(B == "Dilute", P %in% c("Oak8", "Wine8")) %>%
+  pivot_wider(names_from = c(B,P,R,A), values_from = value) -> rolldataReformat
+
+Cu_Fluc_8_perm <- permute_glm(rollData = rolldataReformat, 
+                              parentvector = c("Oak8", "Wine8"), 
+                              repvector = c("A", "B"), size = 500)
+#Cu_8_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> Cu_8_perm
+```
+```{r}
+HZeo_18 %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
+  group_by(CHROM, label) %>% arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            SmoothCount = ceiling(frollapply(value, n = 50, FUN = median))) %>% #CHANGE THIS LINE
+  na.omit() %>% 
+  pivot_wider(names_from = label,values_from = SmoothCount) -> H_8_rolldata
+
+H_8_perm <- permute_glm(rollData = H_8_rolldata, 
+                              parentvector = c("Oak8", "Wine8"), 
+                              repvector = c("A", "B", "C", "E"), size = 500)
+#Cu_8_perm %>% select(-Interaction) %>% mutate(Interaction = Extra) %>% select(-Extra) -> Cu_8_perm
+```
+
+All Finished
+
+```{r}
+#Fluconazole Chr 1
+#Fluc_1_perm
+
+#Zeocin Chr 1
+#CycZeo_1_perm
+
+#CuSO4 Chr 1
+#Cu_1_B_perm
+
+#CuSO4 and Fluconazole Chr 8
+#Cu_Fluc_8_perm
+
+# rbind(data.frame(Q = quantile(Fluc_1_perm[,ncol(Fluc_1_perm)], 0.95), Exp = "Fluc_1_perm"),
+#       data.frame(Q = quantile(CycZeo_1_perm[,ncol(CycZeo_1_perm)], 0.95), Exp = "CycZeo_1_perm"),
+#       data.frame(Q = quantile(Cu_1_B_perm[,ncol(Cu_1_B_perm)], 0.95), Exp = "Cu_1_B_perm"),
+#       data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 0.95), Exp = "Cu_Fluc_8_perm")) -> Cutoffs_perm
+
+rbind(data.frame(Q = quantile(Fluc_1_perm[,ncol(Fluc_1_perm)], 0.99), Exp = "Fluc_1_perm"),
+      data.frame(Q = quantile(CycZeo_1_perm[,ncol(CycZeo_1_perm)], 0.99), Exp = "CycZeo_1_perm"),
+      data.frame(Q = quantile(Cu_1_B_perm[,ncol(Cu_1_B_perm)], 0.99), Exp = "Cu_1_B_perm"),
+      data.frame(Q = quantile(H_8_perm[,ncol(H_8_perm)], 0.99), Exp = "H_8_perm"),
+      data.frame(Q = quantile(Cu_Fluc_8_perm[,ncol(Cu_Fluc_8_perm)], 0.99), Exp = "Cu_Fluc_8_perm")) -> Cutoffs_perm
+
+save(Cutoffs_perm, file = "NewCutoffs_perm.rds")
+
+```
+
