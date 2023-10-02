@@ -14,19 +14,19 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 #Load packages
-library(ggplot2)
-library(tidyr)
-library(reshape2)
-library(cowplot)
-library(data.table)
+require(ggplot2)
+require(tidyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
 
-library(dplyr)
-library(foreach)
-library(doParallel)
-library(RColorBrewer)
-library(scales)
+require(dplyr)
+require(foreach)
+require(doParallel)
+require(RColorBrewer)
+require(scales)
 require(circlize) 
-library(stringr)
+require(stringr)
 
 #library(cybrBSA)
 
@@ -103,9 +103,9 @@ Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGen
 ```{r, warning=FALSE, message=FALSE}
 #CSS 1
 Zeocin_glm<- readRDS("Data/Zeocin_glm.rds") %>% filter(CHROM != "I")
-CuSO4_glm <- readRDS("Data/CuSO4_1_glm.rds") %>% filter(CHROM != "I")
+CuSO4_glm <- readRDS("Data/CuSO4_1_glm_c.rds") %>% filter(CHROM != "I")
 CuSO4_glm2 <- readRDS("Data/CuSO4_2_glm.rds") %>% filter(CHROM != "I")
-Fluc_glm <- readRDS("Data/Fluconazole_1_glm.rds") %>% filter(CHROM != "I")
+Fluc_glm <- readRDS("Data/Fluconazole_1_glm_c.rds") %>% filter(CHROM != "I")
 
 #CSS 8
 CuSO4_8_glm <- readRDS("Data/CuSO4_CSS8_glm.rds") %>% filter(CHROM != "VIII")
@@ -655,6 +655,48 @@ cybrPurple(Fluc_8_glm, peakslist = f8pn, peakcolor = "#ED7B01", cutoff = 0.48393
 
 ```
 
+### Zooming in on Chr 8 for CuSO4 and Fluconazole
+
+```{r, fig.width=18, fig.height=4}
+
+CuSO4_glm %>% rbind(data.frame(pSNPs[,1:2], summary = 0, label = "Reference")) %>%
+  filter(CHROM == "VIII", label != "Parent", label != "Interaction") %>%
+  #filter(POS < 225000, POS > 2e05) %>%
+  ggplot(aes(x = POS, y = summary, color = label), alpha = 0.1) +
+  scale_color_manual(values = c("black", "gray")) +
+  theme(legend.position = "none") +
+  geom_rect(aes(xmin=210848, xmax=211978, ymin=-Inf, ymax=Inf), fill = "pink", color = "pink", alpha = 0.1) + #CIC1
+  geom_rect(aes(xmin=212535, xmax=212720, ymin=-Inf, ymax=Inf), fill = "darkturquoise", color = "darkturquoise", alpha = 0.1) + #CUP1 - 1
+  geom_rect(aes(xmin=214533, xmax=214718, ymin=-Inf, ymax=Inf), fill = "turquoise", color = "turquoise", alpha = 0.1) + #CUP1 - 2
+  geom_rect(aes(xmin=207654, xmax=209303, ymin=-Inf, ymax=Inf), fill = "pink", color = "pink", alpha = 0.1) + #SMF2
+  geom_rect(aes(xmin=209705, xmax=210151, ymin=-Inf, ymax=Inf), fill = "pink", color = "pink", alpha = 0.1) + #COX6
+  #geom_rect(aes(xmin=51111, xmax=52988, ymin=-Inf, ymax=Inf), fill = "orchid4", color = "orchid4", alpha = 0.1) + #RIM101
+  #geom_rect(aes(xmin=439342, xmax=440127, ymin=-Inf, ymax=Inf), fill = "orchid4", color = "orchid4", alpha = 0.1) + #THP
+  geom_point(size = 3, alpha = 0.5)
+```
+
+```{r, fig.width=18, fig.height=4}
+Fluc_glm %>% rbind(data.frame(pSNPs[,1:2], summary = 0, label = "Reference")) %>%
+  filter(CHROM == "VIII", label != "Parent", label != "Interaction") -> ERG11Data
+
+#Count the SNPs on Chr 8
+ERG11Data$SNPnum <- 1:length(ERG11Data$POS)
+
+#Find the index of the first SNP above a certain position
+FirstNum <- ERG11Data$SNPnum[ERG11Data$POS > 120000][1]
+
+ERG11Data %>%
+  #filter(POS > 1e5, POS < 1.5e5) %>%
+  ggplot(aes(x = POS, y = summary, 
+             color = SNPnum < (FirstNum +200) & SNPnum > FirstNum)) +
+  scale_color_manual(values = c("black", "lightblue")) +
+  geom_rect(aes(xmin=120091, xmax=121683, ymin=0, ymax=Inf), fill = "#FFA50040", color = "#FFA500") + #ERG11
+  geom_point(size = 3, alpha = 0.3) +
+    theme(legend.position = "none")
+
+
+
+```
 # Circos Plots
 
 ### Function for Circos Plots
@@ -1153,4 +1195,116 @@ Albert_eQTLInteractors <- data.frame(Gene = c("HAP1", "MKT1", "FLO8", "FLO11"),
                                      POS = c(646415, 467131, 375215, 389572))
 ```
 
+## Looking at the coverage of each CuSO4 group
+
+```{r}
+Cu_1_A <- readRDS("Data/CuSO4_1_cybr2.rds")
+Cu_1_B <- readRDS("Data/CuSO4_2_cybr2.rds")
+
+Cu_1_A  %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Allele"), names_sep = "_") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> Cu_1_A_Cov
+Cu_1_B  %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> Cu_1_B_Cov
+Cu_1_A_Cov %>% mutate(Flask = paste(Bulk, Parent, "A")) %>% select(CHROM, POS, Coverage, Flask) -> CA
+Cu_1_B_Cov %>% mutate(Flask = paste(Bulk, Parent, Rep, "B")) %>% select(CHROM, POS, Coverage, Flask) -> CB
+
+################################################################################
+
+#Find differences under selection and save
+rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
+  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) %>%
+  group_by(Bulk, CHROM, POS) %>% 
+  summarize(Mean = mean(RelativeCoverage),
+            SD = sd(RelativeCoverage)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = Bulk, values_from = c(Mean, SD)) %>%
+  mutate(Diff = (Mean_CuSO4 - Mean_Dilute),
+         Var = 2*sqrt(SD_CuSO4^2 + SD_Dilute^2)) -> CuSO4_Cov_Diff
+```
+
+```{r, fig.width= 18, fig.height=5}
+
+#Plot relative coverage
+rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
+  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) %>%
+  ggplot(aes(x = POS, y = RelativeCoverage, color = Bulk)) + geom_point(alpha = 0.2)
+
+#Looking at the whole genome
+CuSO4_Cov_Diff %>%
+  ggplot(aes(x = POS, y = Diff, color = Diff - Var > 0 & Diff > 0.25)) + geom_point(alpha = 0.4) +
+  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
+                 position=position_dodge(0.05)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  ylim(0, 2)
+
+CuSO4_Cov_Diff %>% filter(CHROM == "VI" , Diff - Var > 0) %>% #filter(CHROM %in% c("V", "VI", "VIII", "IX")) %>%
+  ggplot(aes(x = POS, y = Diff, color = Diff - Var > 0 & Diff > 0.25)) + geom_point(aes(size = Diff), alpha = 0.4) +
+  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
+                 position=position_dodge(0.05)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  ylim(0, 1)
+
+#Make short list for Chr 8
+CuSO4_Cov_Diff %>% filter(CHROM == "VIII", Diff - Var > 0) %>% select(POS, Diff, Var) %>% filter(Diff > 0.25)
+
+#Plot short list of Chr 8
+CuSO4_Cov_Diff %>%
+  filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = Diff, color = abs(Diff) - Var > 0 & abs(Diff) > 0.25)) + geom_point(alpha = 0.4) +
+  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
+                 position=position_dodge(0.05)) +
+  geom_vline(xintercept = c(212535), alpha = 0.1, size = 2) + #CUP1
+  geom_vline(xintercept = c(192805), alpha = 0.1, size = 2) + #DOG2 - this whole region has tons?
+  geom_vline(xintercept = c(210848), alpha = 0.1, size = 2) + #CIC1
+  geom_vline(xintercept = c(493896), alpha = 0.1, size = 2) + #RIX1
+  geom_vline(xintercept = c(411384), alpha = 0.1, size = 2) + #LIN1
+  geom_vline(xintercept = c(252374), alpha = 0.1, size = 2)  #NMD2
+
+
+CuSO4_Cov_Diff %>%
+  filter(POS < 2.2e5, POS > 1.85e5) %>%
+  ggplot(aes(x = POS, y = Diff, color = abs(Diff) - Var > 0 & abs(Diff) > 0.25)) +
+  geom_point(aes(size = abs(Diff)), alpha = 0.4) +
+  # geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
+  #                position=position_dodge(0.05)) +
+  geom_vline(xintercept = c(212535,212720, 214533,214718), alpha = 0.1, size = 2, color = "turquoise4") + #CUP1
+  geom_vline(xintercept = c(192805, 193545), alpha = 0.1, size = 2) + #DOG2
+  geom_vline(xintercept = c(194068,194808), alpha = 0.1, size = 2, color = "firebrick") + #DOG1
+  geom_vline(xintercept = c(210848, 211978), alpha = 0.1, size = 2, color = "orchid") + #CIC1
+  ylim(-1, 1) + scale_color_manual(values = c("gray", "blue"))
+  
+# rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
+#   filter(CHROM == "VIII") %>% ungroup() %>%
+#   group_by(POS) %>%
+#   summarize(Mean = mean(RelativeCoverage),
+#             SD = sd(RelativeCoverage)) %>%
+#   ggplot(aes(x = POS, y = Mean, color = abs(1 - Mean) - SD > 0.5)) + geom_point(alpha = 0.4) +
+#   geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD), width=.2,
+#                  position=position_dodge(0.05)) +
+#   geom_vline(xintercept = c(212535,212720))
+
+#Just looking at the raw read counts for DOG2 and DOG1
+rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
+  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) -> RelativeC
+
+#Checking CUP1 loci
+RelativeC %>%
+  filter(CHROM == "VIII", POS < 2.5e5, POS > 194808) %>%
+  ggplot(aes(x = POS, y = RelativeCoverage, size = Coverage, color = Bulk)) + geom_point(alpha = 0.5) +
+    geom_vline(xintercept = c(212535,212720, 214533,214718), alpha = 0.1, size = 2, color = "turquoise4") #CUP1
+
+
+#DOG1 and DOG2
+RelativeC %>%
+  filter(CHROM == "VIII", POS < 194808, POS > 192805) %>%
+  ggplot(aes(x = POS, y = RelativeCoverage, size = Coverage, color = Bulk)) + geom_point(alpha = 0.5)+
+  geom_vline(xintercept = c(192805, 193545), alpha = 0.1, size = 2) + #DOG2
+  geom_vline(xintercept = c(194068,194808), alpha = 0.1, size = 2, color = "firebrick")  #DOG1
+
+#Entire chromosome
+RelativeC %>%
+  filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = RelativeCoverage, color = Bulk)) + geom_point(size = 0.1, alpha = 0.5)
+
+```
 
