@@ -22,7 +22,7 @@ library(foreach)
 library(doParallel)
 library(RColorBrewer)
 
-library(cybrBSA)
+#library(cybrBSA)
 
 ggplot2::theme_set(theme_light())
 
@@ -200,6 +200,10 @@ saveRDS(cybr2Data, file = "AnalysisAndFigures_2023/Data/CuSO4_CSS8_cybr2.rds")
 #unique(cybr2Data$CHROM)
 #unique(tempFilteredData$DS)
 ```
+```{r}
+rm(cybr2Data)
+cybr2Data <- readRDS("Data/CuSO4_CSS8_cybr2.rds")
+```
 
 
 Check Coverage and log(Wine/Oak) of Sequencing Run
@@ -220,12 +224,12 @@ cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 
 #shows that this is missing 4 and 12
-unique(rollData$CHROM)
+#unique(rollData$CHROM)
 ```
 ```{r}
 colnames(rollData)
@@ -261,7 +265,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/CuSO4_CSS8_glm.rds")
+saveRDS(GLMdata, file = "Data/CuSO4_CSS8_glm_c.rds")
 
 ```
 Test C5 doses only
@@ -299,7 +303,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/CuSO4_CSS8_D2_norep_glm.rds")
+saveRDS(GLMdata, file = "Data/CuSO4_CSS8_D2_norep_glm_c.rds")
 
 ```
 
@@ -336,7 +340,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/Fluc_CSS8_glm.rds")
+saveRDS(GLMdata, file = "Data/Fluc_CSS8_glm_c.rds")
 
 ```
 
@@ -377,6 +381,6 @@ RawCountSummary %>%
   facet_grid(~CHROM, scales = "free", space = "free") +
   theme(legend.position = "bottom", axis.text.x=element_blank(),
             axis.ticks.x=element_blank()) +
-  scale_color_manual(values = c("Violet", "Black"))
+  scale_color_manual(values = c("violet", "black", "gray"))
 ```
 

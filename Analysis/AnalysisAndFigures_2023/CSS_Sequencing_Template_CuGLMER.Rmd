@@ -169,7 +169,7 @@ cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 
@@ -196,7 +196,7 @@ cybr2Data_SUB %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 ```
@@ -240,7 +240,7 @@ CuAll %>%
                       rep("Zscore", length(mycoefficients)),
                       rep("Pval", length(mycoefficients)))) -> glm_fulldataset
 
-saveRDS(glm_fulldataset, file = "Cu_CSS1_glmer.rds")
+saveRDS(glm_fulldataset, file = "Cu_CSS1_glmer_c.rds")
 
 ```
 

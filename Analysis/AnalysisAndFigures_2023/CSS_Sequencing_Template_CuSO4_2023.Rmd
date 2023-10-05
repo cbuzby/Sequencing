@@ -147,6 +147,9 @@ tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %
 saveRDS(object = cybr2Data, file = "AnalysisAndFigures_2023/Data/CuSO4_2_cybr2.rds")
 
 #unique(cybr2Data$CHROM)
+
+#cybr2Data <- readRDS("Data/CuSO4_2_cybr2.rds")
+
 ```
 
 
@@ -205,7 +208,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/CuSO4_2_glm.rds")
+saveRDS(GLMdata, file = "Data/CuSO4_2_glm_c.rds")
 
 ```
 

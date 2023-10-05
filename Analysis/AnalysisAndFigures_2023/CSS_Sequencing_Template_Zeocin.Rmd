@@ -22,7 +22,7 @@ library(foreach)
 library(doParallel)
 library(RColorBrewer)
 
-library(cybrBSA)
+#library(cybrBSA)
 
 ggplot2::theme_set(theme_light())
 
@@ -144,6 +144,8 @@ tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %
 
 saveRDS(object = cybr2Data, file = "Data/Zeocin_cybr2.rds")
 
+cybr2Data <- readRDS("Data/Zeocin_cybr2.rds")
+
 ```
 
 
@@ -165,7 +167,7 @@ cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>%
   group_by(CHROM, label) %>% arrange(POS) %>% 
   summarize(POS = POS, 
             CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median))) %>% #CHANGE THIS LINE
+            SmoothCount = ceiling(frollapply(value, n = 200, FUN = median, align = "center"))) %>% #CHANGE THIS LINE
   na.omit() %>% 
   pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
 
@@ -200,7 +202,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/Zeocin_glm.rds")
+saveRDS(GLMdata, file = "Data/Zeocin_glm_c.rds")
 
 ```
 

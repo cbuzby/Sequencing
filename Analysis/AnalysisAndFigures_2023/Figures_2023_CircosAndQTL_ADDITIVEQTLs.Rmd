@@ -10,7 +10,7 @@ output:
     code_folding: hide
 ---
 
-```{r, warning=FALSE, message=FALSE, comment=FALSE}
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 #Load packages
@@ -30,7 +30,7 @@ require(stringr)
 
 #library(cybrBSA)
 
-ggplot2::theme_set(theme_light() + theme(text = element_text(size = 20)))
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
 
 glmfixed <- function(HOO, HOW, HWO, HWW, LOO, LOW, LWO, LWW){
   
@@ -91,7 +91,7 @@ ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
                               start = rep(1, 16),
                               end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
   pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
-  mutate(summary = 0, label = "Interaction") %>% select(-delete)
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
 
 ```
 
@@ -99,7 +99,6 @@ Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGen
 
 # Processing
 ## Load in Data
-
 
 
 ```{r, warning=FALSE, message=FALSE}
@@ -111,7 +110,7 @@ Fluc_glm <- readRDS("Data/Fluconazole_1_glm_c.rds") %>% filter(CHROM != "I") #DO
 
 #CSS 8
 CuSO4_8_glm <- readRDS("Data/CuSO4_CSS8_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
-#CuSO4_8_c5_glm <- readRDS("Data/CuSO4_CSS8_C5norep_glm.rds") %>% filter(CHROM != "VIII") #NOT INCLUDED?
+CuSO4_8_c5_glm <- readRDS("Data/CuSO4_CSS8_C5norep_glm.rds") %>% filter(CHROM != "VIII") #NOT INCLUDED?
 CuSO4_8_D2_glm <- readRDS("Data/CuSO4_CSS8_D2_norep_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
 Fluc_8_glm <- readRDS("Data/Fluc_CSS8_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
 
@@ -275,7 +274,6 @@ pSNPs_all <- rbind(data.frame(pSNPs[,1:2], E = "A_REF"),
                    data.frame(Zeocin_glm[,1:2], E = "Z1")) %>%
   distinct()
 
-
 ```
 
 ## Peak Calling
@@ -344,29 +342,29 @@ cybr_callpeaks <- function(dataset, param = NULL, threshold = NULL, include_all 
 ```{r}
 
 #Chr III Cutoff Peaks
-F_1_intpeaks <- cybr_callpeaks(Fluc_glm, param = "Interaction")
-C_1_intpeaks <- cybr_callpeaks(CuSO4_glm, param = "Interaction")
-H_8_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction")
-Z_1_intpeaks <- cybr_callpeaks(Zeocin_glm, param = "Interaction")
-C_8_intpeaks <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction")
-F_8_intpeaks <- cybr_callpeaks(Fluc_8_glm, param = "Interaction")
-Z_8_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction")
+F_1_intpeaks <- cybr_callpeaks(Fluc_glm, param = "Bulk")
+C_1_intpeaks <- cybr_callpeaks(CuSO4_glm, param = "Bulk")
+H_8_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk")
+Z_1_intpeaks <- cybr_callpeaks(Zeocin_glm, param = "Bulk")
+C_8_intpeaks <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk")
+F_8_intpeaks <- cybr_callpeaks(Fluc_8_glm, param = "Bulk")
+Z_8_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk")
 
 #Don't just find point
-F_1_intpeaks_all <- cybr_callpeaks(Fluc_glm, param = "Interaction", include_all = TRUE)
-C_1_intpeaks_all <- cybr_callpeaks(CuSO4_glm, param = "Interaction", include_all = TRUE)
-H_8_intpeaks_all <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction", include_all = TRUE)
-Z_1_intpeaks_all <- cybr_callpeaks(Zeocin_glm, param = "Interaction", include_all = TRUE)
-C_8_intpeaks_all <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction", include_all = TRUE)
-F_8_intpeaks_all <- cybr_callpeaks(Fluc_8_glm, param = "Interaction", include_all = TRUE)
-Z_8_intpeaks_all <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction", include_all = TRUE)
+F_1_intpeaks_all <- cybr_callpeaks(Fluc_glm, param = "Bulk", include_all = TRUE)
+C_1_intpeaks_all <- cybr_callpeaks(CuSO4_glm, param = "Bulk", include_all = TRUE)
+H_8_intpeaks_all <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk", include_all = TRUE)
+Z_1_intpeaks_all <- cybr_callpeaks(Zeocin_glm, param = "Bulk", include_all = TRUE)
+C_8_intpeaks_all <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk", include_all = TRUE)
+F_8_intpeaks_all <- cybr_callpeaks(Fluc_8_glm, param = "Bulk", include_all = TRUE)
+Z_8_intpeaks_all <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk", include_all = TRUE)
 
 #GLMER PEAKS
-H8g_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction")
-C1g_intpeaks <- cybr_callpeaks(CuSO4_1_glmer, param = "Interaction")
-H1g_intpeaks <- cybr_callpeaks(H2O2_glmer, param = "Interaction")
-Z8g_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction")
-F1g_intpeaks <- cybr_callpeaks(Fluc_1_glmer, param = "Interaction")
+H8g_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk")
+C1g_intpeaks <- cybr_callpeaks(CuSO4_1_glmer, param = "Bulk")
+H1g_intpeaks <- cybr_callpeaks(H2O2_glmer, param = "Bulk")
+Z8g_intpeaks <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk")
+F1g_intpeaks <- cybr_callpeaks(Fluc_1_glmer, param = "Bulk")
 
 #UNUSED:
 #CuSO4_glm2
@@ -393,30 +391,30 @@ CutoffExpKey <- data.frame(Exp = unique(CSSCutoff_99$Exp),
 
 C99 <- merge(CSSCutoff_99, CutoffExpKey)
 
-C99 %>% filter(labels == "Interaction")
+C99 %>% filter(labels == "Bulk")
 
-CSSCutoff_new %>% filter(labels == "Interaction") %>% filter(., grepl("glm_",Exp))
+CSSCutoff_new %>% filter(labels == "Bulk") %>% filter(., grepl("glm_",Exp))
 
 #USE FOR GLMER ONES
-C_1_intpeaks_perm <- cybr_callpeaks(CuSO4_1_glmer, param = "Interaction", threshold = 2.808175)
-C_8_intpeaks_perm <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction", threshold = 8.691379)
+C_1_intpeaks_perm <- cybr_callpeaks(CuSO4_1_glmer, param = "Bulk", threshold = 2.808175)
+C_8_intpeaks_perm <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk", threshold = 8.691379)
 
-F_1_intpeaks_perm <- cybr_callpeaks(Fluc_1_glmer, param = "Interaction", threshold = 1.872063)
-#F_8_intpeaks_perm <- cybr_callpeaks(Fluc_8_glm, param = "Interaction", threshold = 1.96)
+F_1_intpeaks_perm <- cybr_callpeaks(Fluc_1_glmer, param = "Bulk", threshold = 1.872063)
+#F_8_intpeaks_perm <- cybr_callpeaks(Fluc_8_glm, param = "Bulk", threshold = 1.96)
 
-#H_1_intpeaks_perm <- cybr_callpeaks(H2O2_glmer, param = "Interaction", threshold = 0.3141185)
+#H_1_intpeaks_perm <- cybr_callpeaks(H2O2_glmer, param = "Bulk", threshold = 0.3141185)
 
-H_8_intpeaks_perm <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction", threshold = 7.168438)
+H_8_intpeaks_perm <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk", threshold = 7.168438)
 
-Z_8_intpeaks_perm <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction", threshold = 7.168438)
-Z_1_intpeaks_perm <- cybr_callpeaks(Zeocin_glm, param = "Interaction", threshold = 5.626115)
+Z_8_intpeaks_perm <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk", threshold = 7.168438)
+Z_1_intpeaks_perm <- cybr_callpeaks(Zeocin_glm, param = "Bulk", threshold = 5.626115)
 
 ################################################################################
 #GLM Permutations on glm data
-C_1_intpeaks_perm_b <- cybr_callpeaks(CuSO4_glm, param = "Interaction", threshold = 2.743073)
-C_8_intpeaks_perm_b <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction", threshold = 8.442994)
-F_1_intpeaks_perm_b <- cybr_callpeaks(Fluc_glm, param = "Interaction", threshold = 1.928081)
-Z_1_intpeaks_perm_b <- cybr_callpeaks(Zeocin_glm, param = "Interaction", threshold = 5.063239)
+C_1_intpeaks_perm_b <- cybr_callpeaks(CuSO4_glm, param = "Bulk", threshold = 2.743073)
+C_8_intpeaks_perm_b <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk", threshold = 8.442994)
+F_1_intpeaks_perm_b <- cybr_callpeaks(Fluc_glm, param = "Bulk", threshold = 1.928081)
+Z_1_intpeaks_perm_b <- cybr_callpeaks(Zeocin_glm, param = "Bulk", threshold = 5.063239)
 
 
 ```
@@ -479,6 +477,46 @@ pSNPs_all %>% filter(CHROM != "M") %>%
   #geom_point(data = centromeres, aes(x = POS), size = 3) +
   facet_grid(~CHROM, scales = "free", space = "free") +
   theme(legend.position = "none", axis.text.x = element_blank())
+
+```
+
+#### Make a function to check number of SNPs called per region to see if there are correlations?
+
+```{r, fig.width=16, fig.height=4}
+
+pSNPs_all %>% group_by(CHROM, E) %>% mutate(Count = 1) %>%
+  arrange(POS) %>% 
+  summarize(POS = POS, 
+            CHROM = CHROM, 
+            Min = ceiling(frollapply(POS, n = 10, FUN = min, align = "center")),
+            Max = ceiling(frollapply(POS, n = 10, FUN = max, align = "center"))) %>%
+  mutate(Window = 10/(Max - Min)) -> SNPsIDed
+
+#Look at how they are throughout the genome
+SNPsIDed %>% filter(CHROM != c("I"), CHROM != "M") %>%
+  ggplot(aes(x = POS, y = Window, color = E)) + geom_line() +
+  facet_grid(E == "A_REF"~CHROM, scales = "free", space = "free")
+
+#Look at the correlation
+SNPsIDed %>% select(CHROM, POS, Window, E) %>% na.omit() %>% 
+  pivot_wider(names_from = E, values_from = Window) %>% na.omit() %>%
+  pivot_longer(c(C8, F8, H8, Z8, C1, F1, H1, Z1), names_to = "Dataset", values_to = "NonREF") %>%
+  ggplot(aes(x = A_REF, y = NonREF, color = Dataset)) + geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm")
+
+#From this, it looks like Chr 12, 15, and maybe 4 all have higher SNP density?
+SNPsIDed %>% select(CHROM, POS, Window, E) %>% na.omit() %>% 
+  pivot_wider(names_from = E, values_from = Window) %>% na.omit() %>%
+  pivot_longer(c(C8, F8, H8, Z8, C1, F1, H1, Z1), names_to = "Dataset", values_to = "NonREF") %>%
+  ggplot(aes(x = A_REF, y = NonREF, color = CHROM)) + geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  facet_wrap(facets = "CHROM", nrow = 2)#, scales = "free")
+
+SNPsIDed %>% select(CHROM, POS, Window, E) %>% na.omit() %>% 
+  pivot_wider(names_from = E, values_from = Window) %>% na.omit() %>%
+  pivot_longer(c(C8, F8, H8, Z8, C1, F1, H1, Z1), names_to = "Dataset", values_to = "NonREF") %>%
+  ggplot(aes(x = A_REF, y = NonREF, color = CHROM)) + geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm")
 
 ```
 
@@ -569,58 +607,40 @@ All GLM plots (not glmer)
 
 ```{r, fig.width=16, fig.height=4}
 #GLM PLOTS
-cybrPurple(Fluc_glm, peakslist = F_1_intpeaks)
-cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks)
-cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks)
-cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks, peakcolor = "#ED7B0190")
+cybrPurple(dataset = Fluc_glm, peakslist = F_1_intpeaks, peakcolor = "#ED7B0190")
+cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks, peakcolor = "#7DB0B090")
+cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks, peakcolor = "#95417690")
+cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks, peakcolor = "#7DB0B090")
 cybrPurple(Fluc_8_glm, peakslist = F_8_intpeaks, peakcolor = "#ED7B0190")
 
 #GLM PLOTS
-cybrPurple(Fluc_glm, peakslist = F_1_intpeaks_all)
-cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks_all)
-cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks_all)
-cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks_all, peakcolor = "#ED7B0190")
-cybrPurple(Fluc_8_glm, peakslist = F_8_intpeaks_all, peakcolor = "#ED7B0190")
+cybrPurple(Fluc_glm, peakslist = F_1_intpeaks_all, peakcolor = "#ED7B0110")
+cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks_all, peakcolor = "#7DB0B010")
+cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks_all, peakcolor = "#95417610")
+cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks_all, peakcolor = "#7DB0B010")
+cybrPurple(Fluc_8_glm, peakslist = F_8_intpeaks_all, peakcolor = "#ED7B0110")
 
 #GLMER PLOTS
-cybrPurple(H2O2_8_glmer, peakslist = H8g_intpeaks, peakcolor = "#ED7B0190")
-cybrPurple(CuSO4_1_glmer, peakslist = C1g_intpeaks)
-cybrPurple(H2O2_glmer, peakslist = H1g_intpeaks)
-cybrPurple(Fluc_1_glmer, peakslist = F1g_intpeaks)
+cybrPurple(H2O2_8_glmer, peakslist = H8g_intpeaks, peakcolor = "#24588A90")
+cybrPurple(CuSO4_1_glmer, peakslist = C1g_intpeaks, peakcolor = "#7DB0B090")
+cybrPurple(H2O2_glmer, peakslist = H1g_intpeaks, peakcolor = "#24588A90")
+cybrPurple(Fluc_1_glmer, peakslist = F1g_intpeaks, peakcolor = "#ED7B0190")
 
 ```
 
-```{r, fig.width=16, fig.height=4, eval = FALSE}
-
-#GLM PLOTS - can't use this cutoff because the permutations were done with random effects
-#cybrPurple(CuSO4_8_glm, peakcolor = "#ED7B01", cutoff = 8.691379)
-#cybrPurple(Zeocin_glm, cutoff = 5.626115)
-
-#GLMER PLOTS
-cybrPurple(CuSO4_1_glmer, cutoff = 2.808175)
-cybrPurple(Fluc_1_glmer, cutoff = 1.872063)
-cybrPurple(H2O2_8_glmer, peakcolor = "#ED7B01", cutoff = 7.168438)
-cybrPurple(Zeocin_8_glmer, peakcolor = "#ED7B01", cutoff = 7.168438)
-
-#GLM Fixed Effect Permutation PLOTS
-cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks_perm_b, cutoff = 2.743073)
-cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks_perm_b, cutoff = 8.442994, peakcolor = "#ED7B01")
-cybrPurple(Fluc_glm, peakslist = F_1_intpeaks_perm_b, cutoff = 1.928081)
-cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks_perm_b, cutoff = 5.063239)
-```
 
 ```{r, fig.width=16, fig.height=4}
 Cutoffs_perm <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/NewCutoffs_perm.rds")
 Cutoffs_perm
 
 #CALL PEAKS WITH NEW CUTOFFS
-c1p <- cybr_callpeaks(CuSO4_glm, param = "Interaction", threshold = 0.4098215, include_all = TRUE)
-c8p <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction", threshold = 0.4839316, include_all = TRUE)
-f1p <- cybr_callpeaks(Fluc_glm, param = "Interaction", threshold = 0.4260583, include_all = TRUE)
-z1p <- cybr_callpeaks(Zeocin_glm, param = "Interaction", threshold = 0.4024422, include_all = TRUE)
-h8p <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction", threshold = 2.0160408, include_all = TRUE)
-z8p <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction", threshold = 2.0160408, include_all = TRUE)
-f8p <- cybr_callpeaks(Fluc_8_glm, param = "Interaction", threshold = 0.4839316, include_all = TRUE)
+c1p <- cybr_callpeaks(CuSO4_glm, param = "Bulk", threshold = 0.4098215, include_all = TRUE)
+c8p <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk", threshold = 0.4839316, include_all = TRUE)
+f1p <- cybr_callpeaks(Fluc_glm, param = "Bulk", threshold = 0.4260583, include_all = TRUE)
+z1p <- cybr_callpeaks(Zeocin_glm, param = "Bulk", threshold = 0.4024422, include_all = TRUE)
+h8p <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk", threshold = 2.0160408, include_all = TRUE)
+z8p <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk", threshold = 2.0160408, include_all = TRUE)
+f8p <- cybr_callpeaks(Fluc_8_glm, param = "Bulk", threshold = 0.4839316, include_all = TRUE)
 
 
 #PLOT NEW CUTOFFS
@@ -637,14 +657,14 @@ cybrPurple(Fluc_8_glm, peakslist = f8p, peakcolor = "#ED7B0190", cutoff = 0.4839
 
 Not including all
 
-```{r, fig.width=16, fig.height=4, eval = FALSE}
-c1pn <- cybr_callpeaks(CuSO4_glm, param = "Interaction", threshold = 0.4098215)
-c8pn <- cybr_callpeaks(CuSO4_8_glm, param = "Interaction", threshold = 0.4839316)
-f1pn <- cybr_callpeaks(Fluc_glm, param = "Interaction", threshold = 0.4260583)
-z1pn <- cybr_callpeaks(Zeocin_glm, param = "Interaction", threshold = 0.4024422)
-h8pn <- cybr_callpeaks(H2O2_8_glmer, param = "Interaction", threshold = 2.0160408)
-z8pn <- cybr_callpeaks(Zeocin_8_glmer, param = "Interaction", threshold = 2.0160408)
-f8pn <- cybr_callpeaks(Fluc_8_glm, param = "Interaction", threshold = 0.4839316)
+```{r, fig.width=16, fig.height=4}
+c1pn <- cybr_callpeaks(CuSO4_glm, param = "Bulk", threshold = 0.4098215)
+c8pn <- cybr_callpeaks(CuSO4_8_glm, param = "Bulk", threshold = 0.4839316)
+f1pn <- cybr_callpeaks(Fluc_glm, param = "Bulk", threshold = 0.4260583)
+z1pn <- cybr_callpeaks(Zeocin_glm, param = "Bulk", threshold = 0.4024422)
+h8pn <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk", threshold = 2.0160408)
+z8pn <- cybr_callpeaks(Zeocin_8_glmer, param = "Bulk", threshold = 2.0160408)
+f8pn <- cybr_callpeaks(Fluc_8_glm, param = "Bulk", threshold = 0.4839316)
 
 cybrPurple(CuSO4_glm, peakslist = c1pn, cutoff = 0.4098215)
 cybrPurple(CuSO4_8_glm, peakslist = c8pn, cutoff = 0.4839316, peakcolor = "#ED7B01")
@@ -662,7 +682,7 @@ cybrPurple(Fluc_8_glm, peakslist = f8pn, peakcolor = "#ED7B01", cutoff = 0.48393
 ```{r, fig.width=18, fig.height=4}
 
 CuSO4_glm %>% rbind(data.frame(pSNPs[,1:2], summary = 0, label = "Reference")) %>%
-  filter(CHROM == "VIII", label != "Parent", label != "Interaction") %>%
+  filter(CHROM == "VIII", label != "Parent", label != "Bulk") %>%
   #filter(POS < 225000, POS > 2e05) %>%
   ggplot(aes(x = POS, y = summary, color = label), alpha = 0.1) +
   scale_color_manual(values = c("black", "gray")) +
@@ -677,254 +697,203 @@ CuSO4_glm %>% rbind(data.frame(pSNPs[,1:2], summary = 0, label = "Reference")) %
   geom_point(size = 3, alpha = 0.5)
 ```
 
-```{r, fig.width=18, fig.height=4}
-Fluc_glm %>% rbind(data.frame(pSNPs[,1:2], summary = 0, label = "Reference")) %>%
-  filter(CHROM == "VIII", label != "Parent", label != "Interaction") -> ERG11Data
 
-#Count the SNPs on Chr 8
-ERG11Data$SNPnum <- 1:length(ERG11Data$POS)
+# Loading in Chr 8 Gene Data
 
-#Find the index of the first SNP above a certain position
-FirstNum <- ERG11Data$SNPnum[ERG11Data$POS > 120000][1]
+ERG11
 
-ERG11Data %>%
-  #filter(POS > 1e5, POS < 1.5e5) %>%
-  ggplot(aes(x = POS, y = summary, 
-             color = SNPnum < (FirstNum +200) & SNPnum > FirstNum)) +
-  scale_color_manual(values = c("black", "lightblue")) +
-  geom_rect(aes(xmin=120091, xmax=121683, ymin=0, ymax=Inf), fill = "#FFA50040", color = "#FFA500") + #ERG11
-  geom_point(size = 3, alpha = 0.3) +
-    theme(legend.position = "none")
+```{r, fig.width=16, fig.height=4}
+chr8genes <- read.csv("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/SGD_Tables/ChromosomeRegion_AllGenes.csv", header = FALSE)
 
+chr8genes %>% select(V3, Gene = V5, POS = V10, EndPOS = V11, Description = V6, Char = V9) -> Chr8_list
+
+Chr8_list %>% filter(Gene == "ERG11")
+
+max(Chr8_list$POS)
+
+Fluc_glm %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_point(alpha = 0.5) +
+  geom_vline(data = Chr8_list, aes(xintercept = POS, color = Char), alpha = 0.5) + 
+  geom_vline(xintercept = 120091, color = "red", linetype = "dashed") +
+  scale_color_manual(values = c("white", "black", "gray", "violet", "gray", "lightgray", "#954176", "gray"))
+
+
+Fluc_glm %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = summary, color = label)) + 
+  geom_point(alpha = 0.5, size = 4) +
+  geom_vline(xintercept = c(120091, 121683)) +
+  geom_jitter(data = pSNPs, aes(x = POS, y = 0, color = "X")) +
+  xlim(120091-1000, 121683+1000) +
+  geom_vline(xintercept = c(121700, 121782), color = "turquoise") +
+    ggtitle("ERG11 Gene Region, Fluconazole CSSI Data")
+```
+CUP1
+
+```{r, fig.width=16, fig.height=4}
+chr8genes <- read.csv("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/SGD_Tables/ChromosomeRegion_AllGenes.csv", header = FALSE)
+
+chr8genes %>% select(V3, Gene = V5, POS = V10, EndPOS = V11, Description = V6, Char = V9) -> Chr8_list
+
+Chr8_list %>% filter(Gene %in% c("CUP1-1", "CUP1-2"))
+
+max(Chr8_list$POS)
+
+CuSO4_glm %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = summary, color = label)) + geom_point(alpha = 0.5) +
+  geom_vline(data = Chr8_list, aes(xintercept = POS, color = Char), alpha = 0.5) + 
+  geom_vline(xintercept = 212535, color = "red", linetype = "dashed") +
+  scale_color_manual(values = c("white", "black", "gray", "violet", "gray", "lightgray", "#954176", "gray"))
+
+
+CuSO4_glm %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = summary, color = label)) + 
+  geom_point(alpha = 0.5, size = 4) +
+  geom_vline(xintercept = c(212535, 212720, 214533, 214718)) +
+  geom_jitter(data = pSNPs, aes(x = POS, y = 0, color = "X")) +
+  xlim(212535-1000, 214718+1000) +
+    ggtitle("CUP1 Gene Regions, CuSO4 CSSI Data")
+```
+
+How many SNPs are there?
+
+```{r}
+dim(pSNPs)
+
+#This shows them diverging ~6 every 1kb...
+1000*77580/12100000
 
 
 ```
-# Circos Plots
+### Let's actually load in all of the genes
 
-### Function for Circos Plots
+```{r}
+SGD_Genes <- read.csv("SGD_Tables/AllGenes_results.csv")
 
-It's SUPER annoying to have to type in each thing over and over, so how would I make a function for each of these?
+#Turn this into a function
 
-```{r, warning = FALSE, message=FALSE}
+cybr2_SGDGenes <- function(peaks, GeneList = SGD_Genes, mywindow = 1000){
 
-cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, color1 = "#24588A", color8 = "#ED7B01", opacity = "50"){
+  peaks %>% select(CHROM, POS) -> peaks
   
-  color1fade_50 <- paste(color1, "50", sep = "")
-  color8fade_50 <- paste(color8, "50", sep = "")
-  
-  color1fade <- paste(color1, opacity, sep = "")
-  color8fade <- paste(color8, opacity, sep = "")
+  #ChatGPT code adapted for filtering (what is this crossing function?)
+  filtered_df <- GeneList %>%
+    mutate(CHROM = gsub(pattern = "chr", replacement = "", x = Chromosome)) %>%
+    select(CHROM.x = CHROM, POS_Start, POS_End) %>%
+    crossing(peaks) %>%                               # Create all combinations of df and numbers
+    filter(CHROM.x == CHROM) %>%                      # Match category
+    rowwise() %>%
+    #filter(POS %in% seq((POS_Start - window), (POS_End + window))) %>%      # Check if number is within the range
+    #OR
+      filter(length(intersect(seq(POS - mywindow, POS + mywindow), seq(POS_Start, POS_End))) > 0) %>%
 
-  if(is.null(d8)){
-    d8 <- d1
-    include8 <- FALSE
-  }else{
-    include8 <- TRUE
-  }
-    #SET UP DATA
-  df8 <- data.frame(sectors = as.character(d8$CHROM),
-                 x = d8$POS,
-                 y = abs(d8$summary),
-                  label = d8$label)
-
-  df1 <- data.frame(sectors = as.character(d1$CHROM),
-                 x = d1$POS,
-                 y = abs(d1$summary),
-                  label = d1$label)
-
-  #Take just the interactions of each
-  df8int <- df8 %>% filter(label == "Interaction")
-  df1int <- df1 %>% filter(label == "Interaction")
-
-    #REORDER THE CHROMOSOMES
-  df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
-  df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+    select(CHROM, POS, POS_Start, POS_End) %>%        # Remove redundant columns
+    distinct() %>%                                    # In case there are duplicate rows
+    merge(., GeneList)%>% 
+    arrange(CHROM, POS) %>% 
+    select(-POS) %>% distinct()
   
-  ##############################################################################
-  dfall <- rbind(df1int, df8int) %>% na.omit()
-  circos.par("track.height" = 0.3, start.degree = 90, cell.padding = c(0,0))
-  circos.initialize(sectors = dfall$sectors, x = dfall$x)
-
-  if(is.null(maxy)){
-    #I think this makes the sizes?
-    circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, y = dfall$y, 
-        panel.fun = function(x, y) {
-            circos.text(CELL_META$xcenter, 
-                0 - mm_y(5), 
-                CELL_META$sector.index,
-                niceFacing = FALSE)
-            circos.axis(labels.cex = 0.1)
-    })
-  }else{
-    circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
-      panel.fun = function(x, y) {
-          circos.text(CELL_META$xcenter, 
-              0 - mm_y(5), 
-              CELL_META$sector.index,
-              niceFacing = FALSE)
-          circos.axis(labels.cex = 0.1)
-      })
-  }
-  #Makes the chromosome overlap parts
-  #CHROMOSOME I
-  draw.sector(83.5, #RIGHT
-              90, #LEFT
-              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color1fade_50, border = FALSE)
-  if(include8 == TRUE){
-    #CHROMOSOME VIII
-    draw.sector(289.5, #LEFT
-              305.4, #RIGHT
-              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color8fade_50, border = FALSE)
-  }
+  rm(peaks)
   
-  
-  #Makes the lines
-  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
-  circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
-  
-  if(is.null(peaklist8) == FALSE){
-    if(length(peaklist8$POS) >= 1){
-      for(i in 1:length(peaklist8$POS)){
-      circos.link(peaklist8$CHROM[i], 
-                  peaklist8$POS[i], 
-                  #Add 8 after
-                  "VIII", c(0, max(dfall$x[dfall$sectors == "VIII"])),  
-                  
-                  col = color8fade, 
-                  h.ratio = 0.3, 
-                  border = color8fade, 
-                  lwd = 1)
-      }
-    }else{
-      print("No interactions on Chr 8")
-    }
-    
-  }
-
-  if(is.null(peaklist1) == FALSE){
-    if(length(peaklist1$POS) >= 1){
-      for(i in 1:length(peaklist1$POS)){
-        circos.link("I",c(0, max(dfall$x[dfall$sectors == "I"])),  
-                    #add 1 first
-                    peaklist1$CHROM[i], 
-                    peaklist1$POS[i], 
-                    col = color1fade, 
-                    h.ratio = 0.3, 
-                    border = color1fade, 
-                    lwd = 1)
-      }
-    }else{
-      print("No interactions on Chr 1")
-    }
-  }  
-  
-  circos.clear()
+  filtered_df %>% 
+  return()
 }
 
-```
-
-
-```{r, warning=FALSE, message=FALSE, fig.width=6, fig.height=6}
-
-circos.clear()
-#H2O2 - Don't include
-# cybr_circos(d1 = rbind(H2O2_glmer, ChromosomeScale2),
-#             d8 = rbind(H2O2_8_glmer, ChromosomeScale2),
-#             peaklist1 = H1g_intpeaks, maxy = 4,
-#             peaklist8 = H8g_intpeaks)
-
-cybr_circos(d1 = rbind(CuSO4_glm, ChromosomeScale2), 
-            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
-            peaklist1 = C_1_intpeaks, 
-            peaklist8 = C_8_intpeaks,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(CuSO4_glm, ChromosomeScale2), 
-            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
-            peaklist1 = C_1_intpeaks_all, 
-            peaklist8 = C_8_intpeaks_all,
-            maxy = 4)
-
-#Fluconazole (glmer)
-cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
-            d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
-            peaklist1 = F_1_intpeaks, 
-            peaklist8 = F_8_intpeaks,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
-            d8 = NULL,
-            #d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
-            peaklist1 = F_1_intpeaks, 
-            #peaklist8 = F_8_intpeaks,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
-            d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
-            peaklist1 = F_1_intpeaks_all, 
-            peaklist8 = F_8_intpeaks_all,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
-            d8 = NULL,
-            #d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
-            peaklist1 = F_1_intpeaks_all, 
-            #peaklist8 = F_8_intpeaks,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2),
-            d8 = rbind(Zeocin_8_glmer, ChromosomeScale2),
-            peaklist1 = Z_1_intpeaks,
-            peaklist8 = Z_8_intpeaks,
-            maxy = 4)
-
-cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2),
-            d8 = rbind(Zeocin_8_glmer, ChromosomeScale2),
-            peaklist1 = Z_1_intpeaks_all,
-            peaklist8 = Z_8_intpeaks_all,
-            maxy = 4)
 
 ```
 
-```{r, fig.width=6, fig.height=6}
-################################################################################
-#MULT PEAKS
+Looking at a chromosome for where the genes actually are
+
+```{r, fig.width=16, fig.height=4}
+
+c1pn_Genes <- cybr2_SGDGenes(peaks = c1pn, mywindow = 6000) 
+f1pn_Genes <- cybr2_SGDGenes(peaks = f1pn, mywindow = 4000)
+z1pn_Genes <- cybr2_SGDGenes(peaks = z1pn, mywindow = 4000)
+
+
+
+CuSO4_glm %>% filter(CHROM == "VIII") %>%
+  ggplot() +
+  geom_line(aes(x = POS, y = abs(summary), color = label)) +
+  xlim(2e05, 2.5e05) +
+  geom_rect(data = c1pn_Genes[c1pn_Genes$CHROM == "VIII",], 
+            aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.1) +
+  geom_vline(data = c1pn[c1pn$CHROM == "VIII",], aes(xintercept = POS), linetype = "dashed")
+
+
+# CuSO4_glm %>% filter(CHROM %in% c1pn$CHROM) %>%
+#   ggplot() +
+#   geom_line(aes(x = POS, y = abs(summary), color = label)) +
+#   geom_rect(data = c1pn_Genes,#[c1pn_Genes$CHROM == "VIII",], 
+#             aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.3) +
+#   geom_vline(data = c1pn,#[c1pn$CHROM == "VIII",], 
+#              aes(xintercept = POS), linetype = "dashed") +
+#   facet_grid(~CHROM, scales = "free", space = "free") #+
+#   theme(legend.position = "bottom")
+  
+#Loop through chromosomes
+  for(i in as.character(unique(c1pn$CHROM))){
+    CuSO4_glm %>% filter(CHROM == i) %>%
+      ggplot() +
+      geom_line(aes(x = POS, y = abs(summary), color = label)) +
+      geom_rect(data = c1pn_Genes[c1pn_Genes$CHROM == i,], 
+                aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.3) +
+      geom_vline(data = c1pn[c1pn$CHROM == i,], 
+                 aes(xintercept = POS), linetype = "dashed") +
+      ggtitle(paste("Copper CSS I, Chr ", i, sep = "")) -> myplot
+      #facet_grid(~CHROM, scales = "free", space = "free") +
+      #xlim(min(c1pn$POS[c1pn$CHROM == i]) - 10000, max(c1pn$POS[c1pn$CHROM == i]) + 10000)  
+      
+    print(myplot)
+
+  }
+  
 #Fluconazole
-cybr_circos(d1 = rbind(Fluc_1_glmer, ChromosomeScale2), 
-            d8 = rbind(Fluc_8_glm, ChromosomeScale2), 
-            peaklist1 = f1p, 
-            peaklist8 = f8p,
-            maxy = 4, opacity = "02")
+  for(i in as.character(unique(f1pn$CHROM))){
+    Fluc_glm %>% filter(CHROM == i) %>%
+      ggplot() +
+      geom_line(aes(x = POS, y = abs(summary), color = label)) +
+      geom_rect(data = f1pn_Genes[f1pn_Genes$CHROM == i,], 
+                aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.3) +
+      geom_vline(data = f1pn[f1pn$CHROM == i,], 
+                 aes(xintercept = POS), linetype = "dashed") +
+      ggtitle(paste("Fluconazole CSS I, Chr ", i, sep = "")) -> myplot
+      #facet_grid(~CHROM, scales = "free", space = "free") +
+      #xlim(min(c1pn$POS[c1pn$CHROM == i]) - 10000, max(c1pn$POS[c1pn$CHROM == i]) + 10000)  
+      
+    print(myplot)
 
-#CuSO4 (glmer)
-cybr_circos(d1 = rbind(CuSO4_1_glmer, ChromosomeScale2), 
-            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
-            peaklist1 = c1p, 
-            peaklist8 = c8p,
-            maxy = 4, opacity = "02")
+  }
+  
+  #Loop through chromosomes
+  for(i in as.character(unique(z1pn$CHROM))){
+    Zeocin_glm %>% filter(CHROM == i) %>%
+      ggplot() +
+      geom_line(aes(x = POS, y = abs(summary), color = label)) +
+      geom_rect(data = z1pn_Genes[z1pn_Genes$CHROM == i,], 
+                aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.3) +
+      geom_vline(data = z1pn[z1pn$CHROM == i,], 
+                 aes(xintercept = POS), linetype = "dashed") +
+      ggtitle(paste("Zeocin CSS I, Chr ", i, sep = "")) -> myplot
+      #facet_grid(~CHROM, scales = "free", space = "free") +
+      #xlim(min(c1pn$POS[c1pn$CHROM == i]) - 10000, max(c1pn$POS[c1pn$CHROM == i]) + 10000)  
+      
+    print(myplot)
 
-cybr_circos(d1 = rbind(CuSO4_glm, ChromosomeScale2), 
-            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
-            peaklist1 = c1p, 
-            peaklist8 = c8p,
-            maxy = 4, opacity = "02")
-
-#CuSO4 glm A (the good experiment)
-cybr_circos(d1 = rbind(CuSO4_glm, ChromosomeScale2), 
-            d8 = rbind(CuSO4_8_glm, ChromosomeScale2), 
-            peaklist1 = c1p, 
-            peaklist8 = c8p,
-            maxy = 4, opacity = "02")
-
-#Zeocin
-cybr_circos(d1 = rbind(Zeocin_glm, ChromosomeScale2), 
-            d8 = rbind(Zeocin_8_glmer, ChromosomeScale2), 
-            peaklist1 = z1p, 
-            peaklist8 = z8p,
-            maxy = 4, opacity = "02")
-
+  }
+# Fluc_glm %>% filter(CHROM == "VIII") %>%
+#   ggplot() +
+#   geom_line(aes(x = POS, y = abs(summary), color = label)) +
+#   xlim(1e05, 1.5e05) +
+#   geom_rect(data = f1pn_Genes[f1pn_Genes$CHROM == "VIII",], 
+#             aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.1) +
+#   geom_vline(data = f1pn[f1pn$CHROM == "VIII",], aes(xintercept = POS), linetype = "dashed")
+# 
+# Zeocin_glm %>% filter(CHROM == "VII") %>%
+#   ggplot() +
+#   geom_line(aes(x = POS, y = abs(summary), color = label)) +
+#   #xlim(1e05, 1.5e05) +
+#   geom_rect(data = z1pn_Genes[z1pn_Genes$CHROM == "VII",], 
+#             aes(xmin = POS_Start, xmax = POS_End, ymin = 0, ymax = Inf, fill = paste(POS_Start, StandardName)), alpha = 0.1) +
+#   geom_vline(data = z1pn[z1pn$CHROM == "VII",], aes(xintercept = POS), linetype = "dashed")
 
 ```
+
 
 # Specific QTL Investigation
 ## Comparison of CSSI and CSS VIII
@@ -1006,65 +975,8 @@ filteredQTL$CHROM <- factor(filteredQTL$CHROM,
                             levels = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI"))
 ```
 
-```{r, fig.width = 16, fig.height = 6, eval = FALSE}
-rbind(data.frame(CuSO4_CSS8_PeaksB, Exp = "CSS8"),
-      data.frame(CuSO4Peaks_B, Exp = "CSS1a"),
-      data.frame(CuSO42Peaks_B, Exp = "CSS1b")) -> CUSO4b_peaks
 
-CUSO4b_peaks$CHROM
-actualQTL$CHROM
 
-CUSO4b %>% #filter(CHROM %in% actualQTL$CHROM) %>% 
-  ggplot(aes(x = POS, y = abs(summary), color = label))+
-  #geom_vline(data = summaryofprecision_CuSO4, aes(xintercept = mean), color = "lightblue", size =2) + 
-  geom_vline(data = CUSO4b_peaks, aes(xintercept = POS), color = "lightblue", size =2) + 
-
-  geom_vline(data = actualQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed")+
-  
-  geom_vline(data = filteredQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed", alpha = 0.3)+
-
-  geom_line(size = 1) + 
-    ylab("") + xlab("")+ ggtitle("CuSO4 Comparison")+
-  facet_grid(Exp~CHROM, scales = "free", space = "free")  + 
-  scale_color_manual(values = c("lightpink", "gray","black","#7030A0")) +
-  theme(legend.position = "none", 
-        axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + ylim(0,12)
-
-CUSO4b %>% #filter(CHROM %in% actualQTL$CHROM) %>% 
-  ggplot(aes(x = POS, y = abs(summary), color = label))+
-  #geom_vline(data = summaryofprecision_CuSO4, aes(xintercept = mean), color = "lightblue", size =2) + 
-  geom_vline(data = CUSO4b_peaks, aes(xintercept = POS), color = "lightblue", size =2) + 
-
-  geom_vline(data = actualQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed")+
-  
-  #geom_vline(data = filteredQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed", alpha = 0.3)+
-
-  geom_line(size = 1) + 
-    ylab("") + xlab("")+ ggtitle("CuSO4 Comparison")+
-  facet_grid(Exp~CHROM, scales = "free", space = "free")  + 
-  scale_color_manual(values = c("lightpink", "gray","black","#7030A0")) +
-  theme(legend.position = "none", 
-        axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + ylim(0,12)
-
-CUSO4b %>% #filter(CHROM %in% actualQTL$CHROM) %>% 
-  ggplot(aes(x = POS, y = abs(summary), color = label))+
-  #geom_vline(data = summaryofprecision_CuSO4, aes(xintercept = mean), color = "lightblue", size =2) + 
-  geom_vline(data = CUSO4b_peaks, aes(xintercept = POS), color = "lightblue", size =2) + 
-
-  #geom_vline(data = actualQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed")+
-  
-  #geom_vline(data = filteredQTL, aes(xintercept = POS), color = "firebrick2", size = 1, linetype = "dashed", alpha = 0.3)+
-
-  geom_line(size = 1) + 
-    ylab("") + xlab("")+ ggtitle("CuSO4 Comparison")+
-  facet_grid(Exp~CHROM, scales = "free", space = "free")  + 
-  scale_color_manual(values = c("lightpink", "gray","black","#7030A0")) +
-  theme(legend.position = "none", 
-        axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + ylim(0,12)
-```
 
 Fluconazole Chr 1
 ```{r, fig.width = 16, fig.height=4}
@@ -1093,7 +1005,6 @@ Fluc_glm %>% mutate(Sub = 1) %>% rbind(data.frame(Fluc_8_glm, Sub = 8),
 ```
 
 # Exploratory Plots
-
 
 ```{r, fig.height=6, fig.width=16}
 
@@ -1180,13 +1091,13 @@ All_Experiments %>% filter(label == "Bulk") %>% separate(Exp, sep = "_", into = 
   ggtitle("CuSO4 Additive QTL") + ylab("Bulk Z Score")
 
 
-All_Experiments %>% filter(label == "Interaction") %>% separate(Exp, sep = "_", into = c("Selection", "FixedChr")) %>%
+All_Experiments %>% filter(label == "Bulk") %>% separate(Exp, sep = "_", into = c("Selection", "FixedChr")) %>%
   ggplot(aes(x = POS, y = abs(summary), color = FixedChr)) + geom_line(size = 0.8, alpha = 0.8) + 
   scale_color_manual(values = c("#24588A","#24588A", "#24588A", "#ED7B01")) +
   facet_grid(Selection~CHROM, scales = "free", space = "free") + 
   theme(legend.position = "bottom", axis.text.x=element_blank(),
             axis.ticks.x=element_blank()) +
-  ggtitle("Comparison of Additive QTL") + ylab("Interaction Z Score")
+  ggtitle("Comparison of Additive QTL") + ylab("Bulk Z Score")
 ```
 
 
@@ -1197,116 +1108,7 @@ Albert_eQTLInteractors <- data.frame(Gene = c("HAP1", "MKT1", "FLO8", "FLO11"),
                                      POS = c(646415, 467131, 375215, 389572))
 ```
 
-## Looking at the coverage of each CuSO4 group
-
-```{r}
-Cu_1_A <- readRDS("Data/CuSO4_1_cybr2.rds")
-Cu_1_B <- readRDS("Data/CuSO4_2_cybr2.rds")
-
-Cu_1_A  %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Allele"), names_sep = "_") %>%
-  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> Cu_1_A_Cov
-Cu_1_B  %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
-  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> Cu_1_B_Cov
-Cu_1_A_Cov %>% mutate(Flask = paste(Bulk, Parent, "A")) %>% select(CHROM, POS, Coverage, Flask) -> CA
-Cu_1_B_Cov %>% mutate(Flask = paste(Bulk, Parent, Rep, "B")) %>% select(CHROM, POS, Coverage, Flask) -> CB
-
-################################################################################
-
-#Find differences under selection and save
-rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
-  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) %>%
-  group_by(Bulk, CHROM, POS) %>% 
-  summarize(Mean = mean(RelativeCoverage),
-            SD = sd(RelativeCoverage)) %>%
-  ungroup() %>%
-  pivot_wider(names_from = Bulk, values_from = c(Mean, SD)) %>%
-  mutate(Diff = (Mean_CuSO4 - Mean_Dilute),
-         Var = 2*sqrt(SD_CuSO4^2 + SD_Dilute^2)) -> CuSO4_Cov_Diff
-```
-
-```{r, fig.width= 18, fig.height=5}
-
-#Plot relative coverage
-rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
-  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) %>%
-  ggplot(aes(x = POS, y = RelativeCoverage, color = Bulk)) + geom_point(alpha = 0.2)
-
-#Looking at the whole genome
-CuSO4_Cov_Diff %>%
-  ggplot(aes(x = POS, y = Diff, color = Diff - Var > 0 & Diff > 0.25)) + geom_point(alpha = 0.4) +
-  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
-                 position=position_dodge(0.05)) +
-  facet_grid(~CHROM, space = "free", scales = "free") +
-  ylim(0, 2)
-
-CuSO4_Cov_Diff %>% filter(CHROM == "VI" , Diff - Var > 0) %>% #filter(CHROM %in% c("V", "VI", "VIII", "IX")) %>%
-  ggplot(aes(x = POS, y = Diff, color = Diff - Var > 0 & Diff > 0.25)) + geom_point(aes(size = Diff), alpha = 0.4) +
-  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
-                 position=position_dodge(0.05)) +
-  facet_grid(~CHROM, space = "free", scales = "free") +
-  ylim(0, 1)
-
-#Make short list for Chr 8
-CuSO4_Cov_Diff %>% filter(CHROM == "VIII", Diff - Var > 0) %>% select(POS, Diff, Var) %>% filter(Diff > 0.25)
-
-#Plot short list of Chr 8
-CuSO4_Cov_Diff %>%
-  filter(CHROM == "VIII") %>%
-  ggplot(aes(x = POS, y = Diff, color = abs(Diff) - Var > 0 & abs(Diff) > 0.25)) + geom_point(alpha = 0.4) +
-  geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
-                 position=position_dodge(0.05)) +
-  geom_vline(xintercept = c(212535), alpha = 0.1, size = 2) + #CUP1
-  geom_vline(xintercept = c(192805), alpha = 0.1, size = 2) + #DOG2 - this whole region has tons?
-  geom_vline(xintercept = c(210848), alpha = 0.1, size = 2) + #CIC1
-  geom_vline(xintercept = c(493896), alpha = 0.1, size = 2) + #RIX1
-  geom_vline(xintercept = c(411384), alpha = 0.1, size = 2) + #LIN1
-  geom_vline(xintercept = c(252374), alpha = 0.1, size = 2)  #NMD2
 
 
-CuSO4_Cov_Diff %>%
-  filter(POS < 2.2e5, POS > 1.85e5) %>%
-  ggplot(aes(x = POS, y = Diff, color = abs(Diff) - Var > 0 & abs(Diff) > 0.25)) +
-  geom_point(aes(size = abs(Diff)), alpha = 0.4) +
-  # geom_errorbar(aes(ymin=Diff-Var, ymax=Diff+Var), width=.2,
-  #                position=position_dodge(0.05)) +
-  geom_vline(xintercept = c(212535,212720, 214533,214718), alpha = 0.1, size = 2, color = "turquoise4") + #CUP1
-  geom_vline(xintercept = c(192805, 193545), alpha = 0.1, size = 2) + #DOG2
-  geom_vline(xintercept = c(194068,194808), alpha = 0.1, size = 2, color = "firebrick") + #DOG1
-  geom_vline(xintercept = c(210848, 211978), alpha = 0.1, size = 2, color = "orchid") + #CIC1
-  ylim(-1, 1) + scale_color_manual(values = c("gray", "blue"))
-  
-# rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
-#   filter(CHROM == "VIII") %>% ungroup() %>%
-#   group_by(POS) %>%
-#   summarize(Mean = mean(RelativeCoverage),
-#             SD = sd(RelativeCoverage)) %>%
-#   ggplot(aes(x = POS, y = Mean, color = abs(1 - Mean) - SD > 0.5)) + geom_point(alpha = 0.4) +
-#   geom_errorbar(aes(ymin=Mean-SD, ymax=Mean+SD), width=.2,
-#                  position=position_dodge(0.05)) +
-#   geom_vline(xintercept = c(212535,212720))
 
-#Just looking at the raw read counts for DOG2 and DOG1
-rbind(CA, CB) %>% group_by(Flask) %>% mutate(RelativeCoverage = Coverage/median(Coverage)) %>%
-  separate(Flask, sep = " ", into = c("Bulk", "Parent", "Rep", "Allele")) -> RelativeC
-
-#Checking CUP1 loci
-RelativeC %>%
-  filter(CHROM == "VIII", POS < 2.5e5, POS > 194808) %>%
-  ggplot(aes(x = POS, y = RelativeCoverage, size = Coverage, color = Bulk)) + geom_point(alpha = 0.5) +
-    geom_vline(xintercept = c(212535,212720, 214533,214718), alpha = 0.1, size = 2, color = "turquoise4") #CUP1
-
-
-#DOG1 and DOG2
-RelativeC %>%
-  filter(CHROM == "VIII", POS < 194808, POS > 192805) %>%
-  ggplot(aes(x = POS, y = RelativeCoverage, size = Coverage, color = Bulk)) + geom_point(alpha = 0.5)+
-  geom_vline(xintercept = c(192805, 193545), alpha = 0.1, size = 2) + #DOG2
-  geom_vline(xintercept = c(194068,194808), alpha = 0.1, size = 2, color = "firebrick")  #DOG1
-
-#Entire chromosome
-RelativeC %>%
-  filter(CHROM == "VIII") %>%
-  ggplot(aes(x = POS, y = RelativeCoverage, color = Bulk)) + geom_point(size = 0.1, alpha = 0.5)
-
-```
 
