@@ -337,11 +337,65 @@ cybr_callpeaks <- function(dataset, param = NULL, threshold = NULL, include_all 
   }
   return(output)
 }
+
+################################################################################
+#dataset <- Fluc_glm
+cybr_multpeaks <- function(dataset, 
+                           param = NULL, 
+                           threshold = NULL, 
+                           width = 1000){
+  dataset %>% mutate(summary = abs(summary)) %>% filter(label != "intercept",
+                                                        label != "Intercept",
+                                                        label != "(Intercept)",
+                                                        label != "NA") %>%
+    mutate(Window = POS %/% width) %>%
+    mutate(Check = 1) %>%
+    na.omit() -> dataset
+  
+ 
+  #Set cutoff
+
+  Cutoff <- data.frame(X = NA)
+  if(is.null(threshold) == FALSE){
+    Cutoff$X <- threshold
+  }else{
+    dataset %>% filter(CHROM == "III") %>%
+    ungroup() %>%
+    reframe(X = max(summary)) -> Cutoff
+  }
+
+  #Select only the parameter in question
+   if(is.null(param) == FALSE){
+    dataset %>% filter(label == param) -> dataset
+  }
+  
+  for(i in 100:nrow(dataset)){
+    if(dataset$Window[i] == dataset$Window[(i-9)]){
+      dataset$Check[(i-90):i] <- FALSE
+    }else{
+      dataset$Check[(i-90):i] <- TRUE
+    }
+  }
+  
+  #Find peaks
+  dataset %>%
+    filter(summary > Cutoff$X) %>%
+    group_by(CHROM, label, Window) %>% 
+    summarize(summary = max(summary),
+              Check = Check) %>%
+    ungroup() %>%
+    merge(dataset) %>%
+    distinct() -> output
+  
+  
+  return(output)
+}
 ```
 
 ```{r}
 
 #Chr III Cutoff Peaks
+cybr_multpeaks
 F_1_intpeaks <- cybr_callpeaks(Fluc_glm, param = "Bulk")
 C_1_intpeaks <- cybr_callpeaks(CuSO4_glm, param = "Bulk")
 H_8_intpeaks <- cybr_callpeaks(H2O2_8_glmer, param = "Bulk")
@@ -608,10 +662,14 @@ All GLM plots (not glmer)
 ```{r, fig.width=16, fig.height=4}
 #GLM PLOTS
 cybrPurple(dataset = Fluc_glm, peakslist = F_1_intpeaks, peakcolor = "#ED7B0190")
-cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks, peakcolor = "#7DB0B090")
-cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks, peakcolor = "#95417690")
-cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks, peakcolor = "#7DB0B090")
 cybrPurple(Fluc_8_glm, peakslist = F_8_intpeaks, peakcolor = "#ED7B0190")
+
+cybrPurple(Zeocin_glm, peakslist = Z_1_intpeaks, peakcolor = "#95417690")
+cybrPurple(Zeocin_8_glmer, peakslist = Z_8_intpeaks, peakcolor = "#95417690")
+
+cybrPurple(CuSO4_8_glm, peakslist = C_8_intpeaks, peakcolor = "#7DB0B090")
+cybrPurple(CuSO4_glm, peakslist = C_1_intpeaks, peakcolor = "#7DB0B090")
+
 
 #GLM PLOTS
 cybrPurple(Fluc_glm, peakslist = F_1_intpeaks_all, peakcolor = "#ED7B0110")
@@ -632,6 +690,7 @@ cybrPurple(Fluc_1_glmer, peakslist = F1g_intpeaks, peakcolor = "#ED7B0190")
 ```{r, fig.width=16, fig.height=4}
 Cutoffs_perm <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/NewCutoffs_perm.rds")
 Cutoffs_perm
+
 
 #CALL PEAKS WITH NEW CUTOFFS
 c1p <- cybr_callpeaks(CuSO4_glm, param = "Bulk", threshold = 0.4098215, include_all = TRUE)
@@ -760,7 +819,8 @@ dim(pSNPs)
 
 
 ```
-### Let's actually load in all of the genes
+
+# Let's actually load in all of the genes
 
 ```{r}
 SGD_Genes <- read.csv("SGD_Tables/AllGenes_results.csv")
@@ -799,13 +859,94 @@ cybr2_SGDGenes <- function(peaks, GeneList = SGD_Genes, mywindow = 1000){
 
 Looking at a chromosome for where the genes actually are
 
+Error in if (dataset$Window[i] == dataset$Window[i - 1]) { : 
+  missing value where TRUE/FALSE needed
+  
+```{r, fig.width=16, fig.height=4}
+mywidth <- 400000
+F_1_intpeaks_m <- cybr_multpeaks(Fluc_glm, param = "Bulk", width = mywidth)
+
+Fluc_glm %>% filter(CHROM == "II") %>%
+      ggplot() +
+  geom_rect(aes(xmin = 0, xmax = mywidth, ymin = 0, ymax = Inf), fill = "lightblue", alpha = 0.2) +
+      geom_vline(data = F_1_intpeaks_m[F_1_intpeaks_m$CHROM == "II",], 
+      #geom_vline(data = F_1_intpeaks_m, 
+                aes(xintercept = POS, color = as.factor(Check)), alpha = 0.3, size = 2) +
+  geom_line(aes(x = POS, y = abs(summary), color = label)) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "red", "black", "purple", "gray"))
+
+Fluc_glm %>% #filter(CHROM == "VIII") %>%
+      ggplot() +
+  geom_rect(aes(xmin = 0, xmax = mywidth, ymin = 0, ymax = Inf), fill = "lightblue", alpha = 0.2) +
+      #geom_vline(data = F_1_intpeaks_m[F_1_intpeaks_m$CHROM == "VIII",], 
+      geom_vline(data = F_1_intpeaks_m, 
+                aes(xintercept = POS, color = as.factor(Check)), alpha = 0.7, size = 1) +
+  geom_line(aes(x = POS, y = abs(summary), color = label)) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "red", "black", "purple", "gray"))
+
+F_1_intpeaks_m
+```
+
+
 ```{r, fig.width=16, fig.height=4}
 
 c1pn_Genes <- cybr2_SGDGenes(peaks = c1pn, mywindow = 6000) 
 f1pn_Genes <- cybr2_SGDGenes(peaks = f1pn, mywindow = 4000)
 z1pn_Genes <- cybr2_SGDGenes(peaks = z1pn, mywindow = 4000)
 
+c8pn_Genes <- cybr2_SGDGenes(peaks = c8pn, mywindow = 6000) 
+f8pn_Genes <- cybr2_SGDGenes(peaks = f8pn, mywindow = 4000)
+z8pn_Genes <- cybr2_SGDGenes(peaks = z8pn, mywindow = 4000)
 
+
+```
+
+Look at both copper traces
+
+```{r, fig.width = 16, fig.height=5}
+c_Genes <- rbind(data.frame(c1pn_Genes, Fixed = "I"),
+                 data.frame(c8pn_Genes, Fixed = "VIII"))
+
+C_glm <- rbind(data.frame(CuSO4_glm, Fixed = "I"),
+      data.frame(CuSO4_8_glm, Fixed = "VIII"))
+
+#Chr 7
+C_glm %>% filter(label == "Bulk", CHROM == c("VII")) %>% ggplot(aes(x = POS, y =  (summary), linetype = Fixed)) +
+  geom_line() +
+  geom_vline(data = c_Genes[c_Genes$CHROM == "VII",], aes(xintercept = POS_Start, color = StandardName, linetype = Fixed)) +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+c_Genes[c_Genes$CHROM == "VII",] %>% arrange(POS_Start)
+
+#Chr 12
+C_glm %>% filter(label == "Bulk", CHROM == c("XII")) %>% ggplot(aes(x = POS, y =  (summary), linetype = Fixed)) +
+  geom_line() +
+  geom_vline(data = c_Genes[c_Genes$CHROM == "XII",], aes(xintercept = POS_Start, color = StandardName, linetype = Fixed)) +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+c_Genes[c_Genes$CHROM == "XII",] %>% arrange(POS_Start)
+
+#Chromosome XV
+C_glm %>% filter(label == "Bulk", CHROM == c("XV")) %>% ggplot(aes(x = POS, y =  (summary), linetype = Fixed)) +
+  geom_line() +
+  geom_vline(data = c_Genes[c_Genes$CHROM == "XV",], aes(xintercept = POS_Start, color = StandardName, linetype = Fixed)) +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+c_Genes[c_Genes$CHROM == "XV",] %>% arrange(POS_Start)
+
+#Chromosome XVI
+C_glm %>% filter(label == "Bulk", CHROM == c("XVI")) %>% ggplot(aes(x = POS, y =  (summary), linetype = Fixed)) +
+  geom_line() +
+  geom_vline(data = c_Genes[c_Genes$CHROM == "XVI",], aes(xintercept = POS_Start, color = StandardName, linetype = Fixed)) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+c_Genes[c_Genes$CHROM == "XVI",] %>% arrange(POS_Start)
+
+```
+
+```{r}
 
 CuSO4_glm %>% filter(CHROM == "VIII") %>%
   ggplot() +
