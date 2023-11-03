@@ -1,0 +1,485 @@
+---
+title: "2023 Comparing Coverage and SNPs"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+```
+
+Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGenomes.rmd` file has these at the beginning.
+
+# Processing
+## Load in Data
+
+```{r, warning=FALSE, message=FALSE}
+#CSS 1
+Zeocin_glm<- readRDS("Data/Zeocin_glm_c.rds") %>% filter(CHROM != "I") #DONE
+CuSO4_glm <- readRDS("Data/CuSO4_1_glm_c.rds") %>% filter(CHROM != "I") #DONE
+CuSO4_glm2 <- readRDS("Data/CuSO4_2_glm_c.rds") %>% filter(CHROM != "I") #DONE
+Fluc_glm <- readRDS("Data/Fluconazole_1_glm_c.rds") %>% filter(CHROM != "I") #DONE
+CuSO4r_glm <- readRDS("Data/CuSO4_1_redone_glm_c.rds") %>% filter(CHROM != "I") #DONE
+
+#CSS 8
+CuSO4_8_glm <- readRDS("Data/CuSO4_CSS8_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
+CuSO4_8_c5_glm <- readRDS("Data/CuSO4_CSS8_C5norep_glm.rds") %>% filter(CHROM != "VIII") #NOT INCLUDED?
+CuSO4_8_D2_glm <- readRDS("Data/CuSO4_CSS8_D2_norep_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
+Fluc_8_glm <- readRDS("Data/Fluc_CSS8_glm_c.rds") %>% filter(CHROM != "VIII") #DONE
+
+#New H2O2 and Zeocin 9/11/23 - might need to be reformatted to start
+readRDS("H2O2_CSS8_glm_SUB_50.rds") %>% mutate(coefficient = str_replace(coefficient, "BulkH2O2", "Bulk"),
+                             coefficient = str_replace(coefficient, "ParentWine8", "Parent"),
+                             coefficient = str_replace(coefficient, ":", ""),
+                             coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+  filter(label == "Zscore", coefficient != "(Intercept)", CHROM != "VIII") %>%
+  transmute(CHROM = CHROM, POS = POS, summary = GLMResult, label = coefficient) -> H2O2_8_glmer
+
+readRDS("H2O2_CSS1_glm50.rds") %>% mutate(coefficient = str_replace(coefficient, "BulkH2O2", "Bulk"),
+                             coefficient = str_replace(coefficient, "ParentWine1", "Parent"),
+                             coefficient = str_replace(coefficient, ":", ""),
+                             coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+  filter(label == "Zscore", coefficient != "(Intercept)", CHROM != "I") %>%
+  transmute(CHROM = CHROM, POS = POS, summary = GLMResult, label = coefficient)-> H2O2_glmer
+
+readRDS("Zeocin_CSS8_glm50.rds") %>% mutate(coefficient = str_replace(coefficient, "BulkZeocin", "Bulk"),
+                           coefficient = str_replace(coefficient, "ParentWine8", "Parent"),
+                           coefficient = str_replace(coefficient, ":", ""),
+                           coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+filter(label == "Zscore", coefficient != "(Intercept)", CHROM != "VIII") %>%
+transmute(CHROM = CHROM, POS = POS, summary = GLMResult, label = coefficient) -> Zeocin_8_glmer
+
+#Fluc Redone
+readRDS("Fluc_CSS1_glmer.rds") %>% mutate(coefficient = str_replace(coefficient, "BulkFluc", "Bulk"),
+                             coefficient = str_replace(coefficient, "ParentWine1", "Parent"),
+                             coefficient = str_replace(coefficient, ":", ""),
+                             coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+  filter(label == "Zscore", coefficient != "(Intercept)", CHROM != "I") %>%
+  transmute(CHROM = CHROM, POS = POS, summary = GLMResult, label = coefficient) -> Fluc_1_glmer
+
+#CuSO4 Redone
+readRDS("CuSO4_CSSI_all_glmer.rds") %>% #mutate(coefficient = str_replace(Param, "BulkCuSO4", "Bulk"),
+                             #coefficient = str_replace(coefficient, "ParentWine1", "Parent"),
+                             #coefficient = str_replace(coefficient, ":", ""),
+                             #coefficient = str_replace(coefficient, "BulkParent", "Interaction")) %>%
+  filter(Type == "Zscore", Param != "(Intercept)", CHROM != "I") %>%
+  transmute(CHROM = CHROM, POS = POS, summary = GLM, label = Param) -> CuSO4_1_glmer
+
+################################################################################
+# MISC FORMATTING STANDARDIZING
+################################################################################
+
+Zeocin_glm$label <- factor(Zeocin_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+Fluc_glm$label <- factor(Fluc_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_glm$label <- factor(CuSO4_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4r_glm$label <- factor(CuSO4r_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_glm2$label <- factor(CuSO4_glm2$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+Zeocin_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> Zeocin_glm
+Fluc_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> Fluc_glm
+CuSO4_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> CuSO4_glm
+CuSO4_glm2 %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> CuSO4_glm2
+CuSO4r_glm %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> CuSO4r_glm
+
+#New CSS8 Ones - add back Chr I
+Fluc_8_glm$label <- factor(Fluc_8_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_8_c5_glm$label <- factor(CuSO4_8_c5_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_8_D2_glm$label <- factor(CuSO4_8_D2_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+CuSO4_8_glm$label <- factor(CuSO4_8_glm$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+Fluc_8_glm %>% filter(CHROM != "M", label != "intercept") -> Fluc_8_glm
+CuSO4_8_c5_glm %>% filter(CHROM != "M", label != "intercept") -> CuSO4_8_c5_glm
+CuSO4_8_D2_glm %>% filter(CHROM != "M", label != "intercept") -> CuSO4_8_D2_glm
+CuSO4_8_glm %>% filter(CHROM != "M", label != "intercept") -> CuSO4_8_glm
+
+#Newest: H2O2
+H2O2_8_glmer %>% filter(CHROM != "VIII", CHROM != "M", label != "intercept") -> H2O2_8_glmer
+H2O2_glmer %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> H2O2_glmer
+H2O2_8_glmer$label <- factor(H2O2_8_glmer$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+H2O2_glmer$label <- factor(H2O2_glmer$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+#Zeocin New
+Zeocin_8_glmer %>% filter(CHROM != "VIII", CHROM != "M", label != "intercept") -> Zeocin_8_glmer
+Zeocin_8_glmer$label <- factor(Zeocin_8_glmer$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+#Fluc glmer
+Fluc_1_glmer %>% filter(CHROM != "I", CHROM != "M", label != "intercept") -> Fluc_1_glmer
+Fluc_1_glmer$label <- factor(Fluc_1_glmer$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+#New CuSO4 glmer
+CuSO4_1_glmer %>% filter(CHROM != "I", CHROM != "M", label != "Intercept") %>% na.omit() -> CuSO4_1_glmer
+CuSO4_1_glmer$label <- factor(CuSO4_1_glmer$label, levels = c("Rep", "Parent", "Bulk", "Interaction"))
+
+```
+
+## Combine everything with parent SNPs
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+cybrConvertParentalAlleles <- function(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"),
+                                       Parents = gsub("_VCF.txt","", ParentFiles), Truncate = TRUE, yeast = TRUE){
+  temparent <- list()
+  mergeparents <- foreach(i=1:length(ParentFiles), .combine=rbind) %dopar% {
+    read.table(ParentFiles[i], header = TRUE) %>% mutate(parent = Parents[i])
+  }
+
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                           "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                           CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                     "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                     "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                     "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+    rbind(mergeparents) %>% arrange(CHROM, POS) %>%
+      select(CHROM, POS, REF, ALT, parent) %>%
+      merge(ChromKey) %>% select(-CHROM) %>%
+      mutate(CHROM = chromosomes) %>% select(-chromosomes) -> ParentalVCF
+
+  }else{
+    rbind(mergeparents) %>% arrange(CHROM, POS) %>%
+      select(CHROM, POS, REF, ALT, parent) -> ParentalVCF
+  }
+
+  ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+
+  SNPids$Type <- 0
+  for(i in Parents){
+
+    #filter rows in which all values of columns of the parent NOT selected are NA
+    select(SNPids,-i, -CHROM, -POS, -REF) -> tempdf
+    tempdf$Any_NA <- apply(tempdf, 1, function(x) anyNA(x))
+    SNPids$Type[which(tempdf$Any_NA)] <- i
+    rm(tempdf)
+  }
+
+
+  #Collect it to output
+  if(Truncate == TRUE){
+    SNPids %>% select(CHROM, POS,  Type) %>% filter(Type != 0) -> SNPids
+  }
+
+  return(SNPids)
+
+}
+
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+
+pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+
+pSNPs_all <- rbind(data.frame(pSNPs[,1:2], E = "A_REF"),
+                   data.frame(H2O2_glmer[,1:2], E = "H1"),
+                   data.frame(H2O2_8_glmer[,1:2], E = "H8"),
+                   data.frame(CuSO4_8_glm[,1:2], E = "C8"),
+                   data.frame(CuSO4_1_glmer[,1:2], E = "C1"),
+                   data.frame(CuSO4r_glm[,1:2], E = "C1r"),
+
+                   data.frame(Fluc_1_glmer[,1:2], E = "F1"),
+                   data.frame(Fluc_8_glm[,1:2], E = "F8"),
+                   data.frame(Zeocin_8_glmer[,1:2], E = "Z8"),
+                   data.frame(Zeocin_glm[,1:2], E = "Z1")) %>%
+  distinct()
+
+pSNPs_exp <- rbind(data.frame(pSNPs[,1:2], E = "A_REF"), #Parent Reference
+                   data.frame(H2O2_glmer[,1:2], E = "23_H2O2_Zeo"),
+                   data.frame(CuSO4_8_glm[,1:2], E = "23_CuSO4_Fluc"),
+                   data.frame(CuSO4_glm[,1:2], E = "21_CuSO4"),
+                   data.frame(CuSO4r_glm[,1:2], E = "21_CuSO4_Redone"),
+
+                   data.frame(Fluc_1_glmer[,1:2], E = "22_Fluc"),
+                   data.frame(Zeocin_glm[,1:2], E = "22_Zeo")) %>%
+  distinct()
+
+pSNPs_CuSO4Comp <- rbind(data.frame(pSNPs[,1:2], E = "A_REF"),
+                   data.frame(H2O2_glmer[,1:2], E = "H1"),
+                   data.frame(H2O2_8_glmer[,1:2], E = "H8"),
+            
+                   data.frame(CuSO4_glm[,1:2], E = "C1"),
+                  
+                   data.frame(CuSO4r_glm[,1:2], E = "C1r")) %>%
+  distinct()
+```
+
+
+### Parent SNP Loci
+
+```{r, fig.width=16, fig.height=4}
+
+centromeres <- data.frame(CHROM = as.character(as.roman(1:16)),
+                          POS = c(151465,238207,114385,449711,151987,148510,496920,105586,
+                                  355629,436307,440129,150828,268031,628758,326584,555957),
+                          Type = "Oak",
+                          Type2 = "Wine") %>% pivot_longer(c(Type, Type2), names_to = "label", values_to = "Type")
+
+
+pSNPs %>% rbind(ChromosomeScale) %>% filter(CHROM != "M") %>%
+  ggplot(aes(x = POS, y = Type, color = Type)) + 
+  geom_jitter(aes(x = POS), alpha = 0.2, size =0.1, height = 0.2) +
+  geom_point(data = centromeres, aes(x = POS, y = Type), size = 3, color = "black") +
+  scale_color_manual(values = c("navy", "firebrick")) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+pSNPs %>% rbind(ChromosomeScale) %>% filter(CHROM != "M") %>%
+  ggplot(aes(x = POS, y = "C")) + 
+  geom_jitter(aes(x = POS), alpha = 0.05, size =0.2, height = 0.2) +
+  geom_point(data = centromeres, aes(x = POS), size = 3) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+pSNPs %>% rbind(ChromosomeScale) %>% filter(CHROM != "M") %>%
+  ggplot(aes(x = POS, color = Type)) + 
+  geom_density(aes(x = POS)) +
+  geom_vline(data = centromeres, aes(xintercept = POS)) +
+  scale_color_manual(values = c("navy", "firebrick")) +
+  facet_grid(~CHROM, scales = "free_x", space = "free") +
+  theme(legend.position = "none")
+
+#Plot all SNPs called for each experiment; this can take a while
+pSNPs_all %>% filter(CHROM != "M") %>%
+  ggplot(aes(x = POS, y = E)) + 
+  geom_jitter(aes(x = POS, y = E), alpha = 0.05, size =0.2, height = 0.2) +
+  #geom_point(data = centromeres, aes(x = POS), size = 3) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none", axis.text.x = element_blank())
+
+```
+
+Find the number of SNPs per chromosome for each dataset
+
+```{r}
+pSNPs_exp %>% filter(CHROM != "VIII", CHROM != "I", CHROM != "III") %>% 
+  group_by(CHROM, E) %>% count() %>% 
+  pivot_wider(names_from = E, values_from = n) %>% 
+  pivot_longer(c(-CHROM, -A_REF)) %>% 
+  mutate(Prop = value/A_REF) %>%
+  ggplot(aes(y = name, x = Prop)) + geom_boxplot() + geom_jitter(aes(color = CHROM), height = 0.2, alpha = 0.4, size = 4)
+
+pSNPs_exp %>% group_by(CHROM, E) %>% count() %>% ggplot(aes(x = E, y = n)) + geom_boxplot()
+```
+
+# Loading in Data from original files
+
+GQ Cutoff is 98 for all samples, so find out how many of these are under 98 and in which samples that tends to occur
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+
+```
+
+# Using the new and improved table for this
+
+## Load in Table
+
+```{r}
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+
+MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
+
+for(i in 1:length(RawFiles$VCF_Table)){
+  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>% 
+  select(POS, CHROM, Dataset, GQ, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+  
+  if(i > 1){
+    alldata <- rbind(rawdata, alldata)
+  }else{
+    alldata <- rawdata
+  }
+  
+}
+
+alldata %>% mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
+
+unique(alldata$Pool)
+```
+
+Number of Positions where not ALL of the samples pass filter
+
+```{r, fig.width = 16, fig.height = 8}
+
+alldata %>% select(Pool, Dataset) %>% distinct() %>% count(Pool) %>% select(Pool, Total = n) -> Totals
+
+alldata %>% group_by(Pool, POS, CHROM) %>% count(DPass = GQ > 98) %>% merge(Totals) %>% 
+  pivot_wider(names_from = DPass, values_from = n, names_prefix = "Col_") %>% 
+  mutate(Included = Col_TRUE == Total) -> PassingCalc
+
+# PassingCalc %>% filter(CHROM == "XII") %>% ggplot(aes(x = POS, y = Included)) + geom_point(alpha = 0.4) + facet_grid(rows = "Pool")
+# 
+# PassingCalc %>% filter(CHROM != "M") %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar(position = "fill") + facet_grid(rows = "Pool")
+# 
+# PassingCalc %>% filter(CHROM != "M") %>% filter(Pool %in% c("HJ5HKDRX3", "HJ5HKDRX3b")) %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar() + facet_grid(rows = "Pool") + ggtitle("Comparison of CuSO4 and H2O2 Runs")
+
+PassingCalc %>% select(Pool, CHROM, POS) %>% distinct() %>% count(Pool)
+
+PassingCalc %>% merge(distinct((MQCRuns[,c("Pool", "ShortName")]))) %>%
+  filter(CHROM != "M", is.na(Included) == FALSE) %>%
+  ggplot(aes(x = POS, y = Pool, color = Included)) + 
+  geom_jitter(aes(x = POS, y = paste(ShortName, Included)), alpha = 0.05, size =0.2, height = 0.2) +
+  #geom_point(data = centromeres, aes(x = POS), size = 3) +
+  facet_grid(Pool~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none", axis.text.x = element_blank())
+
+
+```
+
+## Now we can plot everything as before
+
+```{r, warning = FALSE, message = FALSE}
+
+alldata %>% group_by(Dataset) %>% count(GQ = GQ < 98) %>%
+  left_join(MQCRuns[,c("MillionReads", "Dataset", "Pool", "ShortName")]) %>% 
+  filter(GQ == TRUE) %>%
+  ggplot(aes(y = n, x = MillionReads, color = ShortName)) + geom_point(size = 2, alpha = 0.5) +
+  ylab("Count of GQ < 98") + ggtitle("Count of GQ Failing Filter")
+
+alldata %>% group_by(Dataset) %>% count(GQ = GQ < 98) %>%
+  left_join(MQCRuns[,c("MillionReads", "Dataset", "Pool", "ShortName")]) %>% 
+  pivot_wider(names_from = GQ, values_from = n, names_prefix = "Col_") %>% 
+  group_by(Dataset, ShortName) %>% mutate(FailPercentage = Col_TRUE/sum(Col_FALSE, Col_TRUE, Col_NA)) %>%
+  ggplot(aes(y = FailPercentage, x = MillionReads, color = ShortName)) + geom_point(size = 2, alpha = 0.5) +
+  ylab("% GQ < 98")+ ggtitle("Percentage of GQ Fail")
+
+alldata %>% group_by(Dataset) %>% count(GQ = GQ < 98) %>%
+  left_join(MQCRuns[,c("MillionReads", "Dataset", "Pool", "ShortName")]) %>% 
+  pivot_wider(names_from = GQ, values_from = n, names_prefix = "Col_") %>%
+  group_by(Dataset,ShortName) %>% mutate(FailPercentage = Col_FALSE/sum(Col_FALSE, Col_TRUE, Col_NA)) %>%
+  ggplot(aes(y = FailPercentage, x = MillionReads, color = ShortName)) + geom_point(size = 2, alpha = 0.5) +
+  ylab("% GQ > 98")+ ggtitle("Percentage of GQ Pass")
+```
+
+Look at which SNPs are called in each for just a single chromosome (IV)
+
+```{r, fig.width = 16, fig.height = 10}
+alldata %>% filter(CHROM == "XII") %>%
+  ggplot(aes(x = POS, y = Dataset, color = Pool)) + 
+  geom_jitter(aes(x = POS, y = Dataset), alpha = 0.05, size =0.2, height = 0.2) +
+  #geom_point(data = centromeres, aes(x = POS), size = 3) +
+  facet_grid(rows = "Pool", scales = "free", space = "free") +
+  theme(legend.position = "none", axis.text.x = element_blank())
+```
+
+## Selection Amounts vs Peaks
+
+I want to know if the selection % of each bulk impacts the types of peaks seen, or if it's the overall coverage of the bulk that has more reads. I also want to know if I reduce the overall coverage of bulks to a standard amount, if that will produce better results for all. It would be throwing away data, but might also normalize.
+
+```{r}
+#First, back of the envelope on duplicate reads
+readlength <- 1
+mysample <- factor(1:20)
+samplesize <- 400
+j <- 0
+m <- 0
+for(i in 1){
+  reads <- sample(mysample, size = samplesize, replace = TRUE)
+  j <- j + sum(table(reads) == 0)
+  m <- m + sum(table(reads) == 1)
+}
+
+coverage = readlength*samplesize/max(as.numeric(mysample))
+print(paste("Coverage =", coverage, "x"))
+print(paste("Number of missing reads was", j, "out of", samplesize*max(as.numeric(mysample))))
+print(paste("Number of non-duplicated reads was", m, "out of", samplesize*max(as.numeric(mysample))))
+print(paste("RATE of DUPLICATES was", (max(as.numeric(mysample)*samplesize) - (m + j))/(samplesize*max(as.numeric(mysample)))))
+
+```
+
+## Formulas from GATK
+
+We use the approach described in Li 2011 to calculate the posterior probabilities of non-reference alleles (Methods 2.3.5 and 2.3.6) extended to handle multi-allelic variation.
+
+The basic formula we use for all types of variation under consideration (SNPs, insertions and deletions) is:
+
+$$ P(G|D) = \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+
+If that is meaningless to you, please don't freak out -- we're going to break it down and go through all the components one by one. First of all, the term on the left:
+
+$$ P(G|D) $$
+
+is the quantity we are trying to calculate for each possible genotype: the conditional probability of the genotype G given the observed data D.
+
+Now let's break down the term on the right:
+
+$$ \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+
+We can ignore the denominator (bottom of the fraction) because it ends up being the same for all the genotypes, and the point of calculating this likelihood is to determine the most likely genotype. The important part is the numerator (top of the fraction):
+
+$$ P(G) P(D|G) $$
+
+which is composed of two things: the prior probability of the genotype and the conditional probability of the data given the genotype.
+
+The first one is the easiest to understand. The prior probability of the genotype G:
+
+$$ P(G) $$
+
+represents how probably we expect to see this genotype based on previous observations, studies of the population, and so on. By default, the GATK tools use a flat prior (always the same value) but you can input your own set of priors if you have information about the frequency of certain genotypes in the population you're studying.
+
+The second one is a little trickier to understand if you're not familiar with Bayesian statistics. It is called the conditional probability of the data given the genotype, but what does that mean? Assuming that the genotype G is the true genotype,
+
+$$ P(D|G) $$
+
+is the probability of observing the sequence data that we have in hand. That is, how likely would we be to pull out a read with a particular sequence from an individual that has this particular genotype? We don't have that number yet, so this requires a little more calculation, using the following formula:
+
+$$ P(D|G) = \prod{j} \left( \frac{P(D_j | H_1)}{2} + \frac{P(D_j | H_2)}{2} \right) $$
+
+You'll notice that this is where the diploid assumption comes into play, since here we decomposed the genotype G into:
+
+$$ G = H_1H_2 $$
+
+which allows for exactly two possible haplotypes. In future versions we'll have a generalized form of this that will allow for any number of haplotypes.
+
+Now, back to our calculation, what's left to figure out is this:
+
+$$ P(D_j|H_n) $$
+
+which as it turns out is the conditional probability of the data given a particular haplotype (or specifically, a particular allele), aggregated over all supporting reads. Conveniently, that is exactly what we calculated in Step 3 of the HaplotypeCaller process, when we used the PairHMM to produce the likelihoods of each read against each haplotype, and then marginalized them to find the likelihoods of each read for each allele under consideration. So all we have to do at this point is plug the values from that table into the equation above, and we can work our way back up to obtain:
+
+$$ P(G|D) $$
+
+for the genotype G.

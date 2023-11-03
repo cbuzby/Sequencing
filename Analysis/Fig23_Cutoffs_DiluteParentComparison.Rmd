@@ -74,7 +74,7 @@ glmfixed_rep <- function(HOOa, HOWa, HWOa, HWWa, LOOa, LOWa, LWOa, LWWa,
 ```{r, eval = FALSE}
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023")
 
-dir("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/")
+#dir("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/")
 
 Fluc_1 <- readRDS("Data/Fluconazole_1_cybr2.rds")
 #Fluc_8 <- readRDS("")
@@ -88,6 +88,8 @@ HZeo_18 <- readRDS("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis
 #ADD IN FLUCONAZOLE 8
 ```
 ## Select only the dilute groups
+
+Keep in mind that the Cu_8 is also Fluc_8
 
 ```{r, eval = FALSE}
 Fluc_1 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), 
@@ -120,8 +122,8 @@ HZeo_18 %>% pivot_longer(-c(CHROM, POS), names_to = c("Bulk", "Parent", "Rep", "
 
 
 ```
-
-
+#Obsolete as of Oct
+### Combine data (don't actually run this)
 ```{r, eval = FALSE}
 Fluc_1_Dilute %>% mutate(across('Parent', str_replace, "OakI" ,"O1"),
                          across('Parent', str_replace, "WineI" ,"W1")) %>%
@@ -232,7 +234,11 @@ glm_cb_short <- function(..., W, formula) {
 }
 ```
 
+## Sept '23 Method
+
 Running all of it at once for Fluconazole 1
+
+*Note* : this keeps all of the replicates the same, which overestimates the amount of structure consistent between bulks. Instead, redo this with a randomized replicate.
 
 ```{r}
 #Roll
@@ -1317,5 +1323,173 @@ RepAsBulk_FDR %>% filter(labels != "Intercept", labels != "Parent") %>%
   geom_vline(data = Cutoff_99[Cutoff_99$Exp %in% c("H1_ACE", "H8_AB"),], aes(xintercept = Cutoff_Abs, color = Exp, linetype = labels), size = 1.2)+
   ggtitle("1% False Discovery on Replicates as Bulk Effect") +
   facet_grid(rows = vars(labels))
+```
+
+
+
+#Redone Oct '23
+
+We want to essentially do what was done in September, but actually randomize the replicates as well.
+
+Fluconazole CSS I
+
+```{r}
+#colnames(Fluc_1)
+
+# Fluc_1 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% group_by(Bulk, Parent, Rep) %>% count()
+# Fluc_1_Dilute %>% group_by(Bulk, Parent, Rep) %>% count()
+
+################################################################################
+
+#Assign each null an index number (Random)
+Fluc_1_Dilute %>% pivot_wider(names_from = Allele, values_from = Reads) %>% select(Oak, Wine) %>% filter(Oak != 0, Wine != 0) -> Fluc_1_Null
+Fluc_1_Null$Random <- 1:dim(Fluc_1_Null)[1]
+
+#Format original data to have the same as null, and remove alleles
+Fluc_1 %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>% 
+  filter(CHROM != "I", CHROM != "M", CHROM != "VIII") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  select(-Oak, -Wine) -> Fluc_1_AllLociRandom
+
+#Sample the random dilute numbers
+Fluc_1_AllLociRandom$Random <- sample(1:dim(Fluc_1_Null)[1], replace = TRUE, size = dim(Fluc_1_AllLociRandom)[1])
+
+#Merge the new dilute counts with the original labels
+merge(Fluc_1_AllLociRandom, Fluc_1_Null) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> Fluc_1_Permuted
+
+#Run the actual GLM on these
+
+Fluc_1_Permuted %>% filter(CHROM == "II") %>% 
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  reframe(GLMResult = glmer_cb_short(formula = "Allele ~ Bulk*Parent + (1 | Rep)", 
+                             W = Reads,
+                               Allele = Allele, Bulk = Bulk, Parent = Parent, Rep = Rep),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> F_1_II
+
+quantile(abs(F_1_II$GLMResult), 0.95)
+
+F_1_II %>% group_by(labels) %>% summarize(FDR_05 = quantile(abs(GLMResult), 0.95),
+                                          FDR_01 = quantile(abs(GLMResult), 0.99))
+```
+
+Cu_1_A_Dilute
+```{r}
+#Assign each null an index number (Random)
+Cu_1_A_Dilute %>% pivot_wider(names_from = Allele, values_from = Reads) %>% select(Oak, Wine) %>% filter(Oak != 0, Wine != 0) -> Cu_1_A_Null
+Cu_1_A_Null$Random <- 1:dim(Cu_1_A_Null)[1]
+
+#Format original data to have the same as null, and remove alleles
+Cu_1_A %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", #"Rep", 
+                                                      "Allele"), names_sep = "_") %>% 
+  filter(CHROM != "I", CHROM != "M", CHROM != "VIII") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  select(-Oak, -Wine) -> Cu_1_A_AllLociRandom
+
+#Sample the random dilute numbers
+Cu_1_A_AllLociRandom$Random <- sample(1:dim(Cu_1_A_Null)[1], replace = TRUE, size = dim(Cu_1_A_AllLociRandom)[1])
+
+#Merge the new dilute counts with the original labels
+merge(Cu_1_A_AllLociRandom, Cu_1_A_Null) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> Cu_1_A_Permuted
+
+#Run the actual GLM on these
+
+Cu_1_A_Permuted %>% 
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  reframe(GLMResult = glm_cb_short(formula = "Allele ~ Bulk*Parent", 
+                             W = Reads,
+                               Allele = Allele, 
+                             Bulk = Bulk, 
+                             #Rep = Rep,
+                             Parent = Parent),
+          labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> Cu_1_A_pglm
+
+Cu_1_A_pglm %>% group_by(labels) %>% summarize(FDR_05 = quantile(abs(GLMResult), 0.95),
+                                          FDR_01 = quantile(abs(GLMResult), 0.99))
+```
+
+
+```{r}
+#Assign each null an index number (Random)
+Cu_1_B_Dilute %>% pivot_wider(names_from = Allele, values_from = Reads) %>% select(Oak, Wine) %>% filter(Oak != 0, Wine != 0) -> Cu_1_B_Null
+Cu_1_B_Null$Random <- 1:dim(Cu_1_B_Null)[1]
+
+#Format original data to have the same as null, and remove alleles
+Cu_1_B %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", 
+                                                      "Allele"), names_sep = "_") %>% 
+  filter(CHROM != "I", CHROM != "M", CHROM != "VIII") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  select(-Oak, -Wine) -> Cu_1_B_AllLociRandom
+
+#Sample the random dilute numbers
+Cu_1_B_AllLociRandom$Random <- sample(1:dim(Cu_1_B_Null)[1], replace = TRUE, size = dim(Cu_1_B_AllLociRandom)[1])
+
+#Merge the new dilute counts with the original labels
+merge(Cu_1_B_AllLociRandom, Cu_1_B_Null) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> Cu_1_B_Permuted
+
+#Run the actual GLM on these
+
+Cu_1_B_Permuted %>% 
+  group_by(CHROM, POS) %>% #filter(CHROM == "V", POS == 6611) %>%
+  mutate_if(is.character, as.factor) %>%
+  reframe(GLMResult = glm_cb_short(formula = "Allele ~ Bulk*Parent + Rep", 
+                             W = Reads,
+                               Allele = Allele, 
+                             Bulk = Bulk, 
+                             Rep = Rep,
+                             Parent = Parent),
+          labels = c("Intercept", 
+                     "Bulk", 
+                     "Parent", 
+                     "Rep",
+                     "Interaction")) -> Cu_1_B_pglm
+
+Cu_1_B_pglm %>% group_by(labels) %>% summarize(FDR_05 = quantile(abs(GLMResult), 0.95),
+                                          FDR_01 = quantile(abs(GLMResult), 0.99))
+```
+ 
+```{r}
+#Assign each null an index number (Random)
+Cu_8_Dilute %>% pivot_wider(names_from = Allele, values_from = Reads) %>% 
+  filter(Parent != "Oak1", Parent != "Wine1") %>%
+  select(Oak, Wine) %>% filter(Oak != 0, Wine != 0) -> Cu_8_Null
+Cu_8_Null$Random <- 1:dim(Cu_8_Null)[1]
+
+#Format original data to have the same as null, and remove alleles
+Cu_8 %>% 
+  pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Dose",
+                                                      "Allele"), names_sep = "_") %>% 
+  filter(Parent != "Wine1", Parent != "Oak1", Bulk != "Fluc") %>%
+  filter(CHROM != "I", CHROM != "M", CHROM != "VIII") %>%
+  pivot_wider(names_from = Allele, values_from = value) %>%
+  select(-Oak, -Wine) -> Cu_8_AllLociRandom
+
+#Sample the random dilute numbers
+Cu_8_AllLociRandom$Random <- sample(1:dim(Cu_8_Null)[1], replace = TRUE, size = dim(Cu_8_AllLociRandom)[1])
+
+#Merge the new dilute counts with the original labels
+merge(Cu_8_AllLociRandom, Cu_8_Null) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> Cu_8_Permuted
+
+#Run the actual GLM on these
+
+Cu_8_Permuted %>% filter(CHROM == "V") %>% #filter(POS == 6611) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  reframe(GLMResult = glmer_cb_short(formula = "Allele ~ Bulk*Parent + (1 | Rep)", 
+                             W = Reads,
+                               Allele = Allele, 
+                             Bulk = Bulk, 
+                             Rep = Rep,
+                             Parent = Parent),
+          labels = c("Intercept", 
+                     "Bulk", 
+                     "Parent", 
+                     #"Rep",
+                     "Interaction")) -> Cu_8_pglm
+
+Cu_8_pglm %>% group_by(labels) %>% summarize(FDR_05 = quantile(abs(GLMResult), 0.95),
+                                          FDR_01 = quantile(abs(GLMResult), 0.99))
+
 ```
 

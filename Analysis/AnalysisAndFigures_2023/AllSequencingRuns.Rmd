@@ -1,0 +1,512 @@
+---
+title: "2023 Comparing Coverage and SNPs"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+
+glm_cb <- function(..., W, formula) {
+  data <- list(...)
+  
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  
+  glm_formula <- as.formula(formula)
+  
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  return(summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.75))])
+  
+}
+
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #Check if number of groups is specified
+  if(numgroups != FALSE){
+    #check the dimensions of the df
+    if(dim(as.data.frame(data))[1] != numgroups){
+      print("Number of groups is insufficient")
+      output <- rep(NA, outputlength)
+    }else{
+      #Run the GLM
+        glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+        output <- summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.25))]
+    }
+  }else{
+      glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+      output <- summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.25))]
+
+  }
+  
+  
+  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+  
+  #Output: Effect, Standard Error, Z-score 
+  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+  
+}
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+```
+
+Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGenomes.rmd` file has these at the beginning.
+
+# Processing
+
+# Loading in Data from original files
+
+GQ Cutoff is 98 for all samples, so find out how many of these are under 98 and in which samples that tends to occur
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+
+```
+
+# Using the new and improved table for this
+
+## Load in Table
+
+```{r}
+# MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+# 
+# MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
+# 
+# for(i in 1:length(RawFiles$VCF_Table)){
+#   cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+#   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+# 
+#   if(i > 1){
+#     alldata <- rbind(rawdata, alldata)
+#   }else{
+#     alldata <- rawdata
+#   }
+# 
+# }
+# 
+# alldata %>% distinct() %>%
+#   mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
+#   mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
+# 
+# saveRDS(alldata, file = "allseqruns_oct23.rds")
+
+alldata <- readRDS("allseqruns_oct23.rds")
+
+unique(alldata$Pool)
+```
+
+## Processing like before
+
+```{r}
+# alldata %>% #head(3000) %>% 
+#   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>% 
+#   group_by(Dataset, CHROM, POS) %>%
+#   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+#          Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+#   select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>% 
+#   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> alldata_called
+# 
+# alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+#   reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> alldata_smoothed #%>% na.omit() 
+# 
+# saveRDS(alldata_called, file = "Oct23_alldata_called.rds")
+# saveRDS(alldata_smoothed, file = "Oct23_alldata_smoothed.rds")
+
+alldata_called <- readRDS(file = "Oct23_alldata_called.rds")
+alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds")
+
+```
+
+## Look at a sample of CuSO4 CSS I
+
+```{r}
+# HGVMDRX2 = Fluconazole CSS I
+unique(alldata_smoothed$Pool)
+alldata_smoothed %>% filter(Pool == "HGVMVDRX2") -> HGVMVDRX2_smoothed
+
+HGVMVDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HGVMVDRX2_counts
+
+# merge(HGVMVDRX2_smoothed, HGVMVDRX2_counts) %>% filter(n == 1) %>%
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
+#   mutate(logRatio = log(Wine/Oak)) %>%
+#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+  
+```
+
+```{r}
+
+unique(alldata_smoothed$Dataset)
+# HJ5HKDRX3 = H2O2 data
+alldata_smoothed %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
+
+HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
+
+# merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>%
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
+#   mutate(logRatio = log(Wine/Oak)) %>%
+#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+#   
+
+merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(as.numeric(Wine)/as.numeric(Oak))) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) -> HJ5HKDRX3_GQ
+
+HJ5HKDRX3_GQ %>%
+  ggplot(aes(x = POS, y = logRatio, color = GQ < 98)) + geom_point() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+```
+
+```{r}
+# HKTFTDRX2 = CuSO4b
+alldata_smoothed %>% filter(Pool == "HKTFTDRX2") -> HKTFTDRX2_smoothed
+
+HKTFTDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTFTDRX2_counts
+
+# merge(HKTFTDRX2_smoothed, HKTFTDRX2_counts) %>% filter(n == 1) %>%
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
+#   mutate(logRatio = log(Wine/Oak)) %>%
+#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+
+merge(HKTFTDRX2_smoothed, HKTFTDRX2_counts) %>% filter(n == 1) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(as.numeric(Wine)/as.numeric(Oak))) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) -> HKTFTDRX2_GQ
+
+HKTFTDRX2_GQ %>%
+  ggplot(aes(x = POS, y = logRatio, color = GQ < 98)) + geom_point() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+  
+```
+
+
+```{r, fig.width=16, fig.height=5}
+# HKTMWDRX2 = Zeocin/Cycloheximide
+alldata_smoothed %>% filter(Pool == "HKTMWDRX2") -> HKTMWDRX2_smoothed
+
+HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWDRX2_counts
+
+# merge(HKTMWDRX2_smoothed, HKTMWDRX2_counts) %>% filter(n == 1) %>%
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
+#   mutate(logRatio = log(Wine/Oak)) %>%
+#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+
+merge(HKTMWDRX2_smoothed, HKTMWDRX2_counts) %>% filter(n == 1) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(as.numeric(Wine)/as.numeric(Oak))) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) -> HKTMWDRX2_GQ
+
+HKTMWDRX2_GQ %>% #filter(CHROM == "I") %>% #
+  filter(CHROM != "I", CHROM != "M") %>%
+  ggplot(aes(x = POS, y = logRatio, color = GQ < 98)) + geom_point(alpha = 0.2) + facet_grid(~ CHROM, space = "free", scales = "free") +
+  scale_size_discrete(c(0.01, 0.04, 0.1))
+
+HKTMWDRX2_GQ %>% 
+  ggplot(aes(x = abs(logRatio), color = GQ < 98)) + geom_boxplot()
+
+
+  
+```
+
+
+```{r}
+# HNGLVDRXY = CuSO4a
+alldata_smoothed %>% filter(Pool == "HNGLVDRXY") -> HNGLVDRXY_smoothed
+
+HNGLVDRXY_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HNGLVDRXY_counts
+
+merge(HNGLVDRXY_smoothed, HNGLVDRXY_counts) %>% filter(n == 1) %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(Wine/Oak)) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) %>%
+  ggplot(aes(x = abs(logRatio), color = GQ < 98)) + geom_boxplot()
+
+
+
+```
+
+
+```{r}
+# HVYTYDRX2 = CSS8 Fluc and CuSO4
+alldata_smoothed %>% filter(Pool == "HVYTYDRX2") -> HVYTYDRX2_smoothed
+
+HVYTYDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HVYTYDRX2_counts
+
+merge(HVYTYDRX2_smoothed, HVYTYDRX2_counts) %>% filter(n == 1) %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(Wine/Oak)) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) %>%
+  ggplot(aes(x = abs(logRatio), color = GQ < 99)) + geom_boxplot()
+
+```
+
+## Analysis of H2O2 Data without GQ filtering
+
+This part doesn't actually work because there are a ton that don't line up with the numbers
+
+```{r}
+#Select only the CSS8 H2O2 Data
+HJ5HKDRX3_smoothed %>% separate(Dataset, into = c("Bulk", "Parent", "Rep"), sep = "_") %>% 
+  mutate(Parent = gsub("0", "O", Parent)) %>%
+  #Filter for Chr 8 and Bulk D or H
+  filter(stringr::str_detect(Parent, '8')) %>% 
+  filter(Bulk != "Z") %>%
+  mutate_if(is.character, as.factor) -> HJ5HKDRX3_CSS8_glm_prep
+
+################################################################################
+#Check that the data is the ones we want
+unique(HJ5HKDRX3_CSS8_glm_prep$Bulk)
+unique(HJ5HKDRX3_CSS8_glm_prep$Parent)
+unique(HJ5HKDRX3_CSS8_glm_prep$Rep)
+
+#Check the number of samples at each position
+HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS) %>% count() -> completesets
+table(completesets$n)
+
+#Check that each rep, bulk, and parent is represented twice
+HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Rep) %>% count() -> completereps
+table(completereps$n)
+completereps %>% filter(n == 4)
+
+HJ5HKDRX3_CSS8_glm_prep %>% filter(POS == 71530)
+
+HJ5HKDRX3_CSS8_glm_prep %>% merge(completereps) %>% filter(n == 2) %>%
+  select(-n) %>%
+  merge(completesets) %>%
+  filter(n == 16) -> HJ5HKDRX3_CSS8_glm_prep_c
+
+#HJ5HKDRX3_CSS8_glm_prep_b %>% filter(CHROM == "XV") %>% filter(POS == 998864)
+
+################################################################################
+HJ5HKDRX3_CSS8_glm_prep_c %>% na.omit() %>%
+  filter(CHROM == "XV") %>% #head(48) %>%
+  #filter(POS == 735907) %>% 
+  arrange(Bulk, Parent, Rep) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 12, outputlength = 15),
+            Factor = c(rep(c("Intercept", "Bulk", "Parent", "Rep", "Interaction"), 3)),
+       Label = c(rep("Effect", 5),
+                 rep("Zscore", 5),
+                 rep("SE", 5))) -> HJ5HKDRX3_CSS8_glm_XV
+
+alldata %>% filter(CHROM == "XV", Pool == "HJ5HKDRX3") %>% mutate_if(is.character, as.factor) -> alldata_XV
+HJ5HKDRX3_CSS8_glm_XV %>% na.omit() %>%
+  merge(alldata_XV[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_merge
+
+HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "Zscore") %>%
+  ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
+
+HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "Effect") %>%
+  ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
+
+HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "SE") %>%
+  ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
+
+```
+
+Checking specific reads - all reads
+
+```{r, fig.width=16, fig.height=5}
+alldata_called %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXV
+
+testXV %>% filter(stringr::str_detect(Dataset, '8')) %>%
+  filter(stringr::str_detect(Dataset, 'Z') == FALSE) %>%
+  ggplot(aes(x = POS, y = paste(Dataset, Allele))) + geom_jitter(alpha = 0.4) 
+```
+
+Smoothed Data
+
+```{r, fig.width=16, fig.height=5}
+alldata_smoothed %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXVs
+
+testXVs %>% filter(stringr::str_detect(Dataset, '8')) %>%
+  filter(stringr::str_detect(Dataset, 'Z') == FALSE) %>%
+  ggplot(aes(x = POS, y = paste(Dataset, Allele))) + geom_jitter(alpha = 0.4) 
+```
+
+```{r, fig.width=16, fig.height=5}
+
+HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
+  merge(completereps) %>%
+  mutate(n1 = n) %>% select(-n) %>%
+  merge(completesets) %>% 
+  
+  ggplot(aes(x = POS, y = n, color = n == 16)) + geom_point()
+
+HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
+  merge(completereps) %>%
+  mutate(n1 = n) %>% select(-n) %>%
+  merge(completesets) %>% 
+  ggplot(aes(x = POS, y = paste(Parent, Rep, Bulk), color = n == 16)) + geom_jitter(alpha = 0.4) +
+  facet_grid(rows = "n1")
+
+HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
+  merge(completereps) %>%
+  mutate(n1 = n) %>% select(-n) %>%
+  merge(completesets) %>% 
+  ggplot(aes(x = POS, y = paste(Parent, Rep, Bulk), color = as.factor(n))) + geom_jitter(alpha = 0.4) +
+  facet_grid(rows = "n1")
+
+```
+
+# Extra Stuff
+## Analyzing
+
+Number of Positions where not ALL of the samples pass filter
+
+```{r, fig.width = 16, fig.height = 8}
+
+alldata %>% select(Pool, Dataset) %>% distinct() %>% count(Pool) %>% select(Pool, Total = n) -> Totals
+
+alldata %>% group_by(Pool, POS, CHROM) %>% count(DPass = GQ > 98) %>% merge(Totals) %>% 
+  pivot_wider(names_from = DPass, values_from = n, names_prefix = "Col_") %>% 
+  mutate(Included = Col_TRUE == Total) -> PassingCalc
+
+# PassingCalc %>% filter(CHROM == "XII") %>% ggplot(aes(x = POS, y = Included)) + geom_point(alpha = 0.4) + facet_grid(rows = "Pool")
+# 
+# PassingCalc %>% filter(CHROM != "M") %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar(position = "fill") + facet_grid(rows = "Pool")
+# 
+# PassingCalc %>% filter(CHROM != "M") %>% filter(Pool %in% c("HJ5HKDRX3", "HJ5HKDRX3b")) %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar() + facet_grid(rows = "Pool") + ggtitle("Comparison of CuSO4 and H2O2 Runs")
+
+PassingCalc %>% select(Pool, CHROM, POS) %>% distinct() %>% count(Pool)
+
+PassingCalc %>% merge(distinct((MQCRuns[,c("Pool", "ShortName")]))) %>%
+  filter(CHROM != "M", is.na(Included) == FALSE) %>%
+  ggplot(aes(x = POS, y = Pool, color = Included)) + 
+  geom_jitter(aes(x = POS, y = paste(ShortName, Included)), alpha = 0.05, size =0.2, height = 0.2) +
+  #geom_point(data = centromeres, aes(x = POS), size = 3) +
+  facet_grid(Pool~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none", axis.text.x = element_blank())
+
+
+```
+
+
+## Formulas from GATK
+
+We use the approach described in Li 2011 to calculate the posterior probabilities of non-reference alleles (Methods 2.3.5 and 2.3.6) extended to handle multi-allelic variation.
+
+The basic formula we use for all types of variation under consideration (SNPs, insertions and deletions) is:
+
+$$ P(G|D) = \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+
+If that is meaningless to you, please don't freak out -- we're going to break it down and go through all the components one by one. First of all, the term on the left:
+
+$$ P(G|D) $$
+
+is the quantity we are trying to calculate for each possible genotype: the conditional probability of the genotype G given the observed data D.
+
+Now let's break down the term on the right:
+
+$$ \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+
+We can ignore the denominator (bottom of the fraction) because it ends up being the same for all the genotypes, and the point of calculating this likelihood is to determine the most likely genotype. The important part is the numerator (top of the fraction):
+
+$$ P(G) P(D|G) $$
+
+which is composed of two things: the prior probability of the genotype and the conditional probability of the data given the genotype.
+
+The first one is the easiest to understand. The prior probability of the genotype G:
+
+$$ P(G) $$
+
+represents how probably we expect to see this genotype based on previous observations, studies of the population, and so on. By default, the GATK tools use a flat prior (always the same value) but you can input your own set of priors if you have information about the frequency of certain genotypes in the population you're studying.
+
+The second one is a little trickier to understand if you're not familiar with Bayesian statistics. It is called the conditional probability of the data given the genotype, but what does that mean? Assuming that the genotype G is the true genotype,
+
+$$ P(D|G) $$
+
+is the probability of observing the sequence data that we have in hand. That is, how likely would we be to pull out a read with a particular sequence from an individual that has this particular genotype? We don't have that number yet, so this requires a little more calculation, using the following formula:
+
+$$ P(D|G) = \prod{j} \left( \frac{P(D_j | H_1)}{2} + \frac{P(D_j | H_2)}{2} \right) $$
+
+You'll notice that this is where the diploid assumption comes into play, since here we decomposed the genotype G into:
+
+$$ G = H_1H_2 $$
+
+which allows for exactly two possible haplotypes. In future versions we'll have a generalized form of this that will allow for any number of haplotypes.
+
+Now, back to our calculation, what's left to figure out is this:
+
+$$ P(D_j|H_n) $$
+
+which as it turns out is the conditional probability of the data given a particular haplotype (or specifically, a particular allele), aggregated over all supporting reads. Conveniently, that is exactly what we calculated in Step 3 of the HaplotypeCaller process, when we used the PairHMM to produce the likelihoods of each read against each haplotype, and then marginalized them to find the likelihoods of each read for each allele under consideration. So all we have to do at this point is plug the values from that table into the equation above, and we can work our way back up to obtain:
+
+$$ P(G|D) $$
+
+for the genotype G.

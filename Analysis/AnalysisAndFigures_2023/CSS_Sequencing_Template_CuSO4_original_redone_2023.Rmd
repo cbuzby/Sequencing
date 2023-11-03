@@ -109,7 +109,7 @@ parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length
 
 #CHANGE THIS
 #mydatatotest = "Data/HKTFTDRX2.SortedCat.vcf.output.table"
-mydatatotest = "C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table"
+mydatatotest = "C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/HJ5HKDRX3b.SortedCat.vcf.output.table"
 
 
 FilteredData <- cybrInputGATKTable(mydatatotest) %>% 
@@ -132,16 +132,21 @@ tempFilteredData$Bulk[grep("Unselected", tempFilteredData$DS)] <- "Dilute"
 # tempFilteredData$Rep[grep("a", tempFilteredData$DS)] <- "A"
 # tempFilteredData$Rep[grep("b", tempFilteredData$DS)] <- "B"
 
-tempFilteredData$Parent[grep("A", tempFilteredData$DS)] <- "Oak"
-tempFilteredData$Parent[grep("C", tempFilteredData$DS)] <- "Wine"
+tempFilteredData$Parent[grep("SelectedA", tempFilteredData$DS)] <- "Oak"
+tempFilteredData$Parent[grep("UnselectedA", tempFilteredData$DS)] <- "Oak"
+tempFilteredData$Parent[grep("SelectedC", tempFilteredData$DS)] <- "Wine"
+tempFilteredData$Parent[grep("UnselectedC", tempFilteredData$DS)] <- "Wine"
 
 tempFilteredData$ReadCount <- as.numeric(tempFilteredData$ReadCount)
   
 # #THIS IGNORES REPLICATES
-tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent) %>% distinct %>% 
+#tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent) %>% distinct %>% group_by(CHROM, POS) %>% count()
+
+#tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent) %>% distinct %>% filter(CHROM == "I", POS == 244)
+tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent) %>% distinct %>%
  pivot_wider(names_from = c(Bulk, Parent, PAllele), values_from = ReadCount) -> cybr2Data
 
-saveRDS(object = cybr2Data, file = "Data/CuSO4_1_cybr2.rds")
+saveRDS(object = cybr2Data, file = "Data/CuSO4_1_cybr2_redone.rds")
 
 #cybr2Data <- readRDS("Data/CuSO4_1_cybr2.rds")
 
@@ -211,6 +216,7 @@ Calculate GLM from rolled data
 ```{r, warning=FALSE}
 #Change for different datasets
 mydata <- rollData
+str(mydata)
 #Run GLM - options are glmfixed_rep(), glmfixed_rep3(), and glmfixed()
 #IF NOT USING REPS, change 1:5 to 1:4, and remove "Rep" from labels
 mydata %>% group_by(CHROM, POS) %>% 
@@ -225,7 +231,7 @@ mydata %>% group_by(CHROM, POS) %>%
                                                    label = c("intercept", "Bulk", "Parent", "Interaction")) -> GLMdata
 
 #saveRDS(GLMdata, file = "Data/2023/PLACEHOLDER_glm.Rdata")
-saveRDS(GLMdata, file = "Data/CuSO4_1_glm_c.rds")
+saveRDS(GLMdata, file = "Data/CuSO4_1_redone_glm_c.rds")
 
 ```
 
@@ -250,7 +256,7 @@ Log Odds of Alleles Plot for reference
 RawCountSummary %>% 
   filter(CHROM != "I", CHROM != "M") %>% 
   
-  ggplot(aes(x = POS, y = logWineOak, shape = paste(Bulk, Parent, sep = "_"), color = Bulk)) + 
+  ggplot(aes(x = POS, y = logWineOak, shape = paste(Bulk, Parent, Rep, sep = "_"), color = Bulk)) + 
   geom_point(alpha = 0.3) + 
   
   facet_grid(~CHROM, scales = "free", space = "free") +
