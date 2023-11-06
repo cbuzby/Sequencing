@@ -107,6 +107,9 @@ ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
   pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
   mutate(Summary = NA, Label = NA) %>% select(-delete)
 
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
 ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
                                              levels = as.character(as.roman(1:16))),
                               start = rep(1, 16),
@@ -189,6 +192,7 @@ alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds")
 
 ## Look at a sample of CuSO4 CSS I
 
+### All of the ones besides H2O2
 ```{r}
 # HGVMDRX2 = Fluconazole CSS I
 unique(alldata_smoothed$Pool)
@@ -201,29 +205,6 @@ HGVMVDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HGVMVD
 #   mutate(logRatio = log(Wine/Oak)) %>%
 #   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
   
-```
-
-```{r}
-
-unique(alldata_smoothed$Dataset)
-# HJ5HKDRX3 = H2O2 data
-alldata_smoothed %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
-
-HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
-
-# merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>%
-#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
-#   mutate(logRatio = log(Wine/Oak)) %>%
-#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
-#   
-
-merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>% 
-  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
-  mutate(logRatio = log(as.numeric(Wine)/as.numeric(Oak))) %>%
-  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) -> HJ5HKDRX3_GQ
-
-HJ5HKDRX3_GQ %>%
-  ggplot(aes(x = POS, y = logRatio, color = GQ < 98)) + geom_point() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
 ```
 
 ```{r}
@@ -308,6 +289,36 @@ merge(HVYTYDRX2_smoothed, HVYTYDRX2_counts) %>% filter(n == 1) %>%
 
 ```
 
+### H2O2 Sep
+
+```{r}
+
+unique(alldata_smoothed$Dataset)
+# HJ5HKDRX3 = H2O2 data
+alldata_smoothed %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
+
+HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
+
+# merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>%
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% 
+#   mutate(logRatio = log(Wine/Oak)) %>%
+#   ggplot(aes(x = POS, y = logRatio)) + geom_line() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+#   
+
+merge(HJ5HKDRX3_smoothed, HJ5HKDRX3_counts) %>% filter(n == 1) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logRatio = log(as.numeric(Wine)/as.numeric(Oak))) %>%
+  merge(alldata[,c("POS", "CHROM", "Dataset", "GQ")]) -> HJ5HKDRX3_GQ
+
+HJ5HKDRX3_GQ %>%
+  ggplot(aes(x = POS, y = logRatio, color = GQ < 98)) + geom_point() + facet_grid(Dataset ~ CHROM, space = "free", scales = "free")
+
+HJ5HKDRX3_GQ %>% filter(CHROM != "I", CHROM != "VIII", CHROM != "M") %>%
+  ggplot(aes(x = POS, y = logRatio, color = Dataset)) + geom_point() + facet_grid( ~ CHROM, space = "free", scales = "free")
+```
+
+
+
 ## Analysis of H2O2 Data without GQ filtering
 
 This part doesn't actually work because there are a ton that don't line up with the numbers
@@ -352,36 +363,106 @@ HJ5HKDRX3_CSS8_glm_prep_c %>% na.omit() %>%
   arrange(Bulk, Parent, Rep) %>%
   group_by(CHROM, POS) %>%
   mutate_if(is.character, as.factor) %>%
-  summarize(Summary = glm_cb2(Allele = Allele,
+  summarize(Summary = glm_cb2_short(Allele = Allele,
                              Bulk = Bulk,
                              Parent = Parent,
                              Rep = Rep,
                              W = SmoothCount,
                              formula = "Allele ~ Bulk * Parent + Rep",
-                            numgroups = 12, outputlength = 15),
-            Factor = c(rep(c("Intercept", "Bulk", "Parent", "Rep", "Interaction"), 3)),
-       Label = c(rep("Effect", 5),
-                 rep("Zscore", 5),
-                 rep("SE", 5))) -> HJ5HKDRX3_CSS8_glm_XV
+                            numgroups = 12, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_XV
 
 alldata %>% filter(CHROM == "XV", Pool == "HJ5HKDRX3") %>% mutate_if(is.character, as.factor) -> alldata_XV
 HJ5HKDRX3_CSS8_glm_XV %>% na.omit() %>%
   merge(alldata_XV[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_merge
 
-HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "Zscore") %>%
-  ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
-
-HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "Effect") %>%
-  ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
-
-HJ5HKDRX3_merge %>% distinct() %>% filter(Label == "SE") %>%
+HJ5HKDRX3_merge %>% distinct() %>% 
   ggplot(aes(x = POS, y = Summary, color = GQ > 98)) + geom_point() + facet_grid(rows = "Factor")
 
 ```
 
+```{r, fig.width = 16, fig.height=4}
+################################################################################
+# Not only using one chromosome
+HJ5HKDRX3_CSS8_glm_prep_c %>% na.omit() %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  arrange(Bulk, Parent, Rep) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 12, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all
+
+alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
+  merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_merge_all
+
+#Before plotting, get chromosomes in order
+HJ5HKDRX3_merge_all$CHROM <- factor(HJ5HKDRX3_merge_all$CHROM, levels = as.roman(1:16))
+
+#Plots
+HJ5HKDRX3_merge_all %>% distinct() %>% filter(CHROM != "I") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = GQ > 98)) + geom_point() + facet_grid(Factor ~ CHROM, space = "free", scales = "free")
+
+
+HJ5HKDRX3_merge_all %>% distinct() %>% filter(CHROM != "I", Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(yintercept = 0.13419362	) +
+  scale_color_manual(values = c("black", "purple", "gray", "lightpink"))+
+  facet_grid( ~ CHROM, space = "free", scales = "free")
+
+HJ5HKDRX3_merge_all %>% filter(CHROM == "III") %>% group_by(Factor) %>% summarize(cutoff = max(abs(Summary)))
+```
+```{r}
+HJ5HKDRX3_merge_all %>% distinct() %>% filter(CHROM != "I") %>%
+  ggplot(aes(x = Summary, color = GQ > 98, linetype = GQ > 98)) + geom_density(size = 2) + ggtitle("GQ Scores do not correlate with peaks")
+```
+
+## Analyzing all datasets the same way
+
+```{r}
+# Pick out the specific groups of the dataset
+HJ5HKDRX3_smoothed %>% separate(Dataset, into = c("Bulk", "Parent", "Rep"), sep = "_") %>% 
+  mutate(Parent = gsub("0", "O", Parent)) %>%
+  #Filter for Chr 1 and Bulk D or H
+  filter(stringr::str_detect(Parent, '1')) %>% 
+  filter(Bulk != "Z") %>%
+  mutate_if(is.character, as.factor) -> HJ5HKDRX3_CSS1_glm_prep
+
+# Not only using one chromosome
+HJ5HKDRX3_CSS1_glm_prep %>% na.omit() %>% filter(CHROM %in% c("M", "VIII") == FALSE, CHROM == "I", POS == 176304) #%>%
+  arrange(Bulk, Parent, Rep) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 12, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS1_glm_all
+
+alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "I") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+HJ5HKDRX3_CSS1_glm_all %>% na.omit() %>%
+  merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS1_merge_all
+
+
+```
+
+
+# Extra Stuff
+
+## Coverage stuff (old)
+
+
 Checking specific reads - all reads
 
-```{r, fig.width=16, fig.height=5}
+```{r, fig.width=16, fig.height=5, eval = FALSE}
 alldata_called %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXV
 
 testXV %>% filter(stringr::str_detect(Dataset, '8')) %>%
@@ -391,69 +472,12 @@ testXV %>% filter(stringr::str_detect(Dataset, '8')) %>%
 
 Smoothed Data
 
-```{r, fig.width=16, fig.height=5}
+```{r, fig.width=16, fig.height=5, eval = FALSE}
 alldata_smoothed %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXVs
 
 testXVs %>% filter(stringr::str_detect(Dataset, '8')) %>%
   filter(stringr::str_detect(Dataset, 'Z') == FALSE) %>%
   ggplot(aes(x = POS, y = paste(Dataset, Allele))) + geom_jitter(alpha = 0.4) 
-```
-
-```{r, fig.width=16, fig.height=5}
-
-HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
-  merge(completereps) %>%
-  mutate(n1 = n) %>% select(-n) %>%
-  merge(completesets) %>% 
-  
-  ggplot(aes(x = POS, y = n, color = n == 16)) + geom_point()
-
-HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
-  merge(completereps) %>%
-  mutate(n1 = n) %>% select(-n) %>%
-  merge(completesets) %>% 
-  ggplot(aes(x = POS, y = paste(Parent, Rep, Bulk), color = n == 16)) + geom_jitter(alpha = 0.4) +
-  facet_grid(rows = "n1")
-
-HJ5HKDRX3_CSS8_glm_prep %>% filter(CHROM == "XV") %>%
-  merge(completereps) %>%
-  mutate(n1 = n) %>% select(-n) %>%
-  merge(completesets) %>% 
-  ggplot(aes(x = POS, y = paste(Parent, Rep, Bulk), color = as.factor(n))) + geom_jitter(alpha = 0.4) +
-  facet_grid(rows = "n1")
-
-```
-
-# Extra Stuff
-## Analyzing
-
-Number of Positions where not ALL of the samples pass filter
-
-```{r, fig.width = 16, fig.height = 8}
-
-alldata %>% select(Pool, Dataset) %>% distinct() %>% count(Pool) %>% select(Pool, Total = n) -> Totals
-
-alldata %>% group_by(Pool, POS, CHROM) %>% count(DPass = GQ > 98) %>% merge(Totals) %>% 
-  pivot_wider(names_from = DPass, values_from = n, names_prefix = "Col_") %>% 
-  mutate(Included = Col_TRUE == Total) -> PassingCalc
-
-# PassingCalc %>% filter(CHROM == "XII") %>% ggplot(aes(x = POS, y = Included)) + geom_point(alpha = 0.4) + facet_grid(rows = "Pool")
-# 
-# PassingCalc %>% filter(CHROM != "M") %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar(position = "fill") + facet_grid(rows = "Pool")
-# 
-# PassingCalc %>% filter(CHROM != "M") %>% filter(Pool %in% c("HJ5HKDRX3", "HJ5HKDRX3b")) %>% ggplot(aes(y = paste(CHROM), fill = Included)) + geom_bar() + facet_grid(rows = "Pool") + ggtitle("Comparison of CuSO4 and H2O2 Runs")
-
-PassingCalc %>% select(Pool, CHROM, POS) %>% distinct() %>% count(Pool)
-
-PassingCalc %>% merge(distinct((MQCRuns[,c("Pool", "ShortName")]))) %>%
-  filter(CHROM != "M", is.na(Included) == FALSE) %>%
-  ggplot(aes(x = POS, y = Pool, color = Included)) + 
-  geom_jitter(aes(x = POS, y = paste(ShortName, Included)), alpha = 0.05, size =0.2, height = 0.2) +
-  #geom_point(data = centromeres, aes(x = POS), size = 3) +
-  facet_grid(Pool~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none", axis.text.x = element_blank())
-
-
 ```
 
 
