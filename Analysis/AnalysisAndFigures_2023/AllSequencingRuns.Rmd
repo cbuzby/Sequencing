@@ -29,6 +29,34 @@ require(stringr)
 
 require(cybrBSA)
 
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+```
+
+# Functions
+
+```{r}
 glm_cb <- function(..., W, formula) {
   data <- list(...)
   
@@ -51,7 +79,7 @@ glm_cb <- function(..., W, formula) {
   
 }
 
-glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
   data <- list(...)
   
   #Ensure that there is a formula and W parameter
@@ -77,7 +105,13 @@ glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4) 
   }
   
   glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
-  output <- summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.25))]
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  #output <- summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.25))]
   
   if(length(output) == outputlength){
     return(output)
@@ -86,7 +120,7 @@ glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4) 
   }
   
   #########################
-  #Complete from before without the "MAYBEWORKS" section
+  #Complete from before without the "MAYBEWORKS" section, but no longer needed
   
   #Check if number of groups is specified
   if(numgroups != FALSE){
@@ -116,28 +150,6 @@ glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4) 
   
   
 }
-
-#TESTING
-#glm_formula <- "Allele ~ Bulk * Parent + Rep"
-
-ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
-
-ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
-                                             levels = as.character(as.roman(1:16))),
-                              start = rep(1, 16),
-                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
-  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
-  mutate(Summary = NA, Label = NA) %>% select(-delete)
-
-ChromosomeScale$Start <- 30000
-ChromosomeScale$End <- ChromosomeScale$POS - 30000
-
-ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
-                                             levels = as.character(as.roman(1:16))),
-                              start = rep(1, 16),
-                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
-  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
-  mutate(summary = 0, label = "Bulk") %>% select(-delete)
 
 ```
 
@@ -216,16 +228,12 @@ alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds")
 Use _e dataset to ensure that the ends of the chromosomes are not there
 
 ```{r, fig.width = 15, fig.height = 4}
-alldata_smoothed %>%filter(POS > 30000) %>% merge(ChromosomeScale[,c("CHROM", "End")]) %>% filter(End > 0) %>% group_by(CHROM) %>% filter(POS < End) -> alldata_smoothed_e
-
-# #Test by plotting
-# smoothedscale <- ChromosomeScale %>% mutate(CHROM = CHROM, Pool = NA, Dataset = NA, Allele = NA, POS = POS, SmoothCount = 1) %>% select(-Summary, -Label, -Start, -End)
-# 
-# alldata_smoothed_e %>% select(-End) %>% rbind(smoothedscale) %>%  filter(Dataset == "O8_aC6") %>% 
-#   ggplot(aes(x = POS, y = SmoothCount, color = Allele)) + geom_point(alpha = 0.1, size = 0.3) + facet_grid(~CHROM, scales = "free", space = "free")
-# 
-# alldata_smoothed_e %>% select(-End) %>% rbind(smoothedscale) %>%  filter(CHROM == "I") %>% 
-#   ggplot(aes(x = POS, y = SmoothCount, color = Pool)) + geom_point(alpha = 0.1, size = 1) + facet_grid(Allele~CHROM, scales = "free", space = "free")
+alldata_smoothed %>%
+  filter(POS > 30000) %>% 
+  merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < End) -> alldata_smoothed_e
 
 ```
 
@@ -549,82 +557,228 @@ HNGLVDRXY_CSS1_glm_all %>% na.omit() %>% dim()
 saveRDS(HNGLVDRXY_CSS1_glm_all, file = "StandardGLM/HNGLVDRXY_CSS8_glm_all.rds")
 ```
 
-# Extra Stuff
+HGVMDRX2 = Fluconazole CSS I
+ 
+```{r, eval = FALSE}
+# Pick out the specific groups of the dataset
+HGVMVDRX2_smoothed %>% separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> HGVMVDRX2_CSS1_glm_prep
 
-## Coverage stuff (old)
+#DUPLICATE MISSING REPLICATES (this experiment only)
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "OakI", Bulk == "Dilute", Rep %in% c("B")) %>% 
+  mutate(Rep = "C") %>% rbind(HGVMVDRX2_CSS1_glm_prep) -> HGVMVDRX2_CSS1_glm_prepd
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "OakI", Bulk == "Dilute", Rep %in% c("B")) %>% 
+  mutate(Rep = "D") %>% rbind(HGVMVDRX2_CSS1_glm_prepd) -> HGVMVDRX2_CSS1_glm_prepd
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "WineI", Bulk == "Fluc", Rep %in% c("C")) %>% 
+  mutate(Rep = "B") %>% rbind(HGVMVDRX2_CSS1_glm_prepd) -> HGVMVDRX2_CSS1_glm_prepd
 
 
-Checking specific reads - all reads
+#Test once
+testdata <- HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
 
-```{r, fig.width=16, fig.height=5, eval = FALSE}
-alldata_called %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXV
+# Run full dataset
+HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 18, outputlength = 6),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HGVMVDRX2_CSS1_glm_all
 
-testXV %>% filter(stringr::str_detect(Dataset, '8')) %>%
-  filter(stringr::str_detect(Dataset, 'Z') == FALSE) %>%
-  ggplot(aes(x = POS, y = paste(Dataset, Allele))) + geom_jitter(alpha = 0.4) 
+HGVMVDRX2_CSS1_glm_all %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HGVMVDRX2", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HGVMVDRX2_CSS1_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HGVMVDRX2_CSS1_merge_all
+
+saveRDS(HGVMVDRX2_CSS1_glm_all, file = "StandardGLM/HGVMVDRX2_CSS1_glm_all.rds")
 ```
 
-Smoothed Data
+# Real quick test if these are even working
 
-```{r, fig.width=16, fig.height=5, eval = FALSE}
-alldata_smoothed_e %>% filter(Pool == "HJ5HKDRX3", CHROM == "XV") -> testXVs
+```{r, fig.width = 16, fig.height = 4}
+HGVMVDRX2_CSS1_glm_all %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 
-testXVs %>% filter(stringr::str_detect(Dataset, '8')) %>%
-  filter(stringr::str_detect(Dataset, 'Z') == FALSE) %>%
-  ggplot(aes(x = POS, y = paste(Dataset, Allele))) + geom_jitter(alpha = 0.4) 
+HGVMVDRX2_CSS1_glm_all %>% na.omit() %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+
+rbind(data.frame(HGVMVDRX2_CSS1_glm_all, Pool = "Fluc_1"), 
+      #data.frame(HNGLVDRXY_CSS1_glm_all, Pool = "CuSO4_1"),
+      #data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "H2O2_1"),
+      #data.frame(HJ5HKDRX3_CSS8_glm_all, Pool = "H2O2_8"),
+      data.frame(HJ5HKDRX3_CSS8_glm_all_noreps, Pool = "NR_1"),
+      data.frame(HJ5HKDRX3_CSS1_glm_all_noreps, Pool = "NR_8")) %>% filter(CHROM != "I") %>% 
+  filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + ylim(c(0,1)) + facet_grid(Pool~CHROM, scales = "free", space = "free")
 ```
 
+# Let's try making the H2O2 ones just the average of the reps so that we're not losing data...?
 
-## Formulas from GATK
+```{r, fig.width = 15, fig.height = 4}
+HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS8_glm_prep_noreps
 
-We use the approach described in Li 2011 to calculate the posterior probabilities of non-reference alleles (Methods 2.3.5 and 2.3.6) extended to handle multi-allelic variation.
+#Test once
+testdata <- HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30782) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
 
-The basic formula we use for all types of variation under consideration (SNPs, insertions and deletions) is:
+# Run full dataset
+HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = AvgCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all_noreps
 
-$$ P(G|D) = \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+HJ5HKDRX3_CSS8_glm_all_noreps %>% na.omit() %>% dim()
 
-If that is meaningless to you, please don't freak out -- we're going to break it down and go through all the components one by one. First of all, the term on the left:
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
 
-$$ P(G|D) $$
+saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all_noreps.rds")
 
-is the quantity we are trying to calculate for each possible genotype: the conditional probability of the genotype G given the observed data D.
+ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
 
-Now let's break down the term on the right:
+HJ5HKDRX3_CSS8_glm_all_noreps %>%  rbind(ChromScale3) %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+```
 
-$$ \frac{ P(G) P(D|G) }{ \sum_{i} P(G_i) P(D|G_i) } $$
+```{r, fig.width = 15, fig.height = 4}
+HJ5HKDRX3_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS1_glm_prep_noreps
 
-We can ignore the denominator (bottom of the fraction) because it ends up being the same for all the genotypes, and the point of calculating this likelihood is to determine the most likely genotype. The important part is the numerator (top of the fraction):
+#Test once
+testdata <- HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30479) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
 
-$$ P(G) P(D|G) $$
+# Run full dataset
+HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = AvgCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 1, outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS1_glm_all_noreps
 
-which is composed of two things: the prior probability of the genotype and the conditional probability of the data given the genotype.
+HJ5HKDRX3_CSS1_glm_all_noreps %>% na.omit() %>% dim()
 
-The first one is the easiest to understand. The prior probability of the genotype G:
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HJ5HKDRX3_CSS1_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS1_merge_all
 
-$$ P(G) $$
+saveRDS(HJ5HKDRX3_CSS1_glm_all_noreps, file = "StandardGLM/HJ5HKDRX3_CSS1_glm_all_noreps.rds")
 
-represents how probably we expect to see this genotype based on previous observations, studies of the population, and so on. By default, the GATK tools use a flat prior (always the same value) but you can input your own set of priors if you have information about the frequency of certain genotypes in the population you're studying.
+ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
 
-The second one is a little trickier to understand if you're not familiar with Bayesian statistics. It is called the conditional probability of the data given the genotype, but what does that mean? Assuming that the genotype G is the true genotype,
+HJ5HKDRX3_CSS1_glm_all_noreps %>%  rbind(ChromScale3) %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+```
 
-$$ P(D|G) $$
+# Let's try making the H2O2 with average of reps but Z SCORES
 
-is the probability of observing the sequence data that we have in hand. That is, how likely would we be to pull out a read with a particular sequence from an individual that has this particular genotype? We don't have that number yet, so this requires a little more calculation, using the following formula:
+```{r, fig.width = 15, fig.height = 4}
+HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS8_glm_prep_noreps
 
-$$ P(D|G) = \prod{j} \left( \frac{P(D_j | H_1)}{2} + \frac{P(D_j | H_2)}{2} \right) $$
+#Test once
+testdata <- HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30782) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
 
-You'll notice that this is where the diploid assumption comes into play, since here we decomposed the genotype G into:
+# Run full dataset
+HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = AvgCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all_noreps
 
-$$ G = H_1H_2 $$
+HJ5HKDRX3_CSS8_glm_all_noreps %>% na.omit() %>% dim()
 
-which allows for exactly two possible haplotypes. In future versions we'll have a generalized form of this that will allow for any number of haplotypes.
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
 
-Now, back to our calculation, what's left to figure out is this:
+saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
 
-$$ P(D_j|H_n) $$
+ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
 
-which as it turns out is the conditional probability of the data given a particular haplotype (or specifically, a particular allele), aggregated over all supporting reads. Conveniently, that is exactly what we calculated in Step 3 of the HaplotypeCaller process, when we used the PairHMM to produce the likelihoods of each read against each haplotype, and then marginalized them to find the likelihoods of each read for each allele under consideration. So all we have to do at this point is plug the values from that table into the equation above, and we can work our way back up to obtain:
+HJ5HKDRX3_CSS8_glm_all_noreps %>%  rbind(ChromScale3) %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+```
 
-$$ P(G|D) $$
+```{r, fig.width = 15, fig.height = 4}
+HJ5HKDRX3_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS1_glm_prep_noreps
 
-for the genotype G.
+#Test once
+testdata <- HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30479) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
+
+# Run full dataset
+HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = AvgCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 1, outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS1_glm_all_noreps
+
+HJ5HKDRX3_CSS1_glm_all_noreps %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HJ5HKDRX3_CSS1_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS1_merge_all
+
+saveRDS(HJ5HKDRX3_CSS1_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS1_glm_all_noreps.rds")
+
+ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
+
+HJ5HKDRX3_CSS1_glm_all_noreps %>%  rbind(ChromScale3) %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+```
