@@ -54,37 +54,37 @@ ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
 
 # Loci to look at specifically
 
-myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV"),
-                     POS = c(375215, 116167,389572, 198671, 46271),
-                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO"),
-                     cat = c("Floc", "Fixed", "Floc", "Fixed", "Fixed"))
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
 
 ```
 
 # Functions
 
 ```{r}
-glm_cb <- function(..., W, formula) {
-  data <- list(...)
-  
-  if (is.null(W) || is.null(formula)) {
-    stop("Weights (W) and formula must be provided")
-  }
-  
-  glm_formula <- as.formula(formula)
-  
-  if (!all(names(data) %in% all.vars(glm_formula))) {
-    stop("One or more variables in the formula are not provided as arguments")
-  }
-  
-  #CHANGE THIS TO ADJUST TYPE OF REGRESSION
-  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
-  
-  #Output: Effect, Standard Error, Z-score 
-  #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
-  return(summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.75))])
-  
-}
+# glm_cb <- function(..., W, formula) {
+#   data <- list(...)
+#   
+#   if (is.null(W) || is.null(formula)) {
+#     stop("Weights (W) and formula must be provided")
+#   }
+#   
+#   glm_formula <- as.formula(formula)
+#   
+#   if (!all(names(data) %in% all.vars(glm_formula))) {
+#     stop("One or more variables in the formula are not provided as arguments")
+#   }
+#   
+#   #CHANGE THIS TO ADJUST TYPE OF REGRESSION
+#   glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+#   
+#   #Output: Effect, Standard Error, Z-score 
+#   #(ignores p-value since it can be calculated from Z score; multiply by 1 if you would like to retain it)
+#   return(summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients)*0.75))])
+#   
+# }
 
 glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
   data <- list(...)
@@ -145,29 +145,29 @@ pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
 
 ## Table Processing
 ```{r}
-# MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
-# 
-# MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
-# 
-# for(i in 1:length(RawFiles$VCF_Table)){
-#   cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
-#   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
-# 
-#   if(i > 1){
-#     alldata <- rbind(rawdata, alldata)
-#   }else{
-#     alldata <- rawdata
-#   }
-# 
-# }
-# 
-# alldata %>% distinct() %>%
-#   mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
-#   mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
-# 
-# saveRDS(alldata, file = "allseqruns_oct23.rds")
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
 
-alldata <- readRDS("allseqruns_oct23.rds")
+MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
+
+for(i in 1:length(RawFiles$VCF_Table)){
+  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+
+  if(i > 1){
+    alldata <- rbind(rawdata, alldata)
+  }else{
+    alldata <- rawdata
+  }
+
+}
+
+alldata %>% distinct() %>%
+  mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
+
+saveRDS(alldata, file = "allseqruns_nov23.rds")
+
+alldata <- readRDS("allseqruns_nov23.rds")
 
 #unique(alldata$Pool)
 ```
@@ -175,7 +175,7 @@ For any new datasets:
 
 ```{r, eval = FALSE}
 #LOAD IN ORIGINAL
-alldata <- readRDS("allseqruns_oct23.rds")
+alldata <- readRDS("allseqruns_nov23.rds")
 
 #LOAD IN TABLE
 MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
@@ -183,7 +183,7 @@ MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencin
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
 var <- 1 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
-RawFiles[var] #CHECK THAT IT'S RIGHT
+RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
 
 for(i in var){
   cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
@@ -231,22 +231,22 @@ Hsomething_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> Hsome
 ```
 
 ```{r}
-# alldata %>% #head(3000) %>% 
-#   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>% 
-#   group_by(Dataset, CHROM, POS) %>%
-#   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
-#          Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
-#   select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>% 
-#   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> alldata_called
-# 
-# alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
-#   reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> alldata_smoothed #%>% na.omit() 
-# 
-# saveRDS(alldata_called, file = "Oct23_alldata_called.rds")
-# saveRDS(alldata_smoothed, file = "Oct23_alldata_smoothed.rds")
+alldata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> alldata_called
 
-alldata_called <- readRDS(file = "Oct23_alldata_called.rds")
-alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds")
+alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> alldata_smoothed #%>% na.omit()
+
+saveRDS(alldata_called, file = "Nov23_alldata_called.rds")
+saveRDS(alldata_smoothed, file = "Nov23_alldata_smoothed.rds")
+
+# alldata_called <- readRDS(file = "Nov23_alldata_called.rds")
+# alldata_smoothed <- readRDS(file = "Nov23_alldata_smoothed.rds")
 
 ```
 
@@ -276,26 +276,21 @@ HKTFTDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTFTD
 alldata_smoothed_e %>% filter(Pool == "HVYTYDRX2") -> HVYTYDRX2_smoothed
 HVYTYDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HVYTYDRX2_counts
 
-# HGVMDRX2 = Fluconazole CSS I
+# HGVMDRX2 = Fluconazole CSS I 
 alldata_smoothed_e %>% filter(Pool == "HGVMVDRX2") -> HGVMVDRX2_smoothed
 HGVMVDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HGVMVDRX2_counts
 
-# HJ5HKDRX3 = H2O2 data
+# HJ5HKDRX3 = H2O2 data X
 alldata_smoothed_e %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
 HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
 
-# HKTMWDRX2 = Zeocin/Cycloheximide
+# HKTMWDRX2 = Zeocin/Cycloheximide X
 alldata_smoothed_e %>% filter(Pool == "HKTMWDRX2") -> HKTMWDRX2_smoothed
 HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWDRX2_counts
 
 # ADD NEW ONES DOWN HERE
-
-
-```
-
-## Get each run GLM ready
-
-```{r}
+# CuSO4 done again
+alldata_smoothed_e %>% filter(Pool == "xHNGLVDRXY") -> xHNGLVDRXY_smoothed
 
 ```
 
@@ -308,7 +303,7 @@ HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWD
 # Pick out the specific groups of the dataset
 HVYTYDRX2_smoothed %>%  separate(Dataset, into = c("Parent", "Rep_Bulk_Dose"), sep = "_") %>% 
   #CHANGE THE REPS ETC
-  separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep="(?<=[a-z,A-Z,0-9])") %>%
+  separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep = "(?<=[a-z,A-Z,0-9])") %>%
   #cont
   mutate(Parent = gsub("0", "O", Parent)) -> HVYTYDRX2_FlucCuSO4_81
 
@@ -358,7 +353,68 @@ HVYTYDRX2_Fluc_CSS8_glm_prep %>% select(-Dose) %>% na.omit() %>%
 saveRDS(HVYTYDRX2_Fluc_CSS8_glm_all, file = "StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds")
 ```
 
-### H2O2 CSS  VIII (DONE - effect?)
+### CuSO4 CSS VIII - DONE
+
+```{r, eval = FALSE}
+
+# Pick out the specific groups of the dataset
+HVYTYDRX2_smoothed %>%  separate(Dataset, into = c("Parent", "Rep_Bulk_Dose"), sep = "_") %>% 
+  #CHANGE THE REPS ETC
+  separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep = "(?<=[a-z,A-Z,0-9])") %>%
+  #cont
+  mutate(Parent = gsub("0", "O", Parent)) -> HVYTYDRX2_FlucCuSO4_81
+
+#################################################################################
+HVYTYDRX2_FlucCuSO4_81 %>%
+  #Filter for Chr 8 and Bulk D or H
+  filter(stringr::str_detect(Parent, '8')) %>% 
+  filter(Bulk != "F") %>%
+  mutate_if(is.character, as.factor) %>% mutate(REMOVE = FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+
+table(HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Dose, HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Parent)
+
+#HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 5) == FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+table(testfilter$Dose, testfilter$Parent)
+
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter(Parent == "O8", Bulk == "D")
+
+#################################################################################
+#Test once
+testdata <- HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>% filter(CHROM == "I", POS == 106953) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+#This isn't right
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>%
+# Run full dataset
+#HVYTYDRX2_CuSO4_CSS8_glm_prep %>% 
+  select(-Dose) %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_CuSO4_CSS8_glm_all
+
+saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_all, file = "StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+```
+
+### H2O2 CSS  VIII - DONE (Z score)
 
 ```{r, eval = FALSE}
 
@@ -371,11 +427,11 @@ HJ5HKDRX3_smoothed %>% separate(Dataset, into = c("Bulk", "Parent", "Rep"), sep 
   mutate_if(is.character, as.factor) -> HJ5HKDRX3_CSS8_glm_prep
 
 #Test once
-testdata <- HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% filter(CHROM == "X", POS == 640028) %>% arrange(Bulk, Parent, Rep)
-table(testdata$Rep, testdata$Bulk, testdata$Parent)
-sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
-formula = "Allele ~ Bulk * Parent + Rep"
-glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+# testdata <- HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% filter(CHROM == "X", POS == 640028) %>% arrange(Bulk, Parent, Rep)
+# table(testdata$Rep, testdata$Bulk, testdata$Parent)
+# sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+# formula = "Allele ~ Bulk * Parent + Rep"
+# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
 
 # Run full dataset
 HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% 
@@ -404,52 +460,8 @@ saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")
 ```
 
 
-### H2O2 CSS  VIII (DONE - effect?)
-```{r, eval = FALSE}
-
-# Pick out the specific groups of the dataset
-HJ5HKDRX3_smoothed %>% separate(Dataset, into = c("Bulk", "Parent", "Rep"), sep = "_") %>% 
-  mutate(Parent = gsub("0", "O", Parent)) %>%
-  #Filter for Chr 8 and Bulk D or H
-  filter(stringr::str_detect(Parent, '8')) %>% 
-  filter(Bulk != "Z") %>%
-  mutate_if(is.character, as.factor) -> HJ5HKDRX3_CSS8_glm_prep
-
-#Test once
-testdata <- HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% filter(CHROM == "X", POS == 640028) %>% arrange(Bulk, Parent, Rep)
-table(testdata$Rep, testdata$Bulk, testdata$Parent)
-sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
-formula = "Allele ~ Bulk * Parent + Rep"
-glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
-
-# Run full dataset
-HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% 
-  #filter(CHROM == "X", POS == 640028) %>%
-  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
-  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
-  group_by(CHROM, POS) %>%
-  mutate_if(is.character, as.factor) %>%
-  summarize(Summary = glm_cb2_short(Allele = Allele,
-                             Bulk = Bulk,
-                             Parent = Parent,
-                             Rep = Rep,
-                             W = SmoothCount,
-                             formula = "Allele ~ Bulk * Parent + Rep",
-                            numgroups = 16, outputlength = 5),
-            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all
-
-HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>% dim()
-
-# #Merge with GQ if you want
-# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
-# HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
-#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
-
-saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")
-```
-
-### HNGLVDRXY = CuSO4a, CSS I - IP (Z score)
-
+### CuSO4a, CSS I - DONE (Z score)
+Redoing 11/28 to add back in Chr 8
 ```{r, eval = FALSE}
 
 # Pick out the specific groups of the dataset
@@ -470,7 +482,7 @@ HNGLVDRXY_smoothed %>% #head() %>%
 HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
   #filter(CHROM == "X", POS == 640028) %>%
   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
-  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
   group_by(CHROM, POS) %>%
   mutate_if(is.character, as.factor) %>%
   summarize(Summary = glm_cb2_short(Allele = Allele,
@@ -493,8 +505,92 @@ HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>%
 saveRDS(HNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/HNGLVDRXY_CuSO4_CSS1_glm_all.rds")
 ```
 
+```{r, eval = FALSE}
+
+# Pick out the specific groups of the dataset
+xHNGLVDRXY_smoothed %>% #head() %>%
+    mutate(Dataset = gsub("CuSO4_CSSI_", "", Dataset)) %>%
+    mutate(Dataset = gsub("Unselected", "Unselected_", Dataset)) %>%
+    mutate(Dataset = gsub("Selected", "Selected_", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Parent"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> xHNGLVDRXY_CSS1_glm_prep
+
+#Test once
+# testdata <- xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> xHNGLVDRXY_CuSO4_CSS1_glm_all
+
+#xHNGLVDRXY_CuSO4_CSS1_glm_all %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "xHNGLVDRXY", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# xHNGLVDRXY_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> xHNGLVDRXY_CSS8_merge_all
+
+saveRDS(xHNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/xHNGLVDRXY_CuSO4_CSS1_glm_all.rds")
+```
+
+### CuSO4b, CSS I - DONE
+
+```{r, eval = FALSE}
+
+# Pick out the specific groups of the dataset
+HKTFTDRX2_smoothed %>% 
+  separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "(?<=[a-z,A-Z,0-9])") %>% 
+  mutate_if(is.character, as.factor) -> HKTFTDRX2_CSS1_glm_prep
+
+#Test once
+testdata <- HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 152004) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>% 
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            #numgroups = 16, 
+                            outputlength = 5),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HKTFTDRX2_CuSO4_CSS1_glm_all
+
+
+saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all, file = "StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds")
+
+HKTFTDRX2_CuSO4_CSS1_glm_all %>% na.omit()
+```
+
+
+
 # Duplicating reps to balance them (should have fixed effect of 0)
-### HGVMDRX2 = Fluconazole CSS I (DONE - effect?)
+### HGVMDRX2 = Fluconazole CSS I - DONE (Z)
  
 ```{r, eval = FALSE}
 # Pick out the specific groups of the dataset
@@ -546,7 +642,7 @@ saveRDS(HGVMVDRX2_CSS1_glm_all, file = "StandardGLM/HGVMVDRX2_CSS1_glm_all.rds")
 # Averaging across replicates to fill in missing data (HJ5HKDRX3 and HKTMWDRX2)
 
 ### H2O2 
-```{r, fig.width = 15, fig.height = 4}
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS8_glm_prep_noreps
 
 #Test once
@@ -578,14 +674,16 @@ HJ5HKDRX3_CSS8_glm_all_noreps %>% na.omit() %>% dim()
 # HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
 #   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
 
-saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
+#saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
+
+HJ5HKDRX3_CSS8_glm_all_noreps <- readRDS("StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
 
 ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
 
 HJ5HKDRX3_CSS8_glm_all_noreps %>%  rbind(ChromScale3) %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 ```
 
-```{r, fig.width = 15, fig.height = 4}
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HJ5HKDRX3_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS1_glm_prep_noreps
 
 #Test once
@@ -628,7 +726,7 @@ HJ5HKDRX3_CSS1_glm_all_noreps %>%  rbind(ChromScale3) %>% filter(CHROM != "I") %
 
 Do the same no-rep thing for Zeocin and Cycloheximide to see if that helps
 
-```{r, fig.width = 15, fig.height = 4}
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 
 # Zeocin
 HKTMWDRX2_smoothed %>% 
@@ -655,7 +753,7 @@ HKTMWDRX2_smoothed %>%
   mutate_if(is.character, as.factor) -> HKTMWDRX2_Cyc_CSS1_glm_prep
 ```
 
-```{r, fig.width = 15, fig.height = 4}
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HKTMWDRX2_Cyc_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HKTMWDRX2_Cyc_CSS1_glm_prep_noreps
 
 HKTMWDRX2_Cyc_CSS1_glm_prep_noreps %>% filter(Parent == "W", CHROM == "I")
@@ -681,15 +779,17 @@ HKTMWDRX2_Cyc_CSS1_glm_prep_noreps %>% na.omit() %>%
                             numgroups = 1, outputlength = 4),
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HKTMWDRX2_Cyc_CSS1_glm_all_noreps
 
+saveRDS(HKTMWDRX2_Cyc_CSS1_glm_all_noreps, file = "StandardGLM/HKTMWDRX2_Cyc_CSS1_glm_all_noreps.rds")
+
 #PLOT TO CHECK
-HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>% rbind(ChromScale3) %>% filter(CHROM != "I") %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
-  geom_vline(data = myloci, aes(xintercept = POS, color = cat), linewidth = 1, linetype = "dashed") +
-  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Cycloheximide CSS I (Rep Avg)")
+# HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>% rbind(ChromScale3) %>% filter(CHROM != "I") %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+#   geom_vline(data = myloci, aes(xintercept = POS, color = cat), linewidth = 1, linetype = "dashed") +
+#   facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Cycloheximide CSS I (Rep Avg)")
 
 ```
 
-```{r, fig.width = 15, fig.height = 4}
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HKTMWDRX2_Zeo_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HKTMWDRX2_Zeo_CSS1_glm_prep_noreps
 
 #Test once
@@ -712,11 +812,168 @@ HKTMWDRX2_Zeo_CSS1_glm_prep_noreps %>% na.omit() %>%
                             numgroups = 1, outputlength = 4),
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HKTMWDRX2_Zeo_CSS1_glm_all_noreps
 
+saveRDS(HKTMWDRX2_Zeo_CSS1_glm_all_noreps, file = "StandardGLM/HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds")
 #PLOT TO CHECK
-HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>% rbind(ChromScale3) %>% filter(CHROM != "I") %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() +
-  geom_vline(data = myloci, aes(xintercept = POS, color = cat), linewidth = 1, linetype = "dashed") +
-facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin CSS I (Rep Avg)")
+# HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>% rbind(ChromScale3) %>% filter(CHROM != "I") %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() +
+#   geom_vline(data = myloci, aes(xintercept = POS, color = cat), linewidth = 1, linetype = "dashed") +
+# facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Zeocin CSS I (Rep Avg)")
 
 ```
 
+# Load in Processed Data to Plot
+
+```{r}
+#SEARCH/REPLACE: "saveRDS(" /""
+#SEARCH/REPLACE: ", file = " /"<- readRDS("
+
+#ALL SAVED:
+HKTMWDRX2_Zeo_CSS1_glm_all_noreps <- readRDS("StandardGLM/HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds") #zeo
+HKTMWDRX2_Cyc_CSS1_glm_all_noreps <- readRDS("StandardGLM/HKTMWDRX2_Cyc_CSS1_glm_all_noreps.rds") #cyc
+
+HJ5HKDRX3_CSS1_glm_all_noreps <- readRDS("StandardGLM/Z_HJ5HKDRX3_CSS1_glm_all_noreps.rds") #H2O21
+HJ5HKDRX3_CSS8_glm_all_noreps <- readRDS("StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds") #H2o28
+
+HGVMVDRX2_CSS1_glm_all <- readRDS("StandardGLM/HGVMVDRX2_CSS1_glm_all.rds") #Fluc1
+HVYTYDRX2_Fluc_CSS8_glm_all<- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds") #fluc8
+
+HNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HNGLVDRXY_CuSO4_CSS1_glm_all.rds") #cu1
+xHNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/xHNGLVDRXY_CuSO4_CSS1_glm_all.rds") #cu1
+HKTFTDRX2_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds") #currently empty, now fixed
+
+HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+
+```
+
+```{r}
+
+rbind(data.frame(HKTMWDRX2_Zeo_CSS1_glm_all_noreps, BSA = "Zeo_1"),
+      data.frame(HKTMWDRX2_Cyc_CSS1_glm_all_noreps, BSA = "Cyc_1"),
+      data.frame(HJ5HKDRX3_CSS1_glm_all_noreps, BSA = "H2O2_1"),
+      data.frame(HJ5HKDRX3_CSS8_glm_all_noreps, BSA = "H2O2_8"),
+      data.frame(HGVMVDRX2_CSS1_glm_all, BSA = "Fluc_1"),
+      data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, BSA = "Fluc_8"),
+      data.frame(HNGLVDRXY_CuSO4_CSS1_glm_all, BSA = "CuSO4_1a"),
+      data.frame(xHNGLVDRXY_CuSO4_CSS1_glm_all, BSA = "CuSO4_1ax"),
+      data.frame(HKTFTDRX2_CuSO4_CSS1_glm_all, BSA = "CuSO4_1b"),
+      data.frame(HVYTYDRX2_CuSO4_CSS8_glm_all, BSA = "CuSO4_8")) -> AllRuns_GLM
+```
+
+```{r, fig.width = 16, fig.height = 4}
+AllRuns_GLM %>% filter(Factor == "Intercept") %>% 
+  ggplot(aes(x = POS, y = (Summary), color = BSA)) + geom_line() +
+  geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("BSA Intercepts")
+```
+### Bulk Effects
+
+```{r, fig.width = 16, fig.height = 4}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = BSA)) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("BSA Bulk Z Scores")
+```
+
+```{r, fig.width = 16}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = BSA)) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(BSA~CHROM, space = "free", scales = "free") + ggtitle("BSA Bulk Z Scores")
+```
+```{r, fig.width = 16, fig.height = 5}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(FixedChr, Trait))) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(Trait~CHROM, space = "free", scales = "free") + ggtitle("BSA Bulk Z Scores")
+```
+
+```{r, fig.width = 16, fig.height = 4}
+
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  filter(Trait == "CuSO4") %>%
+  ggplot(aes(x = POS, y = abs(Summary), linetype = paste(FixedChr, Trait), color = FixedChr == 8)) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS I BSA Bulk Z Scores")
+
+```
+
+```{r, fig.width = 16, fig.height = 4}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  filter(Trait == "CuSO4") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(FixedChr, Trait))) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(FixedChr~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS I BSA Bulk Z Scores")
+```
+
+Specifically Chr 8 for CuSO4
+
+```{r, fig.width = 16, fig.height = 8}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  filter(Trait == "CuSO4", FixedChr != 8, CHROM == "VIII") -> Cu_CSSI_chr8_test
+
+Cu_CSSI_chr8_test %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(FixedChr, Trait))) + geom_point(alpha = 0.5) +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  geom_vline(aes(xintercept = 212535)) +
+  facet_grid(FixedChr~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS I BSA Bulk Z Scores")
+```
+
+## Peaks
+
+Find the peak here to see what the resolution is? Median across 5, then use max value:
+
+```{r}
+#Smooth data to get rid of the weird points
+Cu_CSSI_chr8_test %>% group_by(FixedChr) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothZ = frollapply(Summary, n = 5, FUN = median, align = "center")) -> Cu_CSSI_chr8_med
+
+#Find the peaks based on max value
+Cu_CSSI_chr8_med %>% group_by(FixedChr) %>% summarize(SmoothZ = max(abs(SmoothZ), na.rm = TRUE)) %>%
+  merge(Cu_CSSI_chr8_med) -> Cu_CSSI_chr8_peaks
+
+#Plot peaks with CUP1-1 and CUP1-2
+Cu_CSSI_chr8_med %>%
+  ggplot(aes(x = POS, y = abs(SmoothZ), color = FixedChr)) + geom_point(alpha = 0.5) +
+  geom_vline(data = Cu_CSSI_chr8_peaks, aes(xintercept = POS), linetype = "dashed") +
+  geom_vline(aes(xintercept = c(212535))) +
+  geom_vline(aes(xintercept = c(214533))) +
+  facet_grid("FixedChr", space = "free", scales = "free") + ggtitle("CuSO4 CSS I BSA Bulk Z Scores")
+
+#Find difference between start of gene and actual peak for each
+Cu_CSSI_chr8_peaks %>% mutate(Diff = abs(POS - 212535)) %>% 
+  ggplot(aes(x = Diff, y = 1)) + 
+  geom_boxplot(size = 1) + 
+  geom_jitter(aes(y = 1, color = FixedChr), size = 4)
+
+Cu_CSSI_chr8_peaks %>% mutate(Diff = abs(POS - 212535)) %>% mutate(Gene = "CUP1") -> PeakSpan
+```
+
+Find the peak here to see what the resolution is? Median across 5, then use max value:
+
+```{r}
+
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  filter(Trait == "Fluc", FixedChr != 8, CHROM == "VIII") -> Flu_CSSI_chr8_test
+
+#Smooth data to get rid of the weird points
+Flu_CSSI_chr8_test %>% group_by(FixedChr) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothZ = abs(frollapply(Summary, n = 5, FUN = median, align = "center"))) -> Flu_CSSI_chr8_med
+
+#Find the peaks based on max value
+Flu_CSSI_chr8_med %>% group_by(FixedChr) %>% summarize(SmoothZ = max(abs(SmoothZ), na.rm = TRUE)) %>%
+  merge(Flu_CSSI_chr8_med) -> Flu_CSSI_chr8_peaks
+
+#Plot peaks with ERG11 
+Flu_CSSI_chr8_med %>%
+  ggplot(aes(x = POS, y = abs(SmoothZ), color = FixedChr)) + geom_point(alpha = 0.5) +
+  geom_vline(data = Flu_CSSI_chr8_peaks, aes(xintercept = POS), linetype = "dashed") +
+  geom_vline(aes(xintercept = c(120091))) +
+  facet_grid("FixedChr", space = "free", scales = "free") + ggtitle("FluSO4 CSS I BSA Bulk Z Scores")
+
+Flu_CSSI_chr8_peaks %>% mutate(Diff = abs(POS - 120091)) %>% mutate(Gene = "ERG11") %>% rbind(PeakSpan) -> PeakSpan
+```
