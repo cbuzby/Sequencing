@@ -98,31 +98,25 @@ Once this ouput table has been created, copy table onto local machine and copy t
 MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
-head(RawFiles, 7)
-```
-Pool        ShortName  VCF_Table
-HNGLVDRXY	C1A	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table
-xHNGLVDRXY	C1Ar	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/HJ5HKDRX3b.SortedCat.vcf.output.table
-HGVMVDRX2	F1	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/HGVMVDRX2.SortedCat.vcf.output.table
-HKTMWDRX2	Z1	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/HKTMZDRX2.SortedCat.vcf.output.table
-HKTFTDRX2	C1B	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/HKTFTDRX2.SortedCat.vcf.output.table
-HVYTYDRX2	C8	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/HVYTYDRX2.SortedCat.vcf.output.table
-HJ5HKDRX3	HZ18	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/newHJ5HKDRX3.SortedCat.vcf.output.table
-```
+#Loop through VCF_Table path names to read in data
 for(i in 1:length(RawFiles$VCF_Table)){
-  < convert gatk vcf tables to alleles >
+  cybrInputGATKTable("path/to/vcf.output.table") %>% ... -> rawdata
   }
+```
 
-```
 #### Convert gatk vcf tables to alleles
+Script inside of for loop above
 ```
-cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
-  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+cybrInputGATKTable(RawFiles$VCF_Table[i]) %>%
+   mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>%
+   mutate(Pool = RawFiles$Pool[i])-> rawdata
 ```
+
 #### Calling specific SNPs based on parent sequences
 Parent (Oak and Wine) sequences were aligned to the same reference genome, and SNPs called for each. Those which are alternate in Oak and not Wine are called "Oak" alleles, those in Wine but not Oak are "Wine" alleles, and those which are shared by both strains are not called as they will not be different in the final bulks. The reference is then used as the opposite strain, and the same script run so that the directions of each are consistent:
 ```
-rawdata %>% #head(3000) %>%
+rawdata %>% 
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
   group_by(Dataset, CHROM, POS) %>%
   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
