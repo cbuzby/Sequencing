@@ -87,6 +87,7 @@ gatk VariantsToTable \
      -GF AD -GF DP -GF GQ -GF PL \
      -O ${myfile}.output.table
 ```
+Once this ouput table has been created, copy table onto local machine and copy the PATH to that table ("C/users/etc") into the spreadsheet AllMultiQCRuns.csv (used below).
 
 ## Analysis
 ***
