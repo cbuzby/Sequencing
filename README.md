@@ -79,8 +79,13 @@ CB_5.0_zip.concat.sort
 ```
 
 #### Make GATK table for R
+This is sometimes included in the CB_5.0 script, so check first to see if that has run
 ```
-
+gatk VariantsToTable \
+     -V ${myfile} \
+     -F CHROM -F POS -F REF -F ALT \
+     -GF AD -GF DP -GF GQ -GF PL \
+     -O ${myfile}.output.table
 ```
 
 ## Analysis
