@@ -92,11 +92,23 @@ Once this ouput table has been created, copy table onto local machine and copy t
 ## Analysis
 ***
 
+### Processing GATK VCF Table
 #### Use summary table for all runs to keep uniform
 ```
 MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
+head(RawFiles, 7)
+```
+Pool        ShortName  VCF_Table
+HNGLVDRXY	C1A	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table
+xHNGLVDRXY	C1Ar	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/AnalysisAndFigures_2023/HJ5HKDRX3b.SortedCat.vcf.output.table
+HGVMVDRX2	F1	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/HGVMVDRX2.SortedCat.vcf.output.table
+HKTMWDRX2	Z1	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/HKTMZDRX2.SortedCat.vcf.output.table
+HKTFTDRX2	C1B	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/HKTFTDRX2.SortedCat.vcf.output.table
+HVYTYDRX2	C8	         C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/Data/HVYTYDRX2.SortedCat.vcf.output.table
+HJ5HKDRX3	HZ18	      C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis/newHJ5HKDRX3.SortedCat.vcf.output.table
+```
 for(i in 1:length(RawFiles$VCF_Table)){
   < convert gatk vcf tables to alleles >
   }
