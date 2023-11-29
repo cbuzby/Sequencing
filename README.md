@@ -79,133 +79,101 @@ CB_5.0_zip.concat.sort
 ```
 
 #### Make GATK table for R
+This is sometimes included in the CB_5.0 script, so check first to see if that has run
 ```
-
+gatk VariantsToTable \
+     -V ${myfile} \
+     -F CHROM -F POS -F REF -F ALT \
+     -GF AD -GF DP -GF GQ -GF PL \
+     -O ${myfile}.output.table
 ```
+Once this ouput table has been created, copy table onto local machine and copy the PATH to that table ("C/users/etc") into the spreadsheet AllMultiQCRuns.csv (used below).
 
-### Analysis
+## Analysis
 ***
-#### Combine oak and wine parental alleles, and define the bulks, parents, and replicates
+
+### Processing GATK VCF Table
+#### Use summary table for all runs to keep uniform
 ```
-setwd("../../../GitHub/Sequencing/Analysis/")
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
-parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+#Loop through VCF_Table path names to read in data
+for(i in 1:length(RawFiles$VCF_Table)){
+  cybrInputGATKTable("path/to/vcf.output.table") %>% ... -> rawdata
+  }
+```
 
-parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+#### Convert gatk vcf tables to alleles
+Script inside of for loop above
+```
+cybrInputGATKTable(RawFiles$VCF_Table[i]) %>%
+   mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>%
+   mutate(Pool = RawFiles$Pool[i])-> rawdata
+```
 
-#CHANGE THIS
-mydatatotest = "Data/HKTFTDRX2.SortedCat.vcf.output.table"
+#### Calling specific SNPs based on parent sequences
+Parent (Oak and Wine) sequences were aligned to the same reference genome, and SNPs called for each. Those which are alternate in Oak and not Wine are called "Oak" alleles, those in Wine but not Oak are "Wine" alleles, and those which are shared by both strains are not called as they will not be different in the final bulks. The reference is then used as the opposite strain, and the same script run so that the directions of each are consistent:
+```
+rawdata %>% 
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+```
+#### Smooth the data by finding rolling median, centered
+```
+rawdata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> rawdata_smoothed
+```
 
-FilteredData <- cybrInputGATKTable(mydatatotest) %>% 
-  cybrQualityFilter() %>% 
-  cybrIDAlleles(BSAdfstart = ., Parentdf = pSNPs, yeast = TRUE) %>% 
-  na.omit()
+### GLM
 
-#Using Gsub for this
-gsub(FilteredData$Dataset, "HKTFTDRX2_n01_", "") #CHANGE THIS
+#### glm_cb Function on its own
+This will take in the data columns, weights (W), formula for glm, and output length and return the coefficients specified (return = "Z")
+```
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
 
-FilteredData %>% mutate(DShort = gsub("HKTFTDRX2_n01_", "", Dataset),
-                       DS = gsub(".fastq", "", DShort)) %>% select(-Dataset, -DShort) -> tempFilteredData
-
-tempFilteredData$Bulk <- NA
-tempFilteredData$Parent <- NA
-tempFilteredData$Rep <- NA
-
-tempFilteredData$Bulk[grep("C", tempFilteredData$DS)] <- "CuSO4" #CHANGE THIS
-tempFilteredData$Bulk[grep("D", tempFilteredData$DS)] <- "Dilute"
-
-tempFilteredData$Rep[grep("a", tempFilteredData$DS)] <- "A"
-tempFilteredData$Rep[grep("b", tempFilteredData$DS)] <- "B"
-
-tempFilteredData$Parent[grep("O", tempFilteredData$DS)] <- "Oak"
-tempFilteredData$Parent[grep("W", tempFilteredData$DS)] <- "Wine"
-
-tempFilteredData$ReadCount <- as.numeric(tempFilteredData$ReadCount)
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
   
-# #THIS IGNORES REPLICATES
-tempFilteredData %>% select(CHROM, POS, PAllele, ReadCount, Bulk, Parent, Rep) %>% distinct %>% 
- pivot_wider(names_from = c(Bulk, Parent, Rep, PAllele), values_from = ReadCount) -> cybr2Data
- ```
- 
-#### Check log alleles per flask and coverage across sequencing run
-```
-cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = c("Bulk", "Parent", "Rep", "Allele"), names_sep = "_") %>%
-  pivot_wider(names_from = Allele, values_from = value) %>% mutate(Coverage = Wine + Oak, logWineOak = log(Wine/Oak)) -> RawCountSummary
-```
- 
-#### Smooth data by rolling mean or median
-
-```
-#Use rolling average of 100 SNPs, finding the mean
-cybr2Data %>% cybr2_rollmean() -> rollmeanData
-
-#Find the rolling median or change n instead
-cybr2Data %>% pivot_longer(c(-CHROM, -POS), names_to = "label") %>% 
-  group_by(CHROM, label) %>% arrange(POS) %>% 
-  summarize(POS = POS, 
-            CHROM = CHROM, 
-            SmoothCount = ceiling(frollapply(value, n = 100, FUN = median))) %>% #CHANGE THIS LINE
-  na.omit() %>% 
-  pivot_wider(names_from = label,values_from = SmoothCount) -> rollData
-```
-
-#### Caluclate GLM of rolling data
-
-```
-#Change for different datasets
-mydata <- rollData
-
-#Run GLM - options are glmfixed_rep(), glmfixed_rep3(), and glmfixed()
-#IF NOT USING REPS, change 1:5 to 1:4, and remove "Rep" from labels
-mydata %>% group_by(CHROM, POS) %>% 
-  summarise(summary = glmfixed_rep(HOOa = CuSO4_Oak_A_Oak, 
-                           HOWa = CuSO4_Oak_A_Wine, 
-                           HWOa = CuSO4_Wine_A_Oak,
-                           HWWa = CuSO4_Wine_A_Wine,
-                           LOOa = Dilute_Oak_A_Oak,
-                           LOWa = Dilute_Oak_A_Wine,
-                           LWOa = Dilute_Wine_A_Oak, 
-                           LWWa = Dilute_Wine_A_Wine,
-                           
-                           HOOb = CuSO4_Oak_B_Oak, 
-                           HOWb = CuSO4_Oak_B_Wine, 
-                           HWOb = CuSO4_Wine_B_Oak,
-                           HWWb = CuSO4_Wine_B_Wine,
-                           LOOb = Dilute_Oak_B_Oak,
-                           LOWb = Dilute_Oak_B_Wine,
-                           LWOb = Dilute_Wine_B_Oak, 
-                           LWWb = Dilute_Wine_B_Wine)[1:5],
-                                                   label = c("intercept", "Bulk", "Parent", "Rep", "Interaction")) -> GLMdata
-```
-
-### Visualizing
-***
-#### Single GLM Plot for this Data for reference
-
-```
-GLMdata %>% 
-  filter(label != "intercept", CHROM != "I", CHROM != "M") %>% 
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
   
-  ggplot(aes(x = POS, y = summary, color = label)) + geom_line() + 
-  
-  facet_grid(~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) + ggtitle("GLM of Data")
+}
+```
+#### Test function for each experiment
+Because each experiment has a different number of replicates, this script should be adjusted for each so that it has the correct output and labels. The formula can be changed for adding a replicate or not, and if using glmer, the function itself must be changed to reflect that.
+```
+testdata <- data %>% na.omit() %>% filter(CHROM == "I", POS == 34991) %>% arrange(Bulk, Parent)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
 ```
 
-#### Log Odds of Alleles Plot for reference
-
+#### Run parallelized across positions and chromosomes
 ```
-RawCountSummary %>% 
-  filter(CHROM != "I", CHROM != "M") %>% 
-  
-  ggplot(aes(x = POS, y = logWineOak, shape = paste(Bulk, Parent, Rep, sep = "_"), color = Bulk)) + 
-  geom_point(alpha = 0.3) + 
-  
-  facet_grid(~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom", axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) +
-  scale_color_manual(values = c("Violet", "Black"))
+data %>% na.omit() %>% 
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = AvgCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 1, outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> dataglm
 ```
 
 #### Notes
