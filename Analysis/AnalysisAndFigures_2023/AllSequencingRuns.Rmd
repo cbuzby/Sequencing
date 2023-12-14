@@ -126,6 +126,182 @@ glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, 
   
 }
 
+############################ PERMUTATIONS ######################################
+# Replicates, all scrambled
+cybrPermute_Rep <- function(dataset){
+  
+  start.time <- Sys.time()
+  
+  dataset %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(dataset) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+
+  #these are now all of the ones that can be used to permute
+  newnewtest %>% filter(Bulk != "F", CHROM != "I", CHROM != "III", CHROM != "VIII") %>% select(CHROM, Oak, Wine) %>% 
+    mutate(rownum = sample(1:nrow(.))) %>% arrange(rownum) %>% na.omit() -> NullToSample
+  
+  #Trying this again
+  
+  dataset[1:nrow(NullToSample),] %>% ungroup() %>% select(CHROM, POS, Bulk, Parent, Rep) %>% cbind(NullToSample[,c("Oak", "Wine")]) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>%
+    #Original Script
+    group_by(CHROM, POS) %>%
+    mutate_if(is.character, as.factor) %>%
+      summarize(Summary = glm_cb2_short(Allele = Allele,
+                               Bulk = Bulk,
+                               Parent = Parent,
+                               Rep = Rep,
+                               W = SmoothCount,
+                               formula = "Allele ~ Bulk * Parent + Rep",
+                               outputlength = 5),
+              Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult
+
+  end.time = Sys.time()
+  print(end.time - start.time)
+  
+  return(glmresult)
+  
+}
+# No replicates, fix CHROM, Parent
+# No replicates, fix Parent
+
+# Replicates, fix CHROM, Parent
+cybrPermute_byCHRParent_Rep <- function(dataset){
+   start.time <- Sys.time()
+  
+   print("Make sure that dilute bulk is labeled D")
+   
+    dataset %>% 
+      distinct() %>% ungroup() %>%
+      group_by(CHROM, POS, Allele, 
+               Bulk, 
+               Rep, #might not have these
+               Parent) %>% 
+      summarize(culprits = length((SmoothCount))) %>% 
+      merge(dataset) %>% 
+      filter(culprits == 1) %>% 
+      ungroup() %>%
+      distinct() %>% #THIS IS IMPORTANT
+      pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    
+    #these are now all of the ones that can be used to permute
+    newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(CHROM, Parent) %>%
+      summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
+                POS2 = sample(POS)) %>%
+      group_by(CHROM, Parent, POS2) %>%
+      summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+                POS = POS2, 
+                Rep = sample(c("a", "b"))) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA
+    
+    newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(CHROM, Parent) %>%
+      summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
+                POS2 = sample(POS)) %>%
+      group_by(CHROM, Parent, POS2) %>%
+      summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+                POS = POS2, 
+                Rep = sample(c("a", "b"))) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB
+    
+    rbind(shuffled_DiluteA, shuffled_DiluteB) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm
+    
+    #Trying this again
+    
+    shuffletoglm %>% na.omit() %>%
+      #Original Script
+      group_by(CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_short(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = "Allele ~ Bulk * Parent + Rep",
+                                numgroups = 16, outputlength = 5),
+                Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+# Replicates, fix Parent
+cybrPermute_byParent_Rep <- function(dataset){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled D")
+
+  dataset %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(dataset) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+  
+  #these are now all of the ones that can be used to permute
+    newnewtest %>% filter(Bulk == "D",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+                Loc = sample(Loc)) %>%
+      group_by(Parent, Loc) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+                Loc = Loc, 
+                Rep = sample(c("a", "b"))) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "D",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+                Loc = sample(Loc)) %>%
+      group_by(Parent, Loc) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+                Loc = Loc, 
+                Rep = sample(c("a", "b"))) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #Trying this again
+    
+    shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_short(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = "Allele ~ Bulk * Parent + Rep",
+                                numgroups = 16, outputlength = 5),
+                Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult2
+  
+    end.time = Sys.time()
+    print(end.time - start.time)
+    
+    return(glmresult2)
+}
+  
 ```
 
 Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGenomes.rmd` file has these at the beginning.
@@ -259,6 +435,11 @@ alldata_smoothed %>%
   filter(End > 0) %>% 
   group_by(CHROM) %>% 
   filter(POS < End) -> alldata_smoothed_e
+
+#saveRDS(alldata_smoothed_e, file = "Dec23_alldata_smoothed_e.rds")
+
+alldata_smoothed_e <- readRDS(file = "Dec23_alldata_smoothed_e.rds")
+
 ```
 
 ## Separate each out into independent datasets to run GLM
@@ -266,32 +447,407 @@ alldata_smoothed %>%
 ```{r}
 # HNGLVDRXY = CuSO4a (CSS1)
 alldata_smoothed_e %>% filter(Pool == "HNGLVDRXY") -> HNGLVDRXY_smoothed
-HNGLVDRXY_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HNGLVDRXY_counts
+#HNGLVDRXY_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HNGLVDRXY_counts
 
 # HKTFTDRX2 = CuSO4b (CSS1)
 alldata_smoothed_e %>% filter(Pool == "HKTFTDRX2") -> HKTFTDRX2_smoothed
-HKTFTDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTFTDRX2_counts
+#HKTFTDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTFTDRX2_counts
 
 # HVYTYDRX2 = CSS8 Fluc and CuSO4, also CSS1
 alldata_smoothed_e %>% filter(Pool == "HVYTYDRX2") -> HVYTYDRX2_smoothed
-HVYTYDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HVYTYDRX2_counts
+#HVYTYDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HVYTYDRX2_counts
 
 # HGVMDRX2 = Fluconazole CSS I 
 alldata_smoothed_e %>% filter(Pool == "HGVMVDRX2") -> HGVMVDRX2_smoothed
-HGVMVDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HGVMVDRX2_counts
+#HGVMVDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HGVMVDRX2_counts
 
 # HJ5HKDRX3 = H2O2 data X
 alldata_smoothed_e %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
-HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
+#HJ5HKDRX3_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HJ5HKDRX3_counts
 
 # HKTMWDRX2 = Zeocin/Cycloheximide X
 alldata_smoothed_e %>% filter(Pool == "HKTMWDRX2") -> HKTMWDRX2_smoothed
-HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWDRX2_counts
+#HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWDRX2_counts
 
 # ADD NEW ONES DOWN HERE
 # CuSO4 done again
 alldata_smoothed_e %>% filter(Pool == "xHNGLVDRXY") -> xHNGLVDRXY_smoothed
 
+```
+
+# Permutations Standard
+
+## Check distribution of log alleles between parents, bulks, and replicates
+
+```{r, fig.width= 8, fig.height=10, eval = FALSE}
+
+alldata_smoothed_e %>% distinct() %>% ungroup() %>%
+  group_by(Pool, Dataset, CHROM, POS, Allele) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(alldata_smoothed_e) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logodds = log(Wine/Oak)) -> alldata_logodds
+
+
+# alldata_logodds %>% ggplot(aes(x = logodds, y = Dataset, color = Pool)) + geom_boxplot()
+# alldata_logodds %>% ggplot(aes(x = abs(logodds), color = Dataset)) + geom_density()
+
+################################################################################
+alldata_logodds %>% filter(CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>%  
+  filter(grepl("D", Dataset)) %>% 
+  filter(grepl("Fluc", Dataset) == FALSE) -> alldata_dilutebulks
+
+alldata_dilutebulks %>% ggplot(aes(x = logodds, y = Dataset, color = Pool)) + geom_violin()
+alldata_dilutebulks %>% ggplot(aes(x = abs(logodds), color = Dataset)) + geom_density()
+
+alldata_dilutebulks %>% ggplot(aes(x = abs(logodds), color = Dataset)) + geom_density()
+
+```
+
+```{r, fig.height = 8, fig.width=12}
+alldata_dilutebulks %>% ggplot(aes(y = logodds, x = Dataset, color = Pool)) + geom_violin() + facet_wrap("CHROM")
+```
+
+Look at differences between parents
+
+```{r, fig.width=10, fig.height=4}
+alldata_dilutebulks %>% filter(grepl("O", Dataset)) %>% na.omit() %>% mutate(ParentChr = "Oak") -> Oak_dilutes
+alldata_dilutebulks %>% filter(grepl("W", Dataset)) %>% na.omit() %>% mutate(ParentChr = "Wine") -> Wine_dilutes
+
+rbind(Oak_dilutes, Wine_dilutes) -> alldata_byparent
+
+alldata_byparent %>% ggplot(aes(y = logodds, x = Dataset, color = ParentChr)) + geom_violin() + facet_wrap("CHROM") + scale_color_manual(values = c("#5A86AD","firebrick"))
+alldata_byparent %>% ggplot(aes(y = logodds, x = CHROM, color = ParentChr)) + geom_violin() + scale_color_manual(values = c("#5A86AD","firebrick"))
+
+unique(alldata_byparent$Dataset)
+
+alldata_byparent %>% filter(grepl("8", Dataset)) %>% mutate(Fixed = "8") -> CSS8_dilutes
+alldata_byparent %>% filter(grepl("8", Dataset) == FALSE) %>% mutate(Fixed = "1") -> CSS1_dilutes
+
+rbind(CSS8_dilutes, CSS1_dilutes) %>% mutate(Parent = paste(Fixed, ParentChr)) -> alldata_byparentchr
+
+alldata_byparentchr %>% ggplot(aes(x = logodds, y = Fixed, color = ParentChr)) + geom_violin() + scale_color_manual(values = c("#5A86AD","firebrick"))
+
+```
+
+```{r, fig.height = 6, fig.width=15}
+
+#between reps
+alldata_byparentchr %>% ggplot(aes(y = logodds, x = Pool, color = paste(Pool, Dataset))) + 
+  geom_violin() +   
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_grid(Parent ~ CHROM) + 
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Distribution of log odds Alleles per Replicate")
+
+#By parent
+alldata_byparentchr %>% ggplot(aes(y = logodds, x = Parent, color = Fixed)) + 
+  geom_violin() +   
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_grid(Pool ~ CHROM) + 
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Distribution of log odds Alleles per Parent")
+
+```
+
+```{r, fig.height=20, fig.width=5}
+#By parent
+alldata_byparentchr %>% ggplot(aes(x = logodds, y = paste(Fixed, CHROM, Pool), color = Parent)) + 
+  geom_violin() +   
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme(legend.position = "none") + 
+  ggtitle("Distribution of log odds Alleles per Parent")
+
+```
+
+
+Permute all of these
+
+## Fluc CSS  VIII PERMUTATIONS
+
+```{r}
+# Pick out the specific groups of the dataset
+HVYTYDRX2_smoothed %>%  separate(Dataset, into = c("Parent", "Rep_Bulk_Dose"), sep = "_") %>% 
+  #CHANGE THE REPS ETC
+  separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep = "(?<=[a-z,A-Z,0-9])") %>%
+  #cont
+  mutate(Parent = gsub("0", "O", Parent)) -> HVYTYDRX2_FlucCuSO4_81
+
+HVYTYDRX2_FlucCuSO4_81 %>%
+  #Filter for Chr 8 and Bulk D or H
+  filter(stringr::str_detect(Parent, '8')) %>% 
+  filter(Bulk != "C") %>%
+  mutate_if(is.character, as.factor) -> HVYTYDRX2_Fluc_CSS8_glm_prep
+
+HVYTYDRX2_FlucCuSO4_81 %>%
+  #Filter for Chr 8 and Bulk D or H
+  filter(stringr::str_detect(Parent, '1')) %>% 
+  filter(Bulk != "C") %>%
+  mutate_if(is.character, as.factor) -> HVYTYDRX2_Fluc_CSS1_glm_prep
+
+HVYTYDRX2_FlucCuSO4_81 %>%
+  #Filter for Chr 8 and Bulk D or H
+  filter(stringr::str_detect(Parent, '8')) %>% 
+  filter(Bulk != "F") %>%
+  mutate_if(is.character, as.factor) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+```
+
+```{r, eval = FALSE}
+
+#TEST
+HVYTYDRX2_Fluc_CSS8_glm_prep %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(HVYTYDRX2_Fluc_CSS8_glm_prep) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+
+#these are now all of the ones that can be used to permute
+newnewtest %>% filter(Bulk != "F", CHROM != "I", CHROM != "III", CHROM != "VIII") %>% select(CHROM, Oak, Wine) %>% 
+  mutate(rownum = sample(1:nrow(.))) %>% arrange(rownum) %>% na.omit() -> NullToSample
+
+#Trying this again
+
+HVYTYDRX2_Fluc_CSS8_glm_prep[1:nrow(NullToSample),] %>% ungroup() %>% select(CHROM, POS, Bulk, Parent, Rep) %>% cbind(NullToSample[,c("Oak", "Wine")]) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>%
+  #Original Script
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+    summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult
+
+glmresult %>% ggplot(aes(x = abs(Summary), color = Factor)) + geom_density() + geom_vline(xintercept = quantile(abs(permtest$Summary), 0.95), linetype = "dashed") +
+  ggtitle("Permutations for HVYTYDRX2_Fluc_CSS8_glm_prep")
+
+saveRDS(glmresult, file = "HVYTYDRX2_Fluc_CSS8_glm_CUTOFFS.rds")
+```
+
+Do this as a function?
+
+```{r}
+
+cybrPermute_Rep <- function(dataset){
+  
+  start.time <- Sys.time()
+  
+  dataset %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(dataset) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+
+  #these are now all of the ones that can be used to permute
+  newnewtest %>% filter(Bulk != "F", CHROM != "I", CHROM != "III", CHROM != "VIII") %>% select(CHROM, Oak, Wine) %>% 
+    mutate(rownum = sample(1:nrow(.))) %>% arrange(rownum) %>% na.omit() -> NullToSample
+  
+  #Trying this again
+  
+  dataset[1:nrow(NullToSample),] %>% ungroup() %>% select(CHROM, POS, Bulk, Parent, Rep) %>% cbind(NullToSample[,c("Oak", "Wine")]) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>%
+    #Original Script
+    group_by(CHROM, POS) %>%
+    mutate_if(is.character, as.factor) %>%
+      summarize(Summary = glm_cb2_short(Allele = Allele,
+                               Bulk = Bulk,
+                               Parent = Parent,
+                               Rep = Rep,
+                               W = SmoothCount,
+                               formula = "Allele ~ Bulk * Parent + Rep",
+                               outputlength = 5),
+              Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult
+
+  end.time = Sys.time()
+  print(end.time - start.time)
+  
+  return(glmresult)
+  
+}
+
+#this took 2.25 min
+HVYTYDRX2_Fluc_CSS8_perm <- cybrPermute_Rep(dataset = HVYTYDRX2_Fluc_CSS8_glm_prep)
+```
+
+## Parent and Chrom 
+
+Do this permutation BUT keep *parent* and *chromosome* consistent
+
+```{r, eval = FALSE}
+#TEST
+HVYTYDRX2_Fluc_CSS8_glm_prep %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(HVYTYDRX2_Fluc_CSS8_glm_prep) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+
+#these are now all of the ones that can be used to permute
+newnewtest %>% filter(Bulk != "F") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(CHROM, Parent) %>%
+  summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
+            POS2 = sample(POS)) %>%
+  group_by(CHROM, Parent, POS2) %>%
+  summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+            POS = POS2, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "A") -> shuffled_DiluteA
+
+newnewtest %>% filter(Bulk != "F") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(CHROM, Parent) %>%
+  summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
+            POS2 = sample(POS)) %>%
+  group_by(CHROM, Parent, POS2) %>%
+  summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+            POS = POS2, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "B") -> shuffled_DiluteB
+
+rbind(shuffled_DiluteA, shuffled_DiluteB) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm
+
+#Trying this again
+
+shuffletoglm %>% na.omit() %>%
+  #Original Script
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+    summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult
+
+glmresult %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = CHROM, y = quant, color = Factor)) + geom_point()
+
+glmresult %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = CHROM, y = quant)) + geom_boxplot() + geom_jitter(aes(x = CHROM, y = quant, color = Factor))
+
+glmresult %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> fluc_8_cutoffs
+
+saveRDS(fluc_8_cutoffs, file = "fluc_8_cutoffs_CHROM_Parent.rds")
+saveRDS(glmresult, file = "fluc_8_perm_CHROM_Parent.rds")
+
+```
+
+## Parent Only
+Do this permutation BUT keep *parent* ONLY consistent
+
+```{r, eval = FALSE}
+#these are now all of the ones that can be used to permute
+newnewtest %>% filter(Bulk != "F",
+                      CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+  select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+            Loc = sample(Loc)) %>%
+  group_by(Parent, Loc) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+            Loc = Loc, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "A") -> shuffled_DiluteA2
+
+newnewtest %>% filter(Bulk != "F",
+                      CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+  select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+            Loc = sample(Loc)) %>%
+  group_by(Parent, Loc) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+            Loc = Loc, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "B") -> shuffled_DiluteB2
+
+rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+
+#Trying this again
+
+shuffletoglm2 %>% na.omit() %>%
+  #Original Script
+  group_by(Loc) %>%
+  mutate_if(is.character, as.factor) %>%
+    summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult2
+
+glmresult2 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = "", y = quant, color = Factor)) + geom_point()
+
+glmresult2 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = "", y = quant)) + geom_boxplot() + geom_jitter(aes(x = "", y = quant, color = Factor))
+
+glmresult2 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> fluc_8_cutoffs_2
+
+saveRDS(fluc_8_cutoffs_2, file = "fluc_8_cutoffs_Parent.rds")
+saveRDS(glmresult2, file = "fluc_8_perm_Parent.rds")
+
+################################################################################
+#Checking how these distributions differ really
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% ggplot(aes(x = abs(Interaction))) + geom_density()
+
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) -> glmr2_pivot
+glmr2_pivot %>%
+  ggplot(aes(x = Bulk, y = Parent, color = abs(Interaction), alpha = abs(Parent) + abs(Bulk))) + geom_point(alpha = 0.2) +
+  scale_color_gradient(low = "gray", high = "red")
+
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% ggplot(aes(x = abs(Bulk), y = abs(Interaction))) + geom_point(alpha = 0.2)
+
+#What is the change in distribution if bulk is high?
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% filter(abs(Bulk) > 1.717164) %>% ungroup() %>% summarize(quant = quantile(abs(Intercept), 0.95)) -> newcutoffa
+
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% filter(abs(Bulk) > 1.717164) %>% 
+  ggplot(aes(x = abs(Intercept))) + 
+  geom_density(fill = "red", alpha = 0.5) + 
+  geom_density(data = glmr2_pivot, aes(x = abs(Intercept)), fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = newcutoffa$quant, color = "red") +
+  geom_vline(xintercept = 1.761415) + ggtitle("abs(Intercept) from Significant (red) vs All (black) Bulk Effects")
+
+#What is the change in distribution if bulk AND parent are high?
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% filter(abs(Bulk) > 1.717164, abs(Parent) > 1.633736) %>% ungroup() %>% summarize(quant = quantile(abs(Intercept), 0.95)) -> newcutoff_b
+
+glmresult2 %>% pivot_wider(names_from = Factor, values_from = Summary) %>% filter(abs(Bulk) > 1.717164, abs(Parent) > 1.633736) %>% 
+  ggplot(aes(x = abs(Intercept))) + 
+  geom_density(fill = "blue", alpha = 0.5) + 
+  geom_density(data = glmr2_pivot, aes(x = abs(Intercept)), fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = newcutoff_b$quant, color = "blue") +
+  geom_vline(xintercept = 1.761415) + ggtitle("abs(Intercept) from Significant (red) vs All (black) Bulk and Parent Effects")
 ```
 
 # Analysis Standard
@@ -353,30 +909,127 @@ HVYTYDRX2_Fluc_CSS8_glm_prep %>% select(-Dose) %>% na.omit() %>%
 saveRDS(HVYTYDRX2_Fluc_CSS8_glm_all, file = "StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds")
 ```
 
+Testing the cutoffs
+
+```{r, fig.width = 16, fig.height = 4}
+HVYTYDRX2_Fluc_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds")
+fluc_8_cutoffs_2 <- readRDS("fluc_8_cutoffs_Parent.rds")
+
+
+HVYTYDRX2_Fluc_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(data = fluc_8_cutoffs, aes(yintercept = quant, color = Factor)) +
+  geom_hline(yintercept = mean(fluc_8_cutoffs_2$quant))+
+  facet_grid(Factor~CHROM, space = "free", scales = "free") 
+
+HVYTYDRX2_Fluc_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(data = fluc_8_cutoffs, aes(yintercept = quant, color = Factor), linetype = "dashed") +
+    geom_hline(yintercept = mean(fluc_8_cutoffs_2$quant))+
+  facet_grid(~CHROM, space = "free", scales = "free")
+```
+
 ### CuSO4 CSS VIII - DONE
+
+Permutations for this one
 
 ```{r, eval = FALSE}
 
-# Pick out the specific groups of the dataset
-HVYTYDRX2_smoothed %>%  separate(Dataset, into = c("Parent", "Rep_Bulk_Dose"), sep = "_") %>% 
-  #CHANGE THE REPS ETC
-  separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep = "(?<=[a-z,A-Z,0-9])") %>%
-  #cont
-  mutate(Parent = gsub("0", "O", Parent)) -> HVYTYDRX2_FlucCuSO4_81
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% 
+  distinct() %>% ungroup() %>%
+  group_by(CHROM, POS, Allele, 
+           Bulk, 
+           Rep, #might not have these
+           Parent) %>% 
+  summarize(culprits = length((SmoothCount))) %>% 
+  merge(HVYTYDRX2_Fluc_CSS8_glm_prep) %>% 
+  filter(culprits == 1) %>% 
+  ungroup() %>%
+  distinct() %>% #THIS IS IMPORTANT
+  pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
 
-#################################################################################
-HVYTYDRX2_FlucCuSO4_81 %>%
-  #Filter for Chr 8 and Bulk D or H
-  filter(stringr::str_detect(Parent, '8')) %>% 
-  filter(Bulk != "F") %>%
-  mutate_if(is.character, as.factor) %>% mutate(REMOVE = FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+#these are now all of the ones that can be used to permute
+newnewtest %>% filter(Bulk != "F",
+                      CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+  select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+            Loc = sample(Loc)) %>%
+  group_by(Parent, Loc) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+            Loc = Loc, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "A") -> shuffled_DiluteA2
 
-table(HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Dose, HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Parent)
+newnewtest %>% filter(Bulk != "F",
+                      CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+  select(CHROM, POS, Parent, Oak, Wine) %>% 
+  group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine, 
+            Loc = sample(Loc)) %>%
+  group_by(Parent, Loc) %>%
+  summarize(Parent = Parent, Oak = Oak, Wine = Wine,
+            Loc = Loc, 
+            Rep = sample(c("a", "b"))) %>%
+  mutate(Bulk = "B") -> shuffled_DiluteB2
 
-#HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 5) == FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
-table(testfilter$Dose, testfilter$Parent)
+rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
 
-HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter(Parent == "O8", Bulk == "D")
+#Trying this again
+
+shuffletoglm2 %>% na.omit() %>%
+  #Original Script
+  group_by(Loc) %>%
+  mutate_if(is.character, as.factor) %>%
+    summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> glmresult2_c8
+
+glmresult2_c8 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = "", y = quant, color = Factor)) + geom_point()
+
+glmresult2_c8 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = "", y = quant)) + geom_boxplot() + geom_jitter(aes(x = "", y = quant, color = Factor))
+
+glmresult2_c8 %>% ungroup() %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs_2
+
+saveRDS(cuso4_8_cutoffs_2, file = "cu_8_cutoffs_Parent.rds")
+saveRDS(glmresult2_c8, file = "cu_8_perm_Parent.rds")
+```
+
+```{r}
+chrparentperm_c8 <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_CuSO4_CSS8_glm_prep)
+
+#dataset <- HVYTYDRX2_CuSO4_CSS8_glm_prep
+saveRDS(glmresult, file = "cu_8_perm_CHROM_Parent.rds")
+
+```
+
+```{r, eval = FALSE}
+
+# # Pick out the specific groups of the dataset
+# HVYTYDRX2_smoothed %>%  separate(Dataset, into = c("Parent", "Rep_Bulk_Dose"), sep = "_") %>% 
+#   #CHANGE THE REPS ETC
+#   separate(Rep_Bulk_Dose, into = c("Rep", "Bulk", "Dose"), sep = "(?<=[a-z,A-Z,0-9])") %>%
+#   #cont
+#   mutate(Parent = gsub("0", "O", Parent)) -> HVYTYDRX2_FlucCuSO4_81
+# 
+# #################################################################################
+# HVYTYDRX2_FlucCuSO4_81 %>%
+#   #Filter for Chr 8 and Bulk D or H
+#   filter(stringr::str_detect(Parent, '8')) %>% 
+#   filter(Bulk != "F") %>%
+#   mutate_if(is.character, as.factor) %>% mutate(REMOVE = FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+# 
+# table(HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Dose, HVYTYDRX2_CuSO4_CSS8_glm_prep_r$Parent)
+# 
+# #HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 5) == FALSE) -> HVYTYDRX2_CuSO4_CSS8_glm_prep
+# table(testfilter$Dose, testfilter$Parent)
+# 
+# HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter(Parent == "O8", Bulk == "D")
 
 #################################################################################
 #Test once
@@ -412,6 +1065,25 @@ HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
             Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_CuSO4_CSS8_glm_all
 
 saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_all, file = "StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+```
+
+```{r, fig.width = 16, fig.height = 4}
+HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+cu8_cutoffs_2 <- readRDS("cu_8_perm_Parent.rds")
+cu8_cutoffs <- readRDS("cu_8_perm_CHROM_Parent.rds")
+
+cu8_cutoffs_2 %>% ungroup() %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs_2
+cu8_cutoffs %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs
+
+HVYTYDRX2_CuSO4_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(data = cuso4_8_cutoffs, aes(yintercept = quant, color = Factor)) +
+  geom_hline(yintercept = mean(cuso4_8_cutoffs_2$quant))+
+  facet_grid(Factor~CHROM, space = "free", scales = "free") 
+
+HVYTYDRX2_CuSO4_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(data = cuso4_8_cutoffs, aes(yintercept = quant, color = Factor), linetype = "dashed") +
+    geom_hline(yintercept = mean(cuso4_8_cutoffs_2$quant))+
+  facet_grid(~CHROM, space = "free", scales = "free")
 ```
 
 ### H2O2 CSS  VIII - DONE (Z score)
@@ -457,6 +1129,9 @@ HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>% dim()
 #   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
 
 saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")
+
+HJ5HKDRX3_CSS8_perm <- cybrPermute_Rep(dataset = HJ5HKDRX3_CSS8_glm_prep)
+
 ```
 
 
@@ -473,10 +1148,10 @@ HNGLVDRXY_smoothed %>% #head() %>%
   mutate_if(is.character, as.factor) -> HNGLVDRXY_CSS1_glm_prep
 
 #Test once
-# testdata <- HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
-# table(testdata$Bulk, testdata$Parent)
-# formula = "Allele ~ Bulk * Parent"
-# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+testdata <- HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+coffee <- glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
 
 # Run full dataset
 HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
@@ -813,6 +1488,7 @@ HKTMWDRX2_Zeo_CSS1_glm_prep_noreps %>% na.omit() %>%
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HKTMWDRX2_Zeo_CSS1_glm_all_noreps
 
 saveRDS(HKTMWDRX2_Zeo_CSS1_glm_all_noreps, file = "StandardGLM/HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds")
+
 #PLOT TO CHECK
 # HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>% rbind(ChromScale3) %>% filter(CHROM != "I") %>% 
 #   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() +
@@ -977,3 +1653,23 @@ Flu_CSSI_chr8_med %>%
 
 Flu_CSSI_chr8_peaks %>% mutate(Diff = abs(POS - 120091)) %>% mutate(Gene = "ERG11") %>% rbind(PeakSpan) -> PeakSpan
 ```
+
+```{r, eval = FALSE, include = FALSE}
+#Random thing
+
+sel <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SelectionVsDNA.csv")
+
+sel %>% ggplot(aes(x = Selection, y = ng.uL)) +
+  geom_point(aes(color = Rep), size = 2, alpha = 0.5) + 
+  geom_smooth(method = "lm") + 
+  ggtitle("Cell Number vs DNA Extracted")
+
+sel %>% ggplot(aes(x = Selection, y = ng.uL, color = Rep)) + 
+  geom_point(size = 2, alpha = 0.5) + 
+  geom_smooth(method = "lm") + 
+  ggtitle("Cell Number vs DNA Extracted by Replicate")
+
+summary(lm(sel$ng.uL ~ sel$Selection))
+
+```
+

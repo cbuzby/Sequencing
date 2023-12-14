@@ -1,0 +1,377 @@
+---
+title: "Sequencing Analysis READ.ME"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+## NOTES
+
+- maybe tidy the inside for loop of function
+- look at the mitochondria :)
+- look up how the mitochondria actually works in yeast
+- talk to Tuc
+- 
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel) #no longer necessary
+require(RColorBrewer)
+require(scales)
+require(circlize) #not for these scripts
+require(stringr)
+
+require(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+Logistic regression for bulk segregant analysis (BSA) experiments can be done with the following scripts. Package for in-house functions can be found at https://github.com/cbuzby/cybrBSA/tree/main   
+
+## GLM Function for Dplyr use
+
+We analyze this data using a logistic regression, which can be phrased as:
+
+$$ log odds Allele \sim Bulk_i + Parent_j + Bulk \times Parent + Replicate_{ijk} $$
+
+In R's syntax, this can also be written as:
+
+$$ Allele \sim Bulk*Parent + Replicate $$
+
+At *each position*, we have the counts of reads for each flask, which will be of either Oak or Wine parent, Selected or non-selected group, and of a certain replicate. For the glm to work, EACH parameter must have at least two "levels" to compare. Finally, the counts are represented as the "weights" of the glm, and the Allele is the identity which the alleles align to.
+
+The R code for running `glm()` is:
+
+`glm_fit <- glm(formula = "Allele ~ Bulk*Parent + Rep", data = mydata, weights = Reads, family = binomial)`
+
+------------------------------------------------------------------------
+
+Within the `glm()` function, the following parameters should be used:
+
+-   `formula = Allele ~ Bulk*Parent + Rep` \| Allele will be a column containing O or W, Bulk is containing selection, Parent the fixed chromosome parent, and Rep the replicate within that experiment.\
+-   `family = binomial` \| This will indicate to do a logistic regression\
+-   `weights = Reads` \| The weights should be the overall counts, which correspond to each Allele identity\
+-   `data = mydata` \| The dataset will have columns for Allele, Reads, and then each parameter in the formula section, ie Bulk, Parent, and Rep
+
+------------------------------------------------------------------------
+
+### CB Function to parallelize
+
+For `glm_cb2_short()`, the parameters are set within the function but take in arguments from the run:
+
+-   `family = binomial` \| Hard-coded
+-   `weights = W` \| This will set the weights to the W variable in the function, which is the reads or counts column\
+-   `data = as.data.frame(data)` \| Within the summarize() function, this will be loaded in as a list called data, where each column is its own argument in the function, and `as.data.frame()` will combine this into one df to be read by the `glm()` function
+
+```{r}
+glm_cb2_short <- function(..., W, formula, outputlength = 4, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only. This is IN PROGRESS to maybe return others in the future.
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  #Ensure that there is information for each parameter so that it doesn't break
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+```
+
+# Loading In Data
+
+Parental alleles can be found in the Wine_VCF.txt and Oak_VCF.txt files. These were aligned to the same reference genome (S288C R64), and contain the positions in the same format as our data. The function `cybrConvertParentalAlleles` combines these and identifies which parent each SNP comes from so that we can call identities in experimental data.
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+#Convert VCFs
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+head(parentSNPids)
+
+#Identify which contain only one parent call per position, ie where Oak OR Wine are different from reference
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
+head(pSNPs)
+
+#Convert chromosomes to factors to stay in roman numeral order rather than character order
+pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+
+head(pSNPs)
+```
+
+I have combined all of the runs into one list to keep track of where the data is stored and which H# it is:
+
+```{r}
+#LOAD IN TABLE
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+
+MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
+
+RawFiles
+```
+
+Raw data from GATK's VariantsToTable function must be processed by the cybrInputGATKTable() function:
+
+```{r}
+var <- 1 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
+RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
+
+for(i in var){
+  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+
+}
+
+rawdata %>% distinct() %>%
+  mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> rawdata
+
+#Call SNPs based on parent data
+rawdata %>% 
+  merge(parentSNPids) %>% 
+  mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+#Smooth data by median
+rawdata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> rawdata_smoothed 
+
+#Filter ends of the data as per Ehrenreich paper
+rawdata_smoothed %>%
+  filter(POS > 30000) %>% 
+  merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < End) -> rawdata_smoothed_e
+
+head(rawdata_smoothed_e)
+ 
+```
+
+# Run GLM
+
+## Initial Tests
+
+Format data so that each bulk is the correct name and can be separated by the parameter. This helps when analyzing multiple datasets as well.
+
+```{r}
+#First choose which bulks from the rawdata should be used
+rawdata_smoothed_e %>% filter(Pool == "HNGLVDRXY") -> HNGLVDRXY_smoothed
+
+# Pick out the specific groups of the dataset
+HNGLVDRXY_smoothed %>% #head() %>%
+    mutate(Dataset = gsub("CuSO4_CSSI_", "", Dataset)) %>%
+    mutate(Dataset = gsub("Unselected", "Unselected_", Dataset)) %>%
+    mutate(Dataset = gsub("Selected", "Selected_", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Parent"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> HNGLVDRXY_CSS1_glm_prep
+
+head(HNGLVDRXY_CSS1_glm_prep)
+```
+
+Check a single position first to know what the outputs are going to be for the dplyr version of the formula
+
+```{r}
+#Test once
+testdata <- HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+#Is your test even?
+table(testdata$Bulk, testdata$Parent)
+
+#Define what will be used in the function
+formula = "Allele ~ Bulk * Parent"
+testglm <- glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+#print to view
+testglm
+
+#actual outputs
+summary(testglm)$coefficients
+
+```
+
+## Running entire dataset using dplyr's summarize() or reframe()
+
+To speed up the process of the glm() on every position, of which there are \~30k, we use summarize() or reframe() to run a specific function on each group (CHROM x POS) in parallel. The input for this is the COLUMN of each variable within the formula, a formula which is standardized, and the ouput length which will be used to ensure that the process does not fail halfway through because one position is weird. The function returns NAs for those groups which do not have (1) the correct output length or (2) enough levels to run the glm. Points of failure can then be identified based on which positions contain NAs in the final product.
+
+By having NAs, this also means that plotting lines in ggplot's `geom_line()` will show where there is data missing, rather than connecting them all to look like the data is continuous.
+
+```{r, eval = FALSE}
+# Run full dataset
+HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                             outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HNGLVDRXY_CuSO4_CSS1_glm_all
+
+#save file when done
+#saveRDS(HNGLVDRXY_CuSO4_CSS1_glm_all, file = "myfile.rds")
+
+```
+
+```{r, echo = FALSE}
+HNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HNGLVDRXY_CuSO4_CSS1_glm_all.rds") #cu1
+
+HNGLVDRXY_CuSO4_CSS1_glm_all$CHROM <- factor(HNGLVDRXY_CuSO4_CSS1_glm_all$CHROM,
+                                             levels = as.character(as.roman(1:16)))
+  
+head(HNGLVDRXY_CuSO4_CSS1_glm_all, 8)
+```
+
+# Plotting
+
+To visualize data, facet by CHROM and use POS as x axis markers. If you would like to add in specific loci as vertical lines (further down), add `geom_vline()` with that POS as the xintercept. Positions for specific genes can be found in SGD.
+
+```{r, fig.width = 16, fig.height = 5}
+HNGLVDRXY_CuSO4_CSS1_glm_all %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = Summary)) +
+  geom_point() +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Bulk Effects")
+```
+
+```{r, fig.width = 16, fig.height = 5}
+HNGLVDRXY_CuSO4_CSS1_glm_all %>% 
+  ggplot(aes(x = POS, y = Summary, color = Factor)) +
+  geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Bulk Effects")
+```
+
+## Comparison of other datasets
+
+All data sets thus far have been run by the same means, and can be loaded in as .rds files to combine (using rbind) with the same column names. While it is possible to convert the `Factor` column into Bulk, Parent, and Interaction, some of these will have replicates while others will not, and so keeping them in the long format helps with comparing downstream.
+
+```{r}
+#SEARCH/REPLACE: "saveRDS(" /""
+#SEARCH/REPLACE: ", file = " /"<- readRDS("
+
+#ALL SAVED PREVIOUSLY:
+HKTMWDRX2_Zeo_CSS1_glm_all_noreps <- readRDS("StandardGLM/HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds") #zeo
+HKTMWDRX2_Cyc_CSS1_glm_all_noreps <- readRDS("StandardGLM/HKTMWDRX2_Cyc_CSS1_glm_all_noreps.rds") #cyc
+
+HJ5HKDRX3_CSS1_glm_all_noreps <- readRDS("StandardGLM/Z_HJ5HKDRX3_CSS1_glm_all_noreps.rds") #H2O21
+HJ5HKDRX3_CSS8_glm_all_noreps <- readRDS("StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds") #H2o28
+
+HGVMVDRX2_CSS1_glm_all <- readRDS("StandardGLM/HGVMVDRX2_CSS1_glm_all.rds") #Fluc1
+HVYTYDRX2_Fluc_CSS8_glm_all<- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds") #fluc8
+
+HNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HNGLVDRXY_CuSO4_CSS1_glm_all.rds") #cu1
+xHNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/xHNGLVDRXY_CuSO4_CSS1_glm_all.rds") #cu1
+HKTFTDRX2_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds") #now fixed
+
+HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+
+```
+
+```{r}
+
+rbind(data.frame(HKTMWDRX2_Zeo_CSS1_glm_all_noreps, BSA = "Zeo_1"),
+      data.frame(HKTMWDRX2_Cyc_CSS1_glm_all_noreps, BSA = "Cyc_1"),
+      data.frame(HJ5HKDRX3_CSS1_glm_all_noreps, BSA = "H2O2_1"),
+      data.frame(HJ5HKDRX3_CSS8_glm_all_noreps, BSA = "H2O2_8"),
+      data.frame(HGVMVDRX2_CSS1_glm_all, BSA = "Fluc_1"),
+      data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, BSA = "Fluc_8"),
+      data.frame(HNGLVDRXY_CuSO4_CSS1_glm_all, BSA = "CuSO4_1a"),
+      data.frame(xHNGLVDRXY_CuSO4_CSS1_glm_all, BSA = "CuSO4_1ax"),
+      data.frame(HKTFTDRX2_CuSO4_CSS1_glm_all, BSA = "CuSO4_1b"),
+      data.frame(HVYTYDRX2_CuSO4_CSS8_glm_all, BSA = "CuSO4_8")) -> AllRuns_GLM
+
+AllRuns_GLM$CHROM <- factor(AllRuns_GLM$CHROM,
+                            levels = as.character(as.roman(1:16)))
+  
+```
+
+We can look at the intercepts of each run to find out the scale of each experiment.
+
+```{r, fig.width = 16, fig.height = 4}
+AllRuns_GLM %>% filter(Factor == "Intercept") %>% 
+  ggplot(aes(x = POS, y = (Summary), color = BSA)) + geom_line() +
+  geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("BSA Intercepts")
+```
+
+We can also compare between CuSO4 CSSI replicates, or CuSO4 experiments of both CSSI and CSS VIII, or even all at once with other experiments. In faceting by both Trait (vertical) and Chromosome (horizontal), we can compare which loci are peaks in each experiment and identify differential QTL.
+
+```{r, fig.width = 16, fig.height = 5}
+AllRuns_GLM %>% filter(Factor == "Bulk") %>% 
+  separate(BSA, into = c("Trait", "FixedChr"), sep = "_") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(FixedChr, Trait))) + geom_line() +
+  #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
+  facet_grid(Trait~CHROM, space = "free", scales = "free") + ggtitle("BSA Bulk Z Scores")
+```
