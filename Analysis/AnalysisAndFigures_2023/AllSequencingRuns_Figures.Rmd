@@ -1,0 +1,174 @@
+---
+title: "AllSequencingRuns Figures"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+
+
+## Load in Data
+
+### GLM Outputs
+```{r}
+#files <- as.data.frame(x = dir("StandardGLM"))
+#files %>% filter(grepl("glm_all.rds",`dir("StandardGLM")`)) %>% transmute(files = `dir("StandardGLM")`) -> all_files
+
+#Copper
+HNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HNGLVDRXY_CuSO4_CSS1_glm_all.rds")		 #Cu		
+HKTFTDRX2_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds")	#Cu			
+xHNGLVDRXY_CuSO4_CSS1_glm_all <- readRDS("StandardGLM/xHNGLVDRXY_CuSO4_CSS1_glm_all.rds")	#Cu
+HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds") #Cu
+
+#Fluc
+HGVMVDRX2_CSS1_glm_all <- readRDS("StandardGLM/HGVMVDRX2_CSS1_glm_all.rds")		#fluc 1
+HVYTYDRX2_Fluc_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds")	#fluc8		
+
+#H2O2
+HJ5HKDRX3_CSS1_glm_all <- readRDS("StandardGLM/HJ5HKDRX3_CSS1_glm_all.rds")				#H2O2
+HJ5HKDRX3_CSS8_glm_all <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")				#H2O2
+
+#Zeocin
+#HKTMs
+
+```
+
+### GLM Cutoffs
+
+```{r}
+
+HNGLVDRXY_CSS1_chrparentQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_chrparentQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
+HNGLVDRXY_CSS1_parQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_parQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
+
+#xHNGLVDRXY_CuSO4_CSS1_cutoff <- readRDS("something.rds")
+
+```
+
+
+## Plot CuSO4 Data
+
+Individual Dataset HNGLVDRXY
+
+```{r, fig.height=5, fig.width=15}
+
+xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Chromosome-Specific Cutoffs")
+
+xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Factor-Specific Cutoffs")
+```
+
+
+```{r, fig.height=5, fig.width=15}
+
+
+rbind(data.frame(HKTFTDRX2_CuSO4_CSS1_glm_all, ds = "HKTFTDRX2", CSS = "I"),
+      data.frame(HVYTYDRX2_CuSO4_CSS8_glm_all, ds = "HVYTYDRX2", CSS = "VIII"),
+      #data.frame(HNGLVDRXY_CSS8_glm_all, ds = "HNGLVDRXY", CSS = "I"),
+      data.frame(xHNGLVDRXY_CuSO4_CSS1_glm_all, ds = "HNGLVDRXYx", CSS = "I")) -> CuSO4_Data
+
+CuSO4_Data %>% filter(Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Bulk Effects")
+
+CuSO4_Data %>% filter(Factor == "Parent") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Parent Effects")
+
+CuSO4_Data %>% filter(Factor == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Interaction Effects")
+
+```
+
+## Plot Fluconazole Data
+
+```{r, fig.height=5, fig.width=15}
+
+rbind(data.frame(HGVMVDRX2_CSS1_glm_all, Pool = "HGVMVDRX2", CSS = "I"), 
+      data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, Pool = "HVYTYDRX2", CSS = "VIII")) %>%
+  filter(Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Bulk Effects")
+  
+ 
+rbind(data.frame(HGVMVDRX2_CSS1_glm_all, Pool = "HGVMVDRX2", CSS = "I"), 
+      data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, Pool = "HVYTYDRX2", CSS = "VIII")) %>%
+  filter(Factor == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Interaction Effects")
+  
+
+```
+
+## Plot H2O2 Data
+
+```{r}
+rbind(data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "HJ5HKDRX3", CSS = "I"), 
+      data.frame(HJ5HKDRX3_CSS8_glm_all, Pool = "HJ5HKDRX3", CSS = "VIII")) %>%
+  filter(Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(CSS~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Bulk Effects")
+  
+```
+
+## Plot Zeocin Data
+
+```{r}
+
+```
+

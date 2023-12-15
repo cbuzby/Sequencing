@@ -171,6 +171,7 @@ cybrPermute_Rep <- function(dataset){
   return(glmresult)
   
 }
+
 # No replicates, fix CHROM, Parent
 # No replicates, fix Parent
 
@@ -347,8 +348,8 @@ alldata <- readRDS("allseqruns_nov23.rds")
 
 #unique(alldata$Pool)
 ```
-For any new datasets:
 
+For any new datasets:
 ```{r, eval = FALSE}
 #LOAD IN ORIGINAL
 alldata <- readRDS("allseqruns_nov23.rds")
@@ -426,6 +427,7 @@ saveRDS(alldata_smoothed, file = "Nov23_alldata_smoothed.rds")
 
 ```
 
+## Start Here for loading in data for subsequent analysis
 Use _e dataset to ensure that the ends of the chromosomes are not there
 
 ```{r, fig.width = 15, fig.height = 4}
@@ -475,9 +477,21 @@ alldata_smoothed_e %>% filter(Pool == "xHNGLVDRXY") -> xHNGLVDRXY_smoothed
 
 ```
 
+Save all (then open the GLM script)
+
+```{r}
+saveRDS(HNGLVDRXY_smoothed, file = "StandardGLM/HNGLVDRXY_smoothed.rds")
+saveRDS(HKTFTDRX2_smoothed, file = "StandardGLM/HKTFTDRX2_smoothed.rds")
+saveRDS(HVYTYDRX2_smoothed, file = "StandardGLM/HVYTYDRX2_smoothed.rds")
+saveRDS(HGVMVDRX2_smoothed, file = "StandardGLM/HGVMVDRX2_smoothed.rds")
+saveRDS(HJ5HKDRX3_smoothed, file = "StandardGLM/HJ5HKDRX3_smoothed.rds")
+saveRDS(HKTMWDRX2_smoothed, file = "StandardGLM/HKTMWDRX2_smoothed.rds")
+saveRDS(xHNGLVDRXY_smoothed, file = "StandardGLM/xHNGLVDRXY_smoothed.rds")
+```
+
 # Permutations Standard
 
-## Check distribution of log alleles between parents, bulks, and replicates
+## Distribution of log alleles between parents, bulks, and replicates
 
 ```{r, fig.width= 8, fig.height=10, eval = FALSE}
 
@@ -534,6 +548,7 @@ alldata_byparentchr %>% ggplot(aes(x = logodds, y = Fixed, color = ParentChr)) +
 ```
 
 ```{r, fig.height = 6, fig.width=15}
+
 
 #between reps
 alldata_byparentchr %>% ggplot(aes(y = logodds, x = Pool, color = paste(Pool, Dataset))) + 
@@ -1001,10 +1016,24 @@ saveRDS(glmresult2_c8, file = "cu_8_perm_Parent.rds")
 ```
 
 ```{r}
+#Parent AND chromosome, ~9 min
 chrparentperm_c8 <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_CuSO4_CSS8_glm_prep)
+chrparentperm_c8 %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE))
 
-#dataset <- HVYTYDRX2_CuSO4_CSS8_glm_prep
-saveRDS(glmresult, file = "cu_8_perm_CHROM_Parent.rds")
+#Just Parent, ~8 min
+chrparentperm_c8_ponly <- cybrPermute_byParent_Rep(HVYTYDRX2_CuSO4_CSS8_glm_prep)
+chrparentperm_c8_ponly %>% group_by(Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE))
+
+chrparentperm_c8_ponly %>% group_by(Factor) %>% summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+                                                          quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+                                                          quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> result
+
+#save these
+saveRDS(chrparentperm_c8, file = "cu_8_perm_CHROM_Parent.rds")
+saveRDS(chrparentperm_c8_ponly, file = "cu_8_perm_Parent.rds")
+
+#old script
+#saveRDS(glmresult, file = "cu_8_perm_CHROM_Parent.rds")
 
 ```
 
@@ -1072,8 +1101,21 @@ HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_al
 cu8_cutoffs_2 <- readRDS("cu_8_perm_Parent.rds")
 cu8_cutoffs <- readRDS("cu_8_perm_CHROM_Parent.rds")
 
-cu8_cutoffs_2 %>% ungroup() %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs_2
-cu8_cutoffs %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs
+#compare chromosome x parent cutoffs
+chrparentperm_c8 %>% ungroup() %>% group_by(CHROM, Factor) %>% 
+  summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% mutate(ds = "function_chrom") -> function_chrom
+cu8_cutoffs %>% ungroup() %>% group_by(CHROM, Factor) %>% 
+  summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% mutate(ds = "nonfunction_chrom") -> nonfunction_chrom
+
+#compare parent only cutoffs
+chrparentperm_c8_ponly %>% ungroup() %>% group_by(Factor) %>% 
+  summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% mutate(ds = "function_parent") -> function_parent
+cu8_cutoffs_2 %>% ungroup() %>%  group_by(Factor) %>% 
+  summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) %>% mutate(ds = "nonfunction_parent") -> nonfunction_parent
+
+
+# cu8_cutoffs_2 %>% ungroup() %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs_2
+# cu8_cutoffs %>% ungroup() %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE)) -> cuso4_8_cutoffs
 
 HVYTYDRX2_CuSO4_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   geom_hline(data = cuso4_8_cutoffs, aes(yintercept = quant, color = Factor)) +
@@ -1085,6 +1127,13 @@ HVYTYDRX2_CuSO4_CSS8_glm_all %>% ggplot(aes(x = POS, y = abs(Summary), color = F
     geom_hline(yintercept = mean(cuso4_8_cutoffs_2$quant))+
   facet_grid(~CHROM, space = "free", scales = "free")
 ```
+
+```{r, fig.width = 10, fig.height = 4}
+rbind(function_chrom, nonfunction_chrom) %>% ggplot(aes(y = quant, x = CHROM, color = ds)) + geom_boxplot() 
+
+rbind(function_parent, nonfunction_parent) %>% ggplot(aes(y = ds, x = quant, color = Factor)) + geom_jitter()
+```
+
 
 ### H2O2 CSS  VIII - DONE (Z score)
 
@@ -1670,6 +1719,48 @@ sel %>% ggplot(aes(x = Selection, y = ng.uL, color = Rep)) +
   ggtitle("Cell Number vs DNA Extracted by Replicate")
 
 summary(lm(sel$ng.uL ~ sel$Selection))
+
+```
+
+# Cutoffs
+
+```{r}
+read.table("StandardGLM/ParentOnly_HVYTYDRX2_Fluc_CSS8_glm_prep.rds.txt", header = FALSE, sep = "\t") -> test
+
+test %>% filter(grepl("Factor", V1) == FALSE,
+                grepl("quant", V1) == FALSE) -> testcleaned
+
+testcleaned %>% filter(grepl("Interaction", V1)) %>%
+  filter(!grepl("Bulk|Parent|Intercept|array", V1))
+
+#%>% separate(V1, into = c("num", "factor", "q95", "rest"), sep = " ", extra = "merge")
+
+read.table("StandardGLM/ParentOnly_HVYTYDRX2_Fluc_CSS8.txt", header = FALSE, sep = "\t") -> test
+
+test %>% filter(grepl("quant", V1) == FALSE,
+                grepl("arr", V1) == FALSE) %>% 
+  separate(V1, into = c("FirstNumber", "Rest"), sep = " ", extra = "merge") %>%
+  na.omit() %>%
+  mutate(Rest = gsub("\\b(Bulk|Parent|Rep|Interaction|Intercept)\\b", "_\\1_", Rest)) %>%
+  separate(Rest, into = c("blank", "Factor", "Rest"), sep = "_", extra = "merge") %>%
+  na.omit() %>%
+  filter(grepl("[A-Z]", Rest) == FALSE) %>%
+  na.omit() %>%
+  filter(grepl("[A-Z, 0-9]", blank) == FALSE) 
+
+
+library(dplyr)
+
+# Modify specific words in the specified column
+data <- data %>%
+  mutate(your_column = gsub("\\b(Bulk|Parent|Rep|Interaction|Intercept)\\b", "_\\1_", your_column))
+
+
+#(V1, into = c("num", "factor", "q95", "q99", "q995", "array"), sep = " ")
+
+
+# View the first few rows of the modified data
+head(data)
 
 ```
 
