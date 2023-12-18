@@ -92,7 +92,16 @@ HJ5HKDRX3_CSS8_glm_all <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")				#
 HNGLVDRXY_CSS1_chrparentQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_chrparentQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
 HNGLVDRXY_CSS1_parQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_parQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
 
+HKTFTDRX2_CSS1_chrparentQs <- readRDS("StandardGLM/HKTFTDRX2_CSS1_chrparentQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
+HKTFTDRX2_CSS1_parQs <- readRDS("StandardGLM/HKTFTDRX2_CSS1_parQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
+
 #xHNGLVDRXY_CuSO4_CSS1_cutoff <- readRDS("something.rds")
+
+HVYTYDRX2_F_CSS8_chrparentQs <- readRDS("StandardGLM/HVYTYDRX2_F_CSS8_chrparentQs.rds")
+HVYTYDRX2_F_CSS8_parQs <- readRDS("StandardGLM/HVYTYDRX2_F_CSS8_parQs.rds")
+
+HJ5HKDRX3_H_CSS8_chrparentQs <- readRDS("StandardGLM/HJ5HKDRX3_H_CSS8_chrparentQs.rds")
+HJ5HKDRX3_H_CSS8_parQs <- readRDS("StandardGLM/HJ5HKDRX3_H_CSS8_parQs.rds")
 
 ```
 
@@ -118,6 +127,25 @@ xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Factor-Specific Cutoffs")
 ```
 
+Individual Set HKTFTDRX2_CSS1_parQs
+
+```{r, fig.height=5, fig.width=15}
+HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Chromosome-Specific Cutoffs")
+
+HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Factor-Specific Cutoffs")
+```
+
+
 
 ```{r, fig.height=5, fig.width=15}
 
@@ -141,6 +169,34 @@ CuSO4_Data %>% filter(Factor == "Interaction") %>%
 ## Plot Fluconazole Data
 
 ```{r, fig.height=5, fig.width=15}
+################################################################################
+HVYTYDRX2_Fluc_CSS8_glm_all %>% #CHANGE DATASET
+  merge(HVYTYDRX2_F_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+  geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Fluc CSS VIII Chromosome-Specific Cutoffs") #CHANGE TITLE
+
+################################################################################
+HVYTYDRX2_Fluc_CSS8_glm_all %>%  #CHANGE DATASET
+  merge(HVYTYDRX2_F_CSS8_parQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Fluc CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
+```
+
+```{r, fig.height=5, fig.width=15}
 
 rbind(data.frame(HGVMVDRX2_CSS1_glm_all, Pool = "HGVMVDRX2", CSS = "I"), 
       data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, Pool = "HVYTYDRX2", CSS = "VIII")) %>%
@@ -158,7 +214,38 @@ rbind(data.frame(HGVMVDRX2_CSS1_glm_all, Pool = "HGVMVDRX2", CSS = "I"),
 
 ## Plot H2O2 Data
 
-```{r}
+CSS 8
+
+```{r, fig.height=5, fig.width=15}
+
+################################################################################
+HJ5HKDRX3_CSS8_glm_all %>% #CHANGE DATASET
+  merge(HJ5HKDRX3_H_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+  geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("H2O2 CSS VIII Chromosome-Specific Cutoffs") #CHANGE TITLE
+
+################################################################################
+HJ5HKDRX3_CSS8_glm_all %>%  #CHANGE DATASET
+  merge(HJ5HKDRX3_H_CSS8_parQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("H2O2 CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
+```
+
+```{r, fig.height=5, fig.width=15}
 rbind(data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "HJ5HKDRX3", CSS = "I"), 
       data.frame(HJ5HKDRX3_CSS8_glm_all, Pool = "HJ5HKDRX3", CSS = "VIII")) %>%
   filter(Factor == "Bulk") %>% 

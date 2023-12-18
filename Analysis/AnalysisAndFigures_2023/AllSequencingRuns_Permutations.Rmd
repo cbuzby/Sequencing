@@ -536,11 +536,18 @@ head(data)
 # Load in glm_prep data for each
 
 ```{r}
+#Fluc CSS8
 HVYTYDRX2_Fluc_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_prep.rds")
-HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% mutate(Bulk = gsub("Unselected", "D", Bulk))
 
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(Bulk = gsub("Unselected", "D", Bulk))
+
+#CuSO4 CSS8
 HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
 
+#H2O2 CSS8
+HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_prep.rds")
 
 
 ```
@@ -837,8 +844,53 @@ HKTFTDRX2_CSS1_glm_prep_parentonly %>% group_by(Factor) %>%
              quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTFTDRX2_CSS1_parQs
 
 saveRDS(HKTFTDRX2_CSS1_chrparentQs, file = "StandardGLM/HKTFTDRX2_CSS1_chrparentQs.rds")
-saveRDS(HKTFTDRX2_CSS1_parQs, file = "StandardGLM/HKTFTDRX2_parQs.rds")
+saveRDS(HKTFTDRX2_CSS1_parQs, file = "StandardGLM/HKTFTDRX2_CSS1_parQs.rds")
 
 ```
 
+### HVYTYDRX2_Fluc_CSS8_glm_prep 
+```{r}
 
+unique(HVYTYDRX2_Fluc_CSS8_glm_prep$Allele)
+HVYTYDRX2_F_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_Fluc_CSS8_glm_prep)
+HVYTYDRX2_F_CSS8_glm_prep_parentonly <- cybrPermute_byParent_Rep(HVYTYDRX2_Fluc_CSS8_glm_prep)
+
+HVYTYDRX2_F_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_F_CSS8_chrparentQs
+
+
+HVYTYDRX2_F_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_F_CSS8_parQs
+
+saveRDS(HVYTYDRX2_F_CSS8_chrparentQs, file = "StandardGLM/HVYTYDRX2_F_CSS8_chrparentQs.rds")
+saveRDS(HVYTYDRX2_F_CSS8_parQs, file = "StandardGLM/HVYTYDRX2_F_CSS8_parQs.rds")
+
+```
+### HJ5HKDRX3_CSS8_glm_prep (H2O2 CSS8)
+
+```{r}
+#check that it's D
+unique(HJ5HKDRX3_CSS8_glm_prep$Bulk)
+
+HJ5HKDRX3_H_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent_Rep(HJ5HKDRX3_CSS8_glm_prep)
+HJ5HKDRX3_H_CSS8_glm_prep_parentonly <- cybrPermute_byParent_Rep(HJ5HKDRX3_CSS8_glm_prep)
+
+HJ5HKDRX3_H_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HJ5HKDRX3_H_CSS8_chrparentQs
+
+
+HJ5HKDRX3_H_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HJ5HKDRX3_H_CSS8_parQs
+
+saveRDS(HJ5HKDRX3_H_CSS8_chrparentQs, file = "StandardGLM/HJ5HKDRX3_H_CSS8_chrparentQs.rds")
+saveRDS(HJ5HKDRX3_H_CSS8_parQs, file = "StandardGLM/HJ5HKDRX3_H_CSS8_parQs.rds")
+
+```
