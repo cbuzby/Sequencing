@@ -174,7 +174,7 @@ HKTMWDRX2_Zeo_norep_CSS8_parQs<- readRDS("StandardGLM/HKTMWDRX2_Zeo_norep_CSS8_p
 
 Individual Dataset HNGLVDRXY
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
@@ -193,7 +193,7 @@ xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor 
 
 Individual Set HKTFTDRX2_CSS1_parQs
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
@@ -211,7 +211,7 @@ HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor !
 
 
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 rbind(data.frame(HKTFTDRX2_CuSO4_CSS1_glm_all, ds = "HKTFTDRX2", CSS = "I"),
       data.frame(HVYTYDRX2_CuSO4_CSS8_glm_all, ds = "HVYTYDRX2", CSS = "VIII"),
       #data.frame(HNGLVDRXY_CSS8_glm_all, ds = "HNGLVDRXY", CSS = "I"),
@@ -236,7 +236,7 @@ Because the replicates were not balanced in this experiment, and did not corresp
 
 The permutations are currently broken so all of this will just not have cutoffs
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 HGVMVDRX2norep_CSS1_glm_all %>% #CHANGE DATASET
   merge(HGVMVDRX2_F_CSS1_chrparentQs) %>% #CHANGE CUTOFF FILE
@@ -270,7 +270,7 @@ HGVMVDRX2norep_CSS1_glm_all %>%  #CHANGE DATASET
 
 Because the replicates in this experiment are unbalanced, I duplicated the bulks which did not have a replicate to match the other two. This *should* result in a replicate effect of 0 for those samples, since they are fixed effects, and then allow the remaining replicates to capture the effects of difference by day. This is not verified yet, and I will be comparing this to the data without having any replicates (using the original CSSI script).
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 ################################################################################
 HGVMVDRX2_CSS1_glm_alld %>% #CHANGE DATASET
@@ -303,7 +303,7 @@ HGVMVDRX2_CSS1_glm_alld %>%  #CHANGE DATASET
 
 We can use the two replicate effects here, which result from the random assignment of a, b, or c, to see how consistent our cutoffs will be. Each cutoff should be run >100 times on the HPC to get a true mean for the FDR, but to get each of these loaded quickly, that step has not been completed as of 12/19/23.
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 HGVMVDRX2_CSS1_glm_alld %>% #CHANGE DATASET
   merge(HGVMVDRX2_F_CSS1d_chrparentQs) %>% #CHANGE CUTOFF FILE
   
@@ -332,7 +332,7 @@ HGVMVDRX2_CSS1_glm_alld %>%  #CHANGE DATASET
 
 ### How similar are the duplicated vs non-rep'd results?
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, dataset = "Dup"),
       data.frame(HGVMVDRX2norep_CSS1_glm_all, dataset = "NoRep")) %>%
   filter(grepl("Rep", Factor) == FALSE) %>%
@@ -343,7 +343,7 @@ rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, dataset = "Dup"),
 ```
 
 ### CSS8
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 ################################################################################
 HVYTYDRX2_Fluc_CSS8_glm_all %>% #CHANGE DATASET
   merge(HVYTYDRX2_F_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
@@ -371,7 +371,7 @@ HVYTYDRX2_Fluc_CSS8_glm_all %>%  #CHANGE DATASET
   ggtitle("Fluc CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
 ```
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, Pool = "HGVMVDRX2", CSS = "I"), 
       data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, Pool = "HVYTYDRX2", CSS = "VIII")) %>%
@@ -392,7 +392,7 @@ rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, Pool = "HGVMVDRX2", CSS = "I"),
 ### Standard Analysis with Replicates
 CSS 8
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 ################################################################################
 HJ5HKDRX3_CSS8_glm_all %>% #CHANGE DATASET
@@ -421,16 +421,18 @@ HJ5HKDRX3_CSS8_glm_all %>%  #CHANGE DATASET
   ggtitle("H2O2 CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
 ```
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 rbind(data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "HJ5HKDRX3", CSS = "I"), 
       data.frame(HJ5HKDRX3_CSS8_glm_all, Pool = "HJ5HKDRX3", CSS = "VIII")) %>%
   filter(Factor == "Bulk") %>% 
   ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + facet_grid(CSS~CHROM, scales = "free", space = "free") + ggtitle("Fluconazole Bulk Effects")
   
 ```
+
+
 ### Averaged values without replicates
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 ################################################################################
 HJ5HKDRX3_CSS8_glm_all_noreps %>% #CHANGE DATASET
@@ -463,7 +465,7 @@ HJ5HKDRX3_CSS8_glm_all_noreps %>%  #CHANGE DATASET
 
 ### Averaged values without replicates
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 ################################################################################
 HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>% #CHANGE DATASET
@@ -496,7 +498,7 @@ HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>%  #CHANGE DATASET
 
 ### Averaged values without replicates
 
-```{r, fig.height = 2, fig.width = 6}
+```{r, fig.height = 3, fig.width = 9}
 
 ################################################################################
 HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>% #CHANGE DATASET
