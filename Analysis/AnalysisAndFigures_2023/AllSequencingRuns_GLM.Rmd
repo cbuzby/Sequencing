@@ -319,11 +319,11 @@ HVYTYDRX2_FlucCuSO4_81 %>%
   filter(Bulk != "C") %>%
   mutate_if(is.character, as.factor) -> HVYTYDRX2_Fluc_CSS8_glm_prep
 
-HVYTYDRX2_FlucCuSO4_81 %>%
-  #Filter for Chr 8 and Bulk D or H
-  filter(stringr::str_detect(Parent, '1')) %>% 
-  filter(Bulk != "C") %>%
-  mutate_if(is.character, as.factor) -> HVYTYDRX2_Fluc_CSS1_glm_prep
+# HVYTYDRX2_FlucCuSO4_81 %>%
+#   #Filter for Chr 8 and Bulk D or H
+#   filter(stringr::str_detect(Parent, '1')) %>% 
+#   filter(Bulk != "F") %>%
+#   mutate_if(is.character, as.factor) -> HVYTYDRX2_CuSO4_CSS1_glm_prep
 
 HVYTYDRX2_FlucCuSO4_81 %>%
   #Filter for Chr 8 and Bulk D or H
@@ -333,10 +333,12 @@ HVYTYDRX2_FlucCuSO4_81 %>%
 
 #SAVE FOR PERMUTATIONS
 saveRDS(HVYTYDRX2_Fluc_CSS8_glm_prep, file = "StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_prep.rds")
-saveRDS(HVYTYDRX2_Fluc_CSS1_glm_prep, file = "StandardGLM/HVYTYDRX2_Fluc_CSS1_glm_prep.rds")
+#saveRDS(HVYTYDRX2_Fluc_CSS1_glm_prep, file = "StandardGLM/HVYTYDRX2_Fluc_CSS1_glm_prep.rds") #THIS SHOULD NOT EXIST
 saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_prep, file = "StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")
 
 ```
+
+
 
 ### Fluc CSS VIII - DONE (Z score)
 
@@ -406,6 +408,8 @@ HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
 
 saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_all, file = "StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
 ```
+
+
 
 ### H2O2 CSS  VIII - DONE (Z score)
 
@@ -617,16 +621,17 @@ HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "OakI", Bulk == "Dilute", Rep %in% 
 HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "WineI", Bulk == "Fluc", Rep %in% c("C")) %>% 
   mutate(Rep = "B") %>% rbind(HGVMVDRX2_CSS1_glm_prepd) -> HGVMVDRX2_CSS1_glm_prepd
 
+saveRDS(HGVMVDRX2_CSS1_glm_prepd, file = "HGVMVDRX2_CSS1_glm_prepd.rds")
 
 #Test once
-testdata <- HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+testdata <- HGVMVDRX2_CSS1_glm_prepd %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
 table(testdata$Rep, testdata$Bulk, testdata$Parent)
 sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq)
 formula = "Allele ~ Bulk * Parent + Rep"
 glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
 
 # Run full dataset
-HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% 
+HGVMVDRX2_CSS1_glm_prepd %>% na.omit() %>% 
   #filter(CHROM == "X", POS == 640021) %>%
   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
   filter(CHROM %in% c("M", "I") == FALSE) %>%
@@ -639,28 +644,32 @@ HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>%
                              W = SmoothCount,
                              formula = "Allele ~ Bulk * Parent + Rep",
                             numgroups = 18, outputlength = 6),
-            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HGVMVDRX2_CSS1_glm_all
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HGVMVDRX2_CSS1_glm_alld
 
-HGVMVDRX2_CSS1_glm_all %>% na.omit() %>% dim()
+HGVMVDRX2_CSS1_glm_alld %>% na.omit() %>% dim()
 
 # #Merge with GQ if you want
 # alldata %>% filter(Pool == "HGVMVDRX2", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
 # HGVMVDRX2_CSS1_glm_all %>% na.omit() %>%
 #   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HGVMVDRX2_CSS1_merge_all
 
-saveRDS(HGVMVDRX2_CSS1_glm_all, file = "StandardGLM/HGVMVDRX2_CSS1_glm_all.rds")
+saveRDS(HGVMVDRX2_CSS1_glm_alld, file = "StandardGLM/HGVMVDRX2_CSS1_glm_alld.rds")
 ```
 
 # Averaging across replicates to fill in missing data (HJ5HKDRX3 and HKTMWDRX2)
 
 ### H2O2 
 ```{r, eval = FALSE, fig.width = 15, fig.height = 4}
+
+HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_prep.rds")
+
 HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS8_glm_prep_noreps
+
+saveRDS(HJ5HKDRX3_CSS8_glm_prep_noreps, file = "HJ5HKDRX3_CSS8_glm_prep_noreps.rds")
 
 #Test once
 testdata <- HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30782) %>% arrange(Bulk, Parent)
 table(testdata$Bulk, testdata$Parent)
-sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
 formula = "Allele ~ Bulk * Parent"
 glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
 
@@ -676,23 +685,20 @@ HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>%
                              Parent = Parent,
                              W = AvgCount,
                              formula = "Allele ~ Bulk * Parent",
-                            numgroups = 8, outputlength = 4),
+                            outputlength = 4),
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all_noreps
 
-HJ5HKDRX3_CSS8_glm_all_noreps %>% na.omit() %>% dim()
 
 # #Merge with GQ if you want
 # alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
 # HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
 #   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
 
-#saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
+saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all_noreps.rds")
 
-HJ5HKDRX3_CSS8_glm_all_noreps saveRDS("StandardGLM/Z_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
+#ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
 
-ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> ChromScale3
-
-HJ5HKDRX3_CSS8_glm_all_noreps %>%  rbind(ChromScale3) %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+#HJ5HKDRX3_CSS8_glm_all_noreps %>%  rbind(ChromScale3) %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 ```
 
 ```{r, eval = FALSE, fig.width = 15, fig.height = 4}
@@ -734,6 +740,7 @@ ChromosomeScale %>% select(CHROM, POS) %>% mutate(Summary = NA, Factor = NA) -> 
 HJ5HKDRX3_CSS1_glm_all_noreps %>%  rbind(ChromScale3) %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 ```
 
+
 ### Zeocin and Cycloheximide CSSI
 
 Do the same no-rep thing for Zeocin and Cycloheximide to see if that helps
@@ -767,6 +774,8 @@ HKTMWDRX2_smoothed %>%
 
 ```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HKTMWDRX2_Cyc_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HKTMWDRX2_Cyc_CSS1_glm_prep_noreps
+
+saveRDS(HKTMWDRX2_Cyc_CSS1_glm_prep_noreps, file = "HKTMWDRX2_Cyc_CSS1_glm_prep_noreps.rds")
 
 HKTMWDRX2_Cyc_CSS1_glm_prep_noreps %>% filter(Parent == "W", CHROM == "I")
 
@@ -803,6 +812,8 @@ saveRDS(HKTMWDRX2_Cyc_CSS1_glm_all_noreps, file = "StandardGLM/HKTMWDRX2_Cyc_CSS
 
 ```{r, eval = FALSE, fig.width = 15, fig.height = 4}
 HKTMWDRX2_Zeo_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HKTMWDRX2_Zeo_CSS1_glm_prep_noreps
+
+saveRDS(HKTMWDRX2_Zeo_CSS1_glm_prep_noreps, file = "HKTMWDRX2_Zeo_CSS1_glm_prep_noreps.rds")
 
 #Test once
 # testdata <- HKTMWDRX2_Zeo_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 34991) %>% arrange(Bulk, Parent)

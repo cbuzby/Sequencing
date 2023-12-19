@@ -375,3 +375,14 @@ AllRuns_GLM %>% filter(Factor == "Bulk") %>%
   #geom_vline(data = myloci, aes(xintercept = POS, alpha = cat), linewidth = 1, linetype = "dashed") +
   facet_grid(Trait~CHROM, space = "free", scales = "free") + ggtitle("BSA Bulk Z Scores")
 ```
+
+# Organization
+
+I've divided the scripts into four files that process all runs at a different step. The files are:
+
+AllSequencingRuns_PreProcess.rmd
+AllSequencingRuns_GLM.rmd
+AllSequencingRuns_Permutations.rmd
+AllSequencingRuns_Figures.rmd
+
+The ```PreProcess step``` divides all into the smoothed versions and saves the files for each pool. ```GLM``` takes each pool and divides it into the actual experiments, and then runs the glm. I save each of the glm-ready files to also process in the ```Permutations``` file, where scripts permute each of the dilute experiments and then add them back together as two different bulks to produce a null. Finally, the cutoffs produced by the permutations and the glm results can be loaded in to the ```Figures``` file to plot.
