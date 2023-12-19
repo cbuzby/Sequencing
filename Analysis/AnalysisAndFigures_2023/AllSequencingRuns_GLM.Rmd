@@ -302,6 +302,40 @@ xHNGLVDRXY_smoothed<- readRDS(file = "StandardGLM/xHNGLVDRXY_smoothed.rds")
 
 # Analysis Standard
 
+### HGVMDRX2 = Fluconazole CSS I without replicates
+ 
+```{r, eval = FALSE}
+# Pick out the specific groups of the dataset
+HGVMVDRX2_smoothed %>% separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> HGVMVDRX2_CSS1_glm_prep
+
+saveRDS(HGVMVDRX2_CSS1_glm_prep, file = "HGVMVDRX2_CSS1_glm_prep.rds")
+
+#Test once
+testdata <- HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HGVMVDRX2norep_CSS1_glm_all
+
+
+saveRDS(HGVMVDRX2norep_CSS1_glm_all, file = "StandardGLM/HGVMVDRX2norep_CSS1_glm_all.rds")
+```
 ### HVYTYDRX2 into Fluc8, CuSO48, and Fluc1
 ```{r, eval = FALSE}
 

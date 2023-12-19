@@ -4,9 +4,8 @@ author: "Cassandra Buzby"
 date: "`r Sys.Date()`"
 output:
   html_document:
-    df_print: paged
-    code_folding: hide
-  html_notebook:
+    toc: true
+    toc_float: true
     code_folding: hide
 ---
 
@@ -66,6 +65,8 @@ myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
 
 ## Load in Data
 
+### Cataloging samples
+
 Which samples are which?
 
 ```{r}
@@ -106,9 +107,12 @@ HVYTYDRX2_CuSO4_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_al
 
 #Fluc
 HGVMVDRX2_CSS1_glm_alld <- readRDS("StandardGLM/HGVMVDRX2_CSS1_glm_alld.rds")	%>% 
-  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000)))))	        #fluc1
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000)))))	        #fluc1 duplicating reps
 HVYTYDRX2_Fluc_CSS8_glm_all <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_all.rds")	%>% 
   mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #fluc8		
+HGVMVDRX2norep_CSS1_glm_all <- readRDS("StandardGLM/HGVMVDRX2norep_CSS1_glm_all.rds") %>% 
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #fluc1 without replicates
+
 
 #H2O2
 HJ5HKDRX3_CSS1_glm_all <- readRDS("StandardGLM/HJ5HKDRX3_CSS1_glm_all.rds")	%>% 
@@ -131,26 +135,37 @@ HKTMWDRX2_Zeo_CSS1_glm_all_noreps <- readRDS("StandardGLM/HKTMWDRX2_Zeo_CSS1_glm
 ### GLM Cutoffs
 
 ```{r}
-
+#CuSO4
 HNGLVDRXY_CSS1_chrparentQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_chrparentQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
 HNGLVDRXY_CSS1_parQs <- readRDS("StandardGLM/HNGLVDRXY_CSS1_parQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
 
 HKTFTDRX2_CSS1_chrparentQs <- readRDS("StandardGLM/HKTFTDRX2_CSS1_chrparentQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
 HKTFTDRX2_CSS1_parQs <- readRDS("StandardGLM/HKTFTDRX2_CSS1_parQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
 
-#xHNGLVDRXY_CuSO4_CSS1_cutoff <- readRDS("something.rds")
-
+#Fluconazole
 HVYTYDRX2_F_CSS8_chrparentQs <- readRDS("StandardGLM/HVYTYDRX2_F_CSS8_chrparentQs.rds")
 HVYTYDRX2_F_CSS8_parQs <- readRDS("StandardGLM/HVYTYDRX2_F_CSS8_parQs.rds")
 
+HGVMVDRX2_F_CSS1d_chrparentQs <- readRDS("StandardGLM/HGVMVDRX2_F_CSS1d_chrparentQs.rds") #duplicate reps
+HGVMVDRX2_F_CSS1d_parQs <- readRDS("StandardGLM/HGVMVDRX2_F_CSS1d_parQs.rds")
+
+HGVMVDRX2_F_CSS1_chrparentQs<- readRDS("StandardGLM/HGVMVDRX2_F_CSS1_chrparentQs.rds") #no replicates
+HGVMVDRX2_F_CSS1_parQs<- readRDS("StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
+
+#H2O2
 HJ5HKDRX3_H_CSS8_chrparentQs <- readRDS("StandardGLM/HJ5HKDRX3_H_CSS8_chrparentQs.rds")
 HJ5HKDRX3_H_CSS8_parQs <- readRDS("StandardGLM/HJ5HKDRX3_H_CSS8_parQs.rds")
 
-HGVMVDRX2_F_CSS1d_chrparentQs <- readRDS("StandardGLM/HGVMVDRX2_F_CSS1d_chrparentQs.rds")
-HGVMVDRX2_F_CSS1d_parQs <- readRDS("StandardGLM/HGVMVDRX2_F_CSS1d_parQs.rds")
-
 HJ5HKDRX3norep_CSS8_chrparentQs <- readRDS("StandardGLM/HJ5HKDRX3norep_CSS8_chrparentQs.rds")
 HJ5HKDRX3norep_CSS8_parQs <- readRDS("StandardGLM/HJ5HKDRX3norep_CSS8_parQs.rds")
+
+#Cycloheximide
+HKTMWDRX2_Cyc_norep_CSS8_chrparentQs<- readRDS("StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_chrparentQs.rds")
+HKTMWDRX2_Cyc_norep_CSS8_parQs<- readRDS("StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_parQs.rds")
+
+#Zeocin
+HKTMWDRX2_Zeo_norep_CSS8_chrparentQs<- readRDS("StandardGLM/HKTMWDRX2_Zeo_norep_CSS8_chrparentQs.rds")
+HKTMWDRX2_Zeo_norep_CSS8_parQs<- readRDS("StandardGLM/HKTMWDRX2_Zeo_norep_CSS8_parQs.rds")
 
 ```
 
@@ -159,7 +174,7 @@ HJ5HKDRX3norep_CSS8_parQs <- readRDS("StandardGLM/HJ5HKDRX3norep_CSS8_parQs.rds"
 
 Individual Dataset HNGLVDRXY
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 
 xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
@@ -178,7 +193,7 @@ xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor 
 
 Individual Set HKTFTDRX2_CSS1_parQs
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
@@ -196,7 +211,7 @@ HKTFTDRX2_CuSO4_CSS1_glm_all %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor !
 
 
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 rbind(data.frame(HKTFTDRX2_CuSO4_CSS1_glm_all, ds = "HKTFTDRX2", CSS = "I"),
       data.frame(HVYTYDRX2_CuSO4_CSS8_glm_all, ds = "HVYTYDRX2", CSS = "VIII"),
       #data.frame(HNGLVDRXY_CSS8_glm_all, ds = "HNGLVDRXY", CSS = "I"),
@@ -217,16 +232,45 @@ CuSO4_Data %>% filter(Factor == "Interaction") %>%
 
 ### CSS1 (no replicates)
 
-```{r}
+Because the replicates were not balanced in this experiment, and did not correspond with specific days, I ran a model without a replicate effect which should just average the replicates together at each locus. The permutations for this were then done the same way.
 
+The permutations are currently broken so all of this will just not have cutoffs
+
+```{r, fig.height = 2, fig.width = 6}
+
+HGVMVDRX2norep_CSS1_glm_all %>% #CHANGE DATASET
+  merge(HGVMVDRX2_F_CSS1_chrparentQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+  geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Fluc CSS I Chromosome-Specific Cutoffs") #CHANGE TITLE
+
+################################################################################
+HGVMVDRX2norep_CSS1_glm_all %>%  #CHANGE DATASET
+  merge(HGVMVDRX2_F_CSS1_parQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Fluc CSS I Factor-Specific Cutoffs") #CHANGE TITLE
 ```
+
 
 
 ### CSS1 (duplicated reps)
 
 Because the replicates in this experiment are unbalanced, I duplicated the bulks which did not have a replicate to match the other two. This *should* result in a replicate effect of 0 for those samples, since they are fixed effects, and then allow the remaining replicates to capture the effects of difference by day. This is not verified yet, and I will be comparing this to the data without having any replicates (using the original CSSI script).
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 
 ################################################################################
 HGVMVDRX2_CSS1_glm_alld %>% #CHANGE DATASET
@@ -254,9 +298,12 @@ HGVMVDRX2_CSS1_glm_alld %>%  #CHANGE DATASET
   
   ggtitle("Fluc CSS I Factor-Specific Cutoffs") #CHANGE TITLE
 ```
-How similar are the replicates?
 
-```{r, fig.height=5, fig.width=15}
+### How similar are the replicates?
+
+We can use the two replicate effects here, which result from the random assignment of a, b, or c, to see how consistent our cutoffs will be. Each cutoff should be run >100 times on the HPC to get a true mean for the FDR, but to get each of these loaded quickly, that step has not been completed as of 12/19/23.
+
+```{r, fig.height = 2, fig.width = 6}
 HGVMVDRX2_CSS1_glm_alld %>% #CHANGE DATASET
   merge(HGVMVDRX2_F_CSS1d_chrparentQs) %>% #CHANGE CUTOFF FILE
   
@@ -280,10 +327,23 @@ HGVMVDRX2_CSS1_glm_alld %>%  #CHANGE DATASET
   facet_grid(~CHROM, space = "free", scales = "free") + 
   
   ggtitle("Fluc CSS I Factor-Specific Cutoffs") #CHANGE TITLE
+```
+
+
+### How similar are the duplicated vs non-rep'd results?
+
+```{r, fig.height = 2, fig.width = 6}
+rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, dataset = "Dup"),
+      data.frame(HGVMVDRX2norep_CSS1_glm_all, dataset = "NoRep")) %>%
+  filter(grepl("Rep", Factor) == FALSE) %>%
+  
+  ggplot(aes(x = POS, y = abs(Summary), color = dataset)) + geom_line() + 
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + 
+  ggtitle("Fluc CSS I Comparison") #CHANGE TITLE
 ```
 
 ### CSS8
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 ################################################################################
 HVYTYDRX2_Fluc_CSS8_glm_all %>% #CHANGE DATASET
   merge(HVYTYDRX2_F_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
@@ -311,7 +371,7 @@ HVYTYDRX2_Fluc_CSS8_glm_all %>%  #CHANGE DATASET
   ggtitle("Fluc CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
 ```
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 
 rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, Pool = "HGVMVDRX2", CSS = "I"), 
       data.frame(HVYTYDRX2_Fluc_CSS8_glm_all, Pool = "HVYTYDRX2", CSS = "VIII")) %>%
@@ -329,9 +389,10 @@ rbind(data.frame(HGVMVDRX2_CSS1_glm_alld, Pool = "HGVMVDRX2", CSS = "I"),
 
 ## Plot H2O2 Data
 
+### Standard Analysis with Replicates
 CSS 8
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 
 ################################################################################
 HJ5HKDRX3_CSS8_glm_all %>% #CHANGE DATASET
@@ -360,7 +421,7 @@ HJ5HKDRX3_CSS8_glm_all %>%  #CHANGE DATASET
   ggtitle("H2O2 CSS VIII Factor-Specific Cutoffs") #CHANGE TITLE
 ```
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 rbind(data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "HJ5HKDRX3", CSS = "I"), 
       data.frame(HJ5HKDRX3_CSS8_glm_all, Pool = "HJ5HKDRX3", CSS = "VIII")) %>%
   filter(Factor == "Bulk") %>% 
@@ -369,7 +430,7 @@ rbind(data.frame(HJ5HKDRX3_CSS1_glm_all, Pool = "HJ5HKDRX3", CSS = "I"),
 ```
 ### Averaged values without replicates
 
-```{r, fig.height=5, fig.width=15}
+```{r, fig.height = 2, fig.width = 6}
 
 ################################################################################
 HJ5HKDRX3_CSS8_glm_all_noreps %>% #CHANGE DATASET
@@ -400,7 +461,66 @@ HJ5HKDRX3_CSS8_glm_all_noreps %>%  #CHANGE DATASET
 
 ## Plot Zeocin Data
 
-```{r}
+### Averaged values without replicates
 
+```{r, fig.height = 2, fig.width = 6}
+
+################################################################################
+HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>% #CHANGE DATASET
+  merge(HKTMWDRX2_Zeo_norep_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+  geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Zeocin CSS I Chromosome-Specific Cutoffs") #CHANGE TITLE
+
+################################################################################
+HKTMWDRX2_Zeo_CSS1_glm_all_noreps %>%  #CHANGE DATASET
+  merge(HKTMWDRX2_Zeo_norep_CSS8_parQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Zeocin CSS I Factor-Specific Cutoffs") #CHANGE TITLE
 ```
 
+## Plot Cycloheximide Data
+
+### Averaged values without replicates
+
+```{r, fig.height = 2, fig.width = 6}
+
+################################################################################
+HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>% #CHANGE DATASET
+  merge(HKTMWDRX2_Cyc_norep_CSS8_chrparentQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+  geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Cycloheximide CSS I Chromosome-Specific Cutoffs") #CHANGE TITLE
+
+################################################################################
+HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>%  #CHANGE DATASET
+  merge(HKTMWDRX2_Cyc_norep_CSS8_parQs) %>% #CHANGE CUTOFF FILE
+  
+  filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("Cycloheximide CSS I Factor-Specific Cutoffs") #CHANGE TITLE
+```

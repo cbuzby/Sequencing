@@ -594,11 +594,11 @@ HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_prep.rds")
 HJ5HKDRX3_CSS8_glm_prep_noreps <- readRDS("HJ5HKDRX3_CSS8_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
 
 #Zeocin CSS1
-HKTMWDRX2_Zeo_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Zeo_CSS1_glm_prep_noreps.rds")
+HKTMWDRX2_Zeo_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Zeo_CSS1_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
 
 
 #Cycloheximide CSS1
-HKTMWDRX2_Cyc_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Cyc_CSS1_glm_prep_noreps.rds")
+HKTMWDRX2_Cyc_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Cyc_CSS1_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
 
 
 ```
@@ -894,26 +894,71 @@ saveRDS(HJ5HKDRX3norep_CSS8_chrparentQs, file = "StandardGLM/HJ5HKDRX3norep_CSS8
 saveRDS(HJ5HKDRX3norep_CSS8_parQs, file = "StandardGLM/HJ5HKDRX3norep_CSS8_parQs.rds")
 ```
 
-###  (Zeocin replicates averaged)
+### HKTMWDRX2_Zeo_CSS1_glm_prep_noreps (Zeocin and Cyclohex replicates averaged)
 
 ```{r}
-HJ5HKDRX3norep_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent(HJ5HKDRX3_CSS8_glm_prep_noreps)
-HJ5HKDRX3norep_CSS8_glm_prep_parentonly <- cybrPermute_byParent(HJ5HKDRX3_CSS8_glm_prep_noreps)
+HKTMWDRX2_Zeo_norep_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent(HKTMWDRX2_Zeo_CSS1_glm_prep_noreps)
+HKTMWDRX2_Zeo_norep_CSS8_glm_prep_parentonly <- cybrPermute_byParent(HKTMWDRX2_Zeo_CSS1_glm_prep_noreps)
 
-HJ5HKDRX3norep_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+HKTMWDRX2_Zeo_norep_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
   summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
              quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
-             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HJ5HKDRX3norep_CSS8_chrparentQs
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTMWDRX2_Zeo_norep_CSS8_chrparentQs
 
 
-HJ5HKDRX3norep_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
+HKTMWDRX2_Zeo_norep_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
   summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
              quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
-             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HJ5HKDRX3norep_CSS8_parQs
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTMWDRX2_Zeo_norep_CSS8_parQs
 
-saveRDS(HJ5HKDRX3norep_CSS8_chrparentQs, file = "StandardGLM/HJ5HKDRX3norep_CSS8_chrparentQs.rds")
-saveRDS(HJ5HKDRX3norep_CSS8_parQs, file = "StandardGLM/HJ5HKDRX3norep_CSS8_parQs.rds")
+saveRDS(HKTMWDRX2_Zeo_norep_CSS8_chrparentQs, file = "StandardGLM/HKTMWDRX2_Zeo_norep_CSS8_chrparentQs.rds")
+saveRDS(HKTMWDRX2_Zeo_norep_CSS8_parQs, file = "StandardGLM/HKTMWDRX2_Zeo_norep_CSS8_parQs.rds")
 ```
+
+```{r}
+HKTMWDRX2_Cyc_norep_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent(HKTMWDRX2_Cyc_CSS1_glm_prep_noreps)
+HKTMWDRX2_Cyc_norep_CSS8_glm_prep_parentonly <- cybrPermute_byParent(HKTMWDRX2_Cyc_CSS1_glm_prep_noreps)
+
+HKTMWDRX2_Cyc_norep_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTMWDRX2_Cyc_norep_CSS8_chrparentQs
+
+
+HKTMWDRX2_Cyc_norep_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTMWDRX2_Cyc_norep_CSS8_parQs
+
+saveRDS(HKTMWDRX2_Cyc_norep_CSS8_chrparentQs, file = "StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_chrparentQs.rds")
+saveRDS(HKTMWDRX2_Cyc_norep_CSS8_parQs, file = "StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_parQs.rds")
+```
+### Fluconazole CSSI without replicates
+
+This actually didn't work because there aren't any replicates and so each one just has a lot of NAs...
+
+```{r}
+HGVMVDRX2_CSS1_glm_prep <- readRDS("HGVMVDRX2_CSS1_glm_prep.rds") %>% mutate(Bulk = gsub("Dilute", "D", Bulk))
+unique(HGVMVDRX2_CSS1_glm_prep$Bulk)
+
+HGVMVDRX2_F_CSS1_glm_prep_chrparent <- cybrPermute_byCHRParent(HGVMVDRX2_CSS1_glm_prep)
+HGVMVDRX2_F_CSS1_glm_prep_parentonly <- cybrPermute_byParent(HGVMVDRX2_CSS1_glm_prep)
+
+HGVMVDRX2_F_CSS1_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HGVMVDRX2_F_CSS1_chrparentQs
+
+
+HGVMVDRX2_F_CSS1_glm_prep_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HGVMVDRX2_F_CSS1_parQs
+
+saveRDS(HGVMVDRX2_F_CSS1_chrparentQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_chrparentQs.rds")
+saveRDS(HGVMVDRX2_F_CSS1_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
+```
+
 
 ## Replicated Samples
 
