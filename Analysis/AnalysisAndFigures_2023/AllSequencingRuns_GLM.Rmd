@@ -498,7 +498,9 @@ saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/HJ5HKDRX3_CSS8_glm_all.rds")
 
 
 ### CuSO4a, CSS I - DONE (Z score)
+
 Redoing 11/28 to add back in Chr 8
+
 ```{r, eval = FALSE}
 
 # Pick out the specific groups of the dataset
@@ -605,7 +607,8 @@ HKTFTDRX2_smoothed %>%
   separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "(?<=[a-z,A-Z,0-9])") %>% 
   mutate_if(is.character, as.factor) -> HKTFTDRX2_CSS1_glm_prep
 
-saveRDS(HKTFTDRX2_CSS1_glm_prep, file = "StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
+saveRDS(HKTFTDRX2_CSS1_glm_prep, file = "StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds") #saved 1/8/24
+
 #Test once
 testdata <- HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 152004) %>% arrange(Bulk, Parent)
 table(testdata$Bulk, testdata$Parent)
@@ -631,9 +634,9 @@ HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>%
             Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HKTFTDRX2_CuSO4_CSS1_glm_all
 
 
-saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all, file = "StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds")
+saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all, file = "StandardGLM/HKTFTDRX2_CuSO4_CSS1_glm_all.rds")  #saved 1/8/24
 
-HKTFTDRX2_CuSO4_CSS1_glm_all %>% na.omit()
+#HKTFTDRX2_CuSO4_CSS1_glm_all %>% na.omit()
 ```
 
 

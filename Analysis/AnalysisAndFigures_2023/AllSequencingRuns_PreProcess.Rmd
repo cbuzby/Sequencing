@@ -317,7 +317,6 @@ setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
 parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
 pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
-
 ```
 
 ## Table Processing
@@ -352,14 +351,15 @@ alldata <- readRDS("allseqruns_nov23.rds")
 For any new datasets:
 ```{r, eval = FALSE}
 #LOAD IN ORIGINAL
-alldata <- readRDS("allseqruns_nov23.rds")
+alldata <- readRDS("allseqruns_nov23.rds") %>% filter(Pool != "HKTFTDRX2")
+alldata <- readRDS("allseqruns_jan24.rds")
 
 #LOAD IN TABLE
 MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
 
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
-var <- 1 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
+var <- 5 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
 RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
 
 for(i in var){
@@ -390,15 +390,15 @@ rawdata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
 
 alldata <- rbind(alldata, rawdata)
 
-alldata_called <- readRDS(file = "Oct23_alldata_called.rds")
-alldata_called <- rbind(alldata_called, rawdata_called)
+alldata_called <- readRDS(file = "Oct23_alldata_called.rds") %>% filter(Pool != "HKTFTDRX2")
+alldata_called <- rbind(alldata_called, rawdata_called) 
 
-alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds")
+alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds") %>% filter(Pool != "HKTFTDRX2")
 alldata_smoothed <- rbind(alldata_smoothed, rawdata_smoothed)
 
-# saveRDS(alldata, file = "allseqruns_dec23.rds")
-# saveRDS(alldata_called, file = "alldata_called.rds")
-# saveRDS(alldata_smoothed, file = "alldata_smoothed.rds")
+saveRDS(alldata, file = "allseqruns_jan24.rds")
+saveRDS(alldata_called, file = "alldata_called.rds")
+saveRDS(alldata_smoothed, file = "alldata_smoothed.rds")
 
 ################################################################################
 # for quick use, add in as run here:
@@ -419,8 +419,8 @@ alldata %>% #head(3000) %>%
 alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
   reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> alldata_smoothed #%>% na.omit()
 
-saveRDS(alldata_called, file = "Nov23_alldata_called.rds")
-saveRDS(alldata_smoothed, file = "Nov23_alldata_smoothed.rds")
+# saveRDS(alldata_called, file = "Nov23_alldata_called.rds")
+# saveRDS(alldata_smoothed, file = "Nov23_alldata_smoothed.rds")
 
 # alldata_called <- readRDS(file = "Nov23_alldata_called.rds")
 # alldata_smoothed <- readRDS(file = "Nov23_alldata_smoothed.rds")
@@ -438,9 +438,9 @@ alldata_smoothed %>%
   group_by(CHROM) %>% 
   filter(POS < End) -> alldata_smoothed_e
 
-#saveRDS(alldata_smoothed_e, file = "Dec23_alldata_smoothed_e.rds")
+saveRDS(alldata_smoothed_e, file = "Jan24_alldata_smoothed_e.rds")
 
-alldata_smoothed_e <- readRDS(file = "Dec23_alldata_smoothed_e.rds")
+alldata_smoothed_e <- readRDS(file = "Jan24_alldata_smoothed_e.rds")
 
 ```
 
@@ -451,7 +451,7 @@ alldata_smoothed_e <- readRDS(file = "Dec23_alldata_smoothed_e.rds")
 alldata_smoothed_e %>% filter(Pool == "HNGLVDRXY") -> HNGLVDRXY_smoothed
 #HNGLVDRXY_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HNGLVDRXY_counts
 
-# HKTFTDRX2 = CuSO4b (CSS1)
+# HKTFTDRX2 = CuSO4b (CSS1) - NEW VERSION
 alldata_smoothed_e %>% filter(Pool == "HKTFTDRX2") -> HKTFTDRX2_smoothed
 #HKTFTDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTFTDRX2_counts
 
@@ -481,7 +481,7 @@ Save all (then open the GLM script)
 
 ```{r}
 saveRDS(HNGLVDRXY_smoothed, file = "StandardGLM/HNGLVDRXY_smoothed.rds")
-saveRDS(HKTFTDRX2_smoothed, file = "StandardGLM/HKTFTDRX2_smoothed.rds")
+saveRDS(HKTFTDRX2_smoothed, file = "StandardGLM/HKTFTDRX2_smoothed.rds") #NEW VERSION
 saveRDS(HVYTYDRX2_smoothed, file = "StandardGLM/HVYTYDRX2_smoothed.rds")
 saveRDS(HGVMVDRX2_smoothed, file = "StandardGLM/HGVMVDRX2_smoothed.rds")
 saveRDS(HJ5HKDRX3_smoothed, file = "StandardGLM/HJ5HKDRX3_smoothed.rds")
@@ -489,7 +489,7 @@ saveRDS(HKTMWDRX2_smoothed, file = "StandardGLM/HKTMWDRX2_smoothed.rds")
 saveRDS(xHNGLVDRXY_smoothed, file = "StandardGLM/xHNGLVDRXY_smoothed.rds")
 ```
 
-# Looking at mitochondrial geneomes for each set
+# Looking at mitochondrial genomes for each set
 
 ```{r}
 
@@ -530,5 +530,48 @@ MitoAll %>% filter(Pool == "HJ5HKDRX3") %>%
 
 MitoAll %>% filter(Pool == "HVYTYDRX2") %>% 
   ggplot(aes(y = logOdds, x = POS, color = Dataset)) + geom_jitter(alpha = 0.3)
+```
+
+# Copy Number of CUP1
+
+```{r, fig.height = 4, fig.width = 12}
+alldata <- readRDS("allseqruns_nov23.rds")
+
+alldata %>% filter(grepl("8", Dataset),
+                   CHROM == "VIII") -> Chr8Fixed
+
+alldata %>% filter(grepl("8", Dataset) == FALSE,
+                   CHROM == "VIII") -> Chr8_NotFixed
+
+rm(alldata)
+unique(Chr8Fixed$Dataset)
+
+#Chr8Fixed %>% ggplot(aes(x = POS, y = Coverage, color = Dataset)) + geom_point(alpha = 0.4) + ggtitle("Chr 8 Fixed")
+
+Chr8Fixed %>% group_by(Dataset) %>% summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% merge(Chr8Fixed) %>% mutate(Copies = log(Coverage/LibCoverage)) -> Chr8Fixed_Copy
+Chr8_NotFixed %>% group_by(Dataset) %>% summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% merge(Chr8_NotFixed) %>% mutate(Copies = log(Coverage/LibCoverage)) -> Chr8_NotFixed_Copy
+
+Chr8Fixed_Copy %>% ggplot(aes(x = POS, y = Copies, color = Dataset)) + geom_point(alpha = 0.4) + ggtitle("Chr 8 Copy Numbers")
+
+```
+
+```{r, fig.height = 4, fig.width = 15}
+Chr8_NotFixed_Copy %>% 
+  filter(POS > 200000, POS < 225000) %>%
+  ggplot(aes(x = POS, y = Copies, color = grepl("W", Dataset))) + 
+  geom_vline(xintercept = c(212535,212720, 214533,214718)) +
+  geom_point(alpha = 0.4) + 
+    ylim(-1,1)+
+  #facet_grid(rows = "Dataset") + 
+  ggtitle("Chr 8 Non Fixed Copy Numbers")
+
+Chr8Fixed_Copy %>% 
+  filter(POS > 200000, POS < 225000) %>%
+  ggplot(aes(x = POS, y = Copies, color = grepl("W", Dataset))) + 
+  geom_vline(xintercept = c(212535,212720, 214533,214718)) +
+  geom_point(alpha = 0.4) + 
+  ylim(-1,1)+
+  #facet_grid(rows = "Dataset") + 
+  ggtitle("Chr 8 Fixed Copy Numbers")
 ```
 

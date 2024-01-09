@@ -609,11 +609,25 @@ HKTMWDRX2_Cyc_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Cyc_CSS1_glm_prep_norep
 ############################ PERMUTATIONS ######################################
 
 # No replicates, fix CHROM, Parent
-cybrPermute_byCHRParent <- function(dataset){
+cybrPermute_byCHRParent <- function(dataset, R = FALSE){
    start.time <- Sys.time()
   
    print("Make sure that dilute bulk is labeled D")
    
+   if(R == TRUE){
+      dataset %>% 
+      distinct() %>% ungroup() %>%
+      group_by(CHROM, POS, Allele, 
+               Bulk, 
+               Rep, #might not have these
+               Parent) %>% 
+      summarize(culprits = length((SmoothCount))) %>% 
+      merge(dataset) %>% 
+      filter(culprits == 1) %>% 
+      ungroup() %>%
+      distinct() %>% #THIS IS IMPORTANT
+      pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+   }else{
     dataset %>% 
       distinct() %>% ungroup() %>%
       group_by(CHROM, POS, Allele, 
@@ -626,7 +640,8 @@ cybrPermute_byCHRParent <- function(dataset){
       ungroup() %>%
       distinct() %>% #THIS IS IMPORTANT
       pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
-    
+   }
+   
     #these are now all of the ones that can be used to permute
     newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(CHROM, Parent) %>%
@@ -644,7 +659,7 @@ cybrPermute_byCHRParent <- function(dataset){
     
     #Trying this again
     
-    shuffletoglm %>% na.omit() %>%
+    shuffletoglm %>% na.omit() %>% #filter(CHROM == "II") %>%
       #Original Script
       group_by(CHROM, POS) %>%
       mutate_if(is.character, as.factor) %>%
@@ -661,12 +676,27 @@ cybrPermute_byCHRParent <- function(dataset){
     return(glmresult)
 }
 
+
 # No replicates, fix Parent
-cybrPermute_byParent <- function(dataset){
+cybrPermute_byParent <- function(dataset, R = FALSE){
   start.time <- Sys.time()
     
   print("Make sure that dilute bulk is labeled D")
 
+  if(R == TRUE){
+    dataset %>% 
+    distinct() %>% ungroup() %>%
+    group_by(CHROM, POS, Allele, 
+             Bulk, 
+             Rep, #might not have these
+             Parent) %>% 
+    summarize(culprits = length((SmoothCount))) %>% 
+    merge(dataset) %>% 
+    filter(culprits == 1) %>% 
+    ungroup() %>%
+    distinct() %>% #THIS IS IMPORTANT
+    pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+  }else{
   dataset %>% 
   distinct() %>% ungroup() %>%
   group_by(CHROM, POS, Allele, 
@@ -679,6 +709,7 @@ cybrPermute_byParent <- function(dataset){
   ungroup() %>%
   distinct() %>% #THIS IS IMPORTANT
   pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+  }
   
   #these are now all of the ones that can be used to permute
     newnewtest %>% filter(Bulk == "D",
@@ -933,7 +964,7 @@ HKTMWDRX2_Cyc_norep_CSS8_glm_prep_parentonly %>% group_by(Factor) %>%
 saveRDS(HKTMWDRX2_Cyc_norep_CSS8_chrparentQs, file = "StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_chrparentQs.rds")
 saveRDS(HKTMWDRX2_Cyc_norep_CSS8_parQs, file = "StandardGLM/HKTMWDRX2_Cyc_norep_CSS8_parQs.rds")
 ```
-### Fluconazole CSSI without replicates
+### Fluconazole CSSI without replicates - FIX THIS
 
 This actually didn't work because there aren't any replicates and so each one just has a lot of NAs...
 
@@ -941,8 +972,8 @@ This actually didn't work because there aren't any replicates and so each one ju
 HGVMVDRX2_CSS1_glm_prep <- readRDS("HGVMVDRX2_CSS1_glm_prep.rds") %>% mutate(Bulk = gsub("Dilute", "D", Bulk))
 unique(HGVMVDRX2_CSS1_glm_prep$Bulk)
 
-HGVMVDRX2_F_CSS1_glm_prep_chrparent <- cybrPermute_byCHRParent(HGVMVDRX2_CSS1_glm_prep)
-HGVMVDRX2_F_CSS1_glm_prep_parentonly <- cybrPermute_byParent(HGVMVDRX2_CSS1_glm_prep)
+HGVMVDRX2_F_CSS1_glm_prep_chrparent <- cybrPermute_byCHRParent(HGVMVDRX2_CSS1_glm_prep, R = TRUE)
+HGVMVDRX2_F_CSS1_glm_prep_parentonly <- cybrPermute_byParent(HGVMVDRX2_CSS1_glm_prep, R = TRUE)
 
 HGVMVDRX2_F_CSS1_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
   summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
@@ -963,6 +994,8 @@ saveRDS(HGVMVDRX2_F_CSS1_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
 ## Replicated Samples
 
 ### HKTFTDRX2_CSS1_glm_prep (CuSO4)
+
+Redoing this 1/8/24
 
 ```{r}
 
@@ -1008,6 +1041,7 @@ saveRDS(HVYTYDRX2_F_CSS8_chrparentQs, file = "StandardGLM/HVYTYDRX2_F_CSS8_chrpa
 saveRDS(HVYTYDRX2_F_CSS8_parQs, file = "StandardGLM/HVYTYDRX2_F_CSS8_parQs.rds")
 
 ```
+
 ### HJ5HKDRX3_CSS8_glm_prep (H2O2 CSS8)
 
 ```{r}
@@ -1032,6 +1066,7 @@ saveRDS(HJ5HKDRX3_H_CSS8_chrparentQs, file = "StandardGLM/HJ5HKDRX3_H_CSS8_chrpa
 saveRDS(HJ5HKDRX3_H_CSS8_parQs, file = "StandardGLM/HJ5HKDRX3_H_CSS8_parQs.rds")
 
 ```
+
 ## Weird Replicate Samples (Fluc I)
 
 Make new functions for these
@@ -1054,9 +1089,53 @@ cybrPermute_byCHRParent_Rep6 <- function(dataset){
       filter(culprits == 1) %>% 
       ungroup() %>%
       distinct() %>% #THIS IS IMPORTANT
-      pivot_wider(names_from = Allele, values_from = SmoothCount) %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) -> newnewtest
+      pivot_wider(names_from = Allele, values_from = SmoothCount) %>% filter(Bulk == "D") %>% select(CHROM, POS, Rep, #ADDED REP 1/8/24
+                                                                                                     Parent, Oak, Wine) -> newnewtest
     
     #these are now all of the ones that can be used to permute
+    # newnewtest %>% #filter(CHROM == "II") %>%
+    #   group_by(CHROM, Parent) %>%
+    #   summarize(CHROM = CHROM, Parent = Parent, Rep = Rep,
+    #             Oak = Oak, Wine = Wine, POS = POS,
+    #             POS2 = sample(POS)) %>%
+    #   select(-POS) %>%
+    #   group_by(CHROM, Parent, POS2) %>% 
+    #   ## do the merge thing again
+    #   summarize(CHROM = CHROM, Parent = Parent, Rep = Rep, 
+    #             Oak = Oak, Wine = Wine, POS = POS2,
+    #             culprits = length((Oak))) %>% 
+    #   filter(culprits == 3) %>% 
+    #   ungroup() %>%
+    #   group_by(CHROM, Parent, POS) %>%
+    #   ##
+    #   summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+    #             POS = POS, 
+    #             #Rep = sample(c("a", "b", "c"))) %>%
+    #             Rep = Rep) %>% 
+    #   mutate(Bulk = "A") -> shuffled_DiluteA
+    # 
+    # newnewtest %>% #filter(CHROM == "II") %>%
+    #   group_by(CHROM, Parent) %>%
+    #   summarize(CHROM = CHROM, Parent = Parent, Rep = Rep,
+    #             Oak = Oak, Wine = Wine, POS = POS,
+    #             POS2 = sample(POS)) %>%
+    #   select(-POS) %>%
+    #   group_by(CHROM, Parent, POS2) %>% 
+    #   ## do the merge thing again
+    #   summarize(CHROM = CHROM, Parent = Parent, Rep = Rep, 
+    #             Oak = Oak, Wine = Wine, POS = POS2,
+    #             culprits = length((Oak))) %>% 
+    #   filter(culprits == 3) %>% 
+    #   ungroup() %>%
+    #   group_by(CHROM, Parent, POS) %>%
+    #   ##
+    #   summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine,
+    #             POS = POS, 
+    #             #Rep = sample(c("a", "b", "c"))) %>%
+    #             Rep = Rep) %>% 
+    #   mutate(Bulk = "B") -> shuffled_DiluteB
+    
+    #ORIGINAL CODE
     newnewtest %>% #filter(CHROM == "II") %>%
       group_by(CHROM, Parent) %>%
       summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
@@ -1187,15 +1266,22 @@ cybrPermute_byParent_Rep6 <- function(dataset){
     return(glmresult2)
 }
   
-dataset <- HGVMVDRX2_CSS1_glm_prepd
+# dataset <- HGVMVDRX2_CSS1_glm_prepd
+# 
+# #glmresult_1824 <- glmresult
+# glmresult_1824 %>% ggplot(aes(y = abs(Summary), x = CHROM, color = Factor)) + geom_boxplot() + ylim(0,15)
+# glmresult %>% ggplot(aes(y = abs(Summary), x = CHROM, color = Factor)) + geom_boxplot() + ylim(0,15)
 
 ```
+
 
 ```{r}
 HGVMVDRX2_CSS1_glm_prepd <- readRDS("HGVMVDRX2_CSS1_glm_prepd.rds") %>% mutate(Bulk = gsub("Dilute", "D", Bulk))
 unique(HGVMVDRX2_CSS1_glm_prepd$Bulk)
 
+#worked when code was changed
 HGVMVDRX2_F_CSS1d_glm_prep_chrparent <- cybrPermute_byCHRParent_Rep6(HGVMVDRX2_CSS1_glm_prepd)
+#wait it works just makes an error
 HGVMVDRX2_F_CSS1d_glm_prep_parentonly <- cybrPermute_byParent_Rep6(HGVMVDRX2_CSS1_glm_prepd)
 
 HGVMVDRX2_F_CSS1d_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
@@ -1212,4 +1298,3 @@ HGVMVDRX2_F_CSS1d_glm_prep_parentonly %>% group_by(Factor) %>%
 saveRDS(HGVMVDRX2_F_CSS1d_chrparentQs, file = "StandardGLM/HGVMVDRX2_F_CSS1d_chrparentQs.rds")
 saveRDS(HGVMVDRX2_F_CSS1d_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1d_parQs.rds")
 ```
-

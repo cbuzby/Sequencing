@@ -91,6 +91,7 @@ table(mqcbyparent$Pool, mqcbyparent$Wine8)
 
 
 ### GLM Outputs
+
 ```{r}
 #files <- as.data.frame(x = dir("StandardGLM"))
 #files %>% filter(grepl("glm_all.rds",`dir("StandardGLM")`)) %>% transmute(files = `dir("StandardGLM")`) -> all_files
