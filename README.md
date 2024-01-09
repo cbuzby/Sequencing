@@ -1,4 +1,6 @@
 # Sequencing
+For a visual of the analysis, visit slideshow [here](https://docs.google.com/presentation/d/1_Degj8-YuF3VONW1TArSJLj6Nyx5gMYS/edit?usp=drive_link&ouid=117035979232984356234&rtpof=true&sd=true)
+
 UPDATE: pipeline now uses Nextflow, READ.ME for which is in Nextflow_Pipeline/
 
 ## Nextflow Start from Scratch
