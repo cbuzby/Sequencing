@@ -509,9 +509,9 @@ saveRDS(cuso4_8_cutoffs_2, file = "cu_8_cutoffs_Parent.rds")
 saveRDS(glmresult2_c8, file = "cu_8_perm_Parent.rds")
 ```
 
-```{r}
+```{r, eval = FALSE}
 #Parent AND chromosome, ~9 min
-chrparentperm_c8 <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_CuSO4_CSS8_glm_prep)
+chrparentperm_c8 <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_cu_CSS8_glm_prep)
 chrparentperm_c8 %>% group_by(CHROM, Factor) %>% summarize(quant = quantile(abs(Summary), 0.95, na.rm = TRUE))
 
 #Just Parent, ~8 min
@@ -523,8 +523,8 @@ chrparentperm_c8_ponly %>% group_by(Factor) %>% summarize(quant095 = quantile(ab
                                                           quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> result
 
 #save these
-saveRDS(chrparentperm_c8, file = "cu_8_perm_CHROM_Parent.rds")
-saveRDS(chrparentperm_c8_ponly, file = "cu_8_perm_Parent.rds")
+saveRDS(chrparentperm_c8, file = "HVYTYDRX2_cu_CSS8_chrparentQs.rds")
+saveRDS(chrparentperm_c8_ponly, file = "HVYTYDRX2_cu_CSS8_parQs.rds")
 
 #old script
 #saveRDS(glmresult, file = "cu_8_perm_CHROM_Parent.rds")
@@ -586,8 +586,11 @@ HVYTYDRX2_Fluc_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_pre
 HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
   mutate(Bulk = gsub("Unselected", "D", Bulk))
 
-#CuSO4 CSS8
 HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
+
+#CuSO4 CSS8
+HVYTYDRX2_cu_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")
+
 
 #H2O2 CSS8
 HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_prep.rds")
@@ -880,6 +883,7 @@ cybrPermute_byParent_Rep <- function(dataset){
 
 ```
 
+# Running these
 
 ## Non-Replicated Samples
 
@@ -903,6 +907,7 @@ saveRDS(HNGLVDRXY_CSS1_chrparentQs, file = "StandardGLM/HNGLVDRXY_CSS1_chrparent
 saveRDS(HNGLVDRXY_CSS1_parQs, file = "StandardGLM/HNGLVDRXY_CSS1_parQs.rds")
 
 ```
+
 
 ### HJ5HKDRX3_CSS8_glm_all_noreps (H2O2 replicates averaged)
 
@@ -990,6 +995,32 @@ saveRDS(HGVMVDRX2_F_CSS1_chrparentQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_chrpa
 saveRDS(HGVMVDRX2_F_CSS1_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
 ```
 
+### NEW: CuSO4 2024, no replicates
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep <- readRDS("HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  select(-Bulk) %>% 
+  select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM) %>% na.omit() %>% filter(CHROM != "VIII", CHROM != "M")
+
+unique(HTG3TDMXY_CSS8_glm_prep$Bulk)
+
+HTG3TDMXY_CSS8_chrparent <- cybrPermute_byCHRParent(HTG3TDMXY_CSS8_glm_prep)
+HTG3TDMXY_CSS8_parentonly <- cybrPermute_byParent(HTG3TDMXY_CSS8_glm_prep)
+
+HTG3TDMXY_CSS8_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_CSS8_glm_chrparentQs
+
+
+HTG3TDMXY_CSS8_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_CSS8_glm_parQs
+
+saveRDS(HTG3TDMXY_CSS8_glm_chrparentQs, file = "StandardGLM/HTG3TDMXY_CSS8_glm_chrparentQs.rds")
+saveRDS(HTG3TDMXY_CSS8_glm_parQs, file = "StandardGLM/HTG3TDMXY_CSS8_glm_parQs.rds")
+```
 
 ## Replicated Samples
 
@@ -998,7 +1029,6 @@ saveRDS(HGVMVDRX2_F_CSS1_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
 Redoing this 1/8/24
 
 ```{r}
-
 #unique(HKTFTDRX2_CSS1_glm_prep$Allele)
 HKTFTDRX2_CSS1_glm_prep_chrparent <- cybrPermute_byCHRParent_Rep(HKTFTDRX2_CSS1_glm_prep)
 HKTFTDRX2_CSS1_glm_prep_parentonly <- cybrPermute_byParent_Rep(HKTFTDRX2_CSS1_glm_prep)
@@ -1018,6 +1048,30 @@ saveRDS(HKTFTDRX2_CSS1_chrparentQs, file = "StandardGLM/HKTFTDRX2_CSS1_chrparent
 saveRDS(HKTFTDRX2_CSS1_parQs, file = "StandardGLM/HKTFTDRX2_CSS1_parQs.rds")
 
 ```
+
+REDO THIS FOR CSS8: 1/9/24 - running
+
+```{r}
+
+HVYTYDRX2_cu_CSS8_glm_prep_chrparent <- cybrPermute_byCHRParent_Rep(HVYTYDRX2_cu_CSS8_glm_prep)
+HVYTYDRX2_cu_CSS8_glm_prep_parentonly <- cybrPermute_byParent_Rep(HVYTYDRX2_cu_CSS8_glm_prep)
+
+HVYTYDRX2_cu_CSS8_glm_prep_chrparent %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_cu_CSS8_chrparentQs
+
+
+HVYTYDRX2_cu_CSS8_glm_prep_parentonly %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_cu_CSS8_parQs
+
+saveRDS(HVYTYDRX2_cu_CSS8_chrparentQs, file = "StandardGLM/HVYTYDRX2_cu_CSS8_chrparentQs.rds")
+saveRDS(HVYTYDRX2_cu_CSS8_parQs, file = "StandardGLM/HVYTYDRX2_cu_CSS8_parQs.rds")
+
+```
+
 
 ### HVYTYDRX2_Fluc_CSS8_glm_prep 
 ```{r}
@@ -1297,4 +1351,31 @@ HGVMVDRX2_F_CSS1d_glm_prep_parentonly %>% group_by(Factor) %>%
 
 saveRDS(HGVMVDRX2_F_CSS1d_chrparentQs, file = "StandardGLM/HGVMVDRX2_F_CSS1d_chrparentQs.rds")
 saveRDS(HGVMVDRX2_F_CSS1d_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1d_parQs.rds")
+```
+
+## HTG3TDMXY CuSO4 2024 with replicates
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep <- readRDS("HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  select(-Bulk) %>% 
+  select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, Rep = Rep) %>% na.omit()  %>% filter(CHROM != "VIII", CHROM != "M")
+
+unique(HTG3TDMXY_CSS8_glm_prep$Bulk)
+
+HTG3TDMXY_CSS8_chrparentR6 <- cybrPermute_byCHRParent_Rep6(HTG3TDMXY_CSS8_glm_prep)
+HTG3TDMXY_CSS8_parentonlyR6 <- cybrPermute_byCHRParent_Rep6(HTG3TDMXY_CSS8_glm_prep)
+
+HTG3TDMXY_CSS8_chrparentR6 %>% group_by(CHROM, Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_CSS8_chrparentR6_Qs
+
+
+HTG3TDMXY_CSS8_parentonlyR6 %>% group_by(Factor) %>% 
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_CSS8_parentonlyR6_parQs
+
+saveRDS(HTG3TDMXY_CSS8_chrparentR6_Qs, file = "StandardGLM/HTG3TDMXY_CSS8_chrparentR6_Qs.rds")
+saveRDS(HTG3TDMXY_CSS8_parentonlyR6_parQs, file = "StandardGLM/HTG3TDMXY_CSS8_parentonlyR6_parQs.rds")
 ```

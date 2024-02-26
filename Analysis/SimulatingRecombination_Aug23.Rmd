@@ -818,3 +818,378 @@ replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>%
   geom_vline(xintercept = c(x,y), linetype = "dashed") +
   ggtitle(paste(reps, "Replicates, Population Size", popsize))
 ```
+
+## Let's see if we can make this resolution better by having an additional recombination?
+
+### Two Generations
+```{r, fig.width=16, fig.height=6}
+#SETUP/PARAMS ##################################################################
+popsize <- 1000
+
+loci <- 200
+x <- 20
+y <- 50
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 50.0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+
+reps <- 100 #lower for testing
+
+
+################################################################################
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  #Maybe replicate this for loop?
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #Second Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #SAVE
+    if(i == 1){
+      g1data <- newg1a
+      g2data <- newg2a
+    }else{
+      g1data <- rbind(g1data, newg1a)
+      g2data <- rbind(g2data, newg2a)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1a %*% phenotypes
+    savephenotypes_g2[i] <- newg2a %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste("AIG 2", reps, "Replicates, Population Size", popsize))
+```
+
+### 10 Generations
+```{r, fig.width=16, fig.height=6}
+#SETUP/PARAMS ##################################################################
+popsize <- 1000
+
+loci <- 200
+x <- 20
+y <- 50
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 50.0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+
+reps <- 100 #lower for testing
+
+
+################################################################################
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  #Maybe replicate this for loop?
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #Second Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #3 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #4 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #5 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #6
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(newg1abcd[1:min(samplelocus)], newg2abcd[(min(samplelocus)+1):max(samplelocus)], newg1abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(newg2abcd[1:min(samplelocus)], newg1abcd[(min(samplelocus)+1):max(samplelocus)], newg2abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #7 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #8 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #9 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #10 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    
+    #SAVE
+    if(i == 1){
+      g1data <- newg1abcd
+      g2data <- newg2abcd
+    }else{
+      g1data <- rbind(g1data, newg1abcd)
+      g2data <- rbind(g2data, newg2abcd)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1abcd %*% phenotypes
+    savephenotypes_g2[i] <- newg2abcd %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste("AIG 10", reps, "Replicates, Population Size", popsize))
+```
+
+### 20 Generations
+```{r, fig.width=16, fig.height=6}
+#SETUP/PARAMS ##################################################################
+popsize <- 1000
+
+loci <- 200
+x <- 20
+y <- 50
+
+gs1 <- matrix(rep(1,loci), ncol = 1)
+gs2 <- matrix(rep(0,loci), ncol = 1)
+
+p1 <- 50.0
+p2 <- 100.0
+
+phenotypes <- matrix(rep(0,loci), ncol = 1)
+phenotypes[x] <- p1
+phenotypes[y] <- p2
+
+reps <- 100 #lower for testing
+
+
+################################################################################
+
+#LOOP
+for(k in 1:reps){
+  #Set up saving data
+  savegenotypes_g1 <- t(data.frame(1:loci))
+  savegenotypes_g2 <- t(data.frame(1:loci))
+  
+  savephenotypes_g1 <- vector()
+  savephenotypes_g2 <- vector()
+  
+  #Maybe replicate this for loop?
+  for(i in 1:popsize){
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(gs1[1:min(samplelocus)], gs2[(min(samplelocus)+1):max(samplelocus)], gs1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(gs2[1:min(samplelocus)], gs1[(min(samplelocus)+1):max(samplelocus)], gs2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #Second Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #3 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #4 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #5 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #6
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(newg1abcd[1:min(samplelocus)], newg2abcd[(min(samplelocus)+1):max(samplelocus)], newg1abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(newg2abcd[1:min(samplelocus)], newg1abcd[(min(samplelocus)+1):max(samplelocus)], newg2abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #7 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #8 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #9 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #10 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #6
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(newg1abcd[1:min(samplelocus)], newg2abcd[(min(samplelocus)+1):max(samplelocus)], newg1abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(newg2abcd[1:min(samplelocus)], newg1abcd[(min(samplelocus)+1):max(samplelocus)], newg2abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #7 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #8 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #9 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #10 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #6
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1 <- matrix(c(newg1abcd[1:min(samplelocus)], newg2abcd[(min(samplelocus)+1):max(samplelocus)], newg1abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2 <- matrix(c(newg2abcd[1:min(samplelocus)], newg1abcd[(min(samplelocus)+1):max(samplelocus)], newg2abcd[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #7 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1a <- matrix(c(newg1[1:min(samplelocus)], newg2[(min(samplelocus)+1):max(samplelocus)], newg1[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2a <- matrix(c(newg2[1:min(samplelocus)], newg1[(min(samplelocus)+1):max(samplelocus)], newg2[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #8 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1ab <- matrix(c(newg1a[1:min(samplelocus)], newg2a[(min(samplelocus)+1):max(samplelocus)], newg1a[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2ab <- matrix(c(newg2a[1:min(samplelocus)], newg1a[(min(samplelocus)+1):max(samplelocus)], newg2a[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #9 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abc <- matrix(c(newg1ab[1:min(samplelocus)], newg2ab[(min(samplelocus)+1):max(samplelocus)], newg1ab[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abc <- matrix(c(newg2ab[1:min(samplelocus)], newg1ab[(min(samplelocus)+1):max(samplelocus)], newg2ab[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    #10 Intercross
+    samplelocus <- sample(1:(loci - 1), 2)
+    newg1abcd <- matrix(c(newg1abc[1:min(samplelocus)], newg2abc[(min(samplelocus)+1):max(samplelocus)], newg1abc[(max(samplelocus)+1):loci]),nrow = 1)
+    newg2abcd <- matrix(c(newg2abc[1:min(samplelocus)], newg1abc[(min(samplelocus)+1):max(samplelocus)], newg2abc[(max(samplelocus)+1):loci]),nrow = 1)
+    
+    
+    #SAVE
+    if(i == 1){
+      g1data <- newg1abcd
+      g2data <- newg2abcd
+    }else{
+      g1data <- rbind(g1data, newg1abcd)
+      g2data <- rbind(g2data, newg2abcd)
+  
+    }
+    
+    savephenotypes_g1[i] <- newg1abcd %*% phenotypes
+    savephenotypes_g2[i] <- newg2abcd %*% phenotypes
+  
+  }
+  
+  rows <- sample(1:(2*popsize), size = 0.2*popsize, prob = c(savephenotypes_g1, savephenotypes_g2))
+  
+  A <- colSums(rbind(g1data, g2data)[rows,])
+  B <- colSums(rbind(1-g1data, 1-g2data)[rows,])
+  
+  if(k == 1){
+    replogs <- log(A/B)
+  }else{
+    replogs <- rbind(replogs, log(A/B))
+  }
+}
+
+#Plot this to see if it worked
+replogs %>% as.data.frame() %>% mutate(Rep = row_number()) %>% 
+  pivot_longer(-Rep, names_to = c("V", "Position"), names_sep = "V", values_to = "logAlleles") %>%
+  select(-V) %>% mutate_if(is.character, as.numeric) %>%
+  ggplot(aes(x = Position, y = logAlleles, color = as.factor(Rep))) + geom_line() +
+  geom_vline(xintercept = c(x,y), linetype = "dashed") +
+  ggtitle(paste("AIG 20", reps, "Replicates, Population Size", popsize))
+```
+

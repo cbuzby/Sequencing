@@ -325,7 +325,10 @@ MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencin
 
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
-for(i in 1:length(RawFiles$VCF_Table)){
+#alldata <- readRDS("allseqruns_feb24.rds")
+
+#for(i in 1:length(RawFiles$VCF_Table)){
+for(i in 8){
   cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
 
@@ -341,25 +344,57 @@ alldata %>% distinct() %>%
   mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
   mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
 
-saveRDS(alldata, file = "allseqruns_nov23.rds")
+saveRDS(alldata, file = "allseqruns_feb24.rds")
 
-alldata <- readRDS("allseqruns_nov23.rds")
+#alldata <- readRDS("allseqruns_nov23.rds")
 
 #unique(alldata$Pool)
 ```
 
-For any new datasets:
+### Checking how coverage is affected by fragment length
+
+```{r}
+
+KeyForWhatWorked <- data.frame(ShortName = c("C1A", "C1Ar", "C1B", "C8", "F1", "HZ18", "Z1"),
+                               Worked = c(T, NA, F, T, T, F, F))
+
+MQCRuns %>% merge(KeyForWhatWorked) %>%
+  filter(Pool != "xHNGLVDRXY") %>%
+  select(Pool, Worked, ShortName, MQCDate) %>% distinct()
+
+MQCRuns %>% merge(KeyForWhatWorked) %>%
+  filter(Pool != "xHNGLVDRXY") %>%
+  select(FragmentLength,MillionReads, Pool, ShortName, Worked) %>%
+  #na.omit() %>%
+  ggplot(aes(x = FragmentLength, y = MillionReads, color = paste(Pool, ShortName), fill = paste(Pool, ShortName), shape = Worked)) + 
+  geom_point(size = 3, alpha = 0.4) + geom_smooth(method = "lm", alpha = 0.2)
+
+MQCRuns %>% group_by(Pool) %>% summarize(PoolReads = sum(MillionReads),
+                                              MillionReads = MillionReads,
+                                              FragmentLength = FragmentLength,
+                                         ShortName = ShortName) %>% 
+  summarize(PercentPool = MillionReads/PoolReads,
+            RelativePool = (MillionReads/PoolReads)/mean(PoolReads),
+                                              MillionReads = MillionReads,
+                                              FragmentLength = FragmentLength,
+                                         ShortName = ShortName) %>% na.omit() %>% ungroup() -> check
+
+check %>%
+  ggplot(aes(x = (RelativePool), y = FragmentLength, color = paste(Pool, ShortName))) + geom_point() + geom_smooth(method = "lm")
+
+```
+
+
+## For any new datasets:
+
 ```{r, eval = FALSE}
-#LOAD IN ORIGINAL
-alldata <- readRDS("allseqruns_nov23.rds") %>% filter(Pool != "HKTFTDRX2")
-alldata <- readRDS("allseqruns_jan24.rds")
 
 #LOAD IN TABLE
 MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
 
 MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 
-var <- 5 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
+var <- 8 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
 RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
 
 for(i in var){
@@ -382,30 +417,36 @@ rawdata %>% #head(3000) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
 
 rawdata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> rawdata_smoothed #%>% na.omit()
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center"))) -> rawdata_smoothed #%>% na.omit()
+
 
 ################################################################################
 # COMBINE WITH ALLDATA FILES
 ################################################################################
-
+# #LOAD IN ORIGINAL
+alldata <- readRDS("allseqruns_jan24.rds")
 alldata <- rbind(alldata, rawdata)
-
-alldata_called <- readRDS(file = "Oct23_alldata_called.rds") %>% filter(Pool != "HKTFTDRX2")
-alldata_called <- rbind(alldata_called, rawdata_called) 
-
-alldata_smoothed <- readRDS(file = "Oct23_alldata_smoothed.rds") %>% filter(Pool != "HKTFTDRX2")
-alldata_smoothed <- rbind(alldata_smoothed, rawdata_smoothed)
-
-saveRDS(alldata, file = "allseqruns_jan24.rds")
+# 
+alldata_called <- readRDS(file = "alldata_called.rds")
+alldata_called <- rbind(alldata_called, rawdata_called)
+# 
+# alldata_smoothed <- readRDS(file = "alldata_smoothed.rds")
+# alldata_smoothed <- rbind(alldata_smoothed, rawdata_smoothed)
+# 
+# saveRDS(alldata, file = "allseqruns_feb24.rds")
 saveRDS(alldata_called, file = "alldata_called.rds")
-saveRDS(alldata_smoothed, file = "alldata_smoothed.rds")
+# saveRDS(alldata_smoothed, file = "alldata_smoothed.rds")
 
 ################################################################################
 # for quick use, add in as run here:
-rawdata_smoothed -> Hsomething_smoothed
-Hsomething_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> Hsomething_counts
+#rawdata_smoothed -> Hsomething_smoothed
+#Hsomething_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> Hsomething_counts
+
+#alldata_smoothed %>% filter(Pool == "HTG3TDMXY")
 
 ```
+
+This seems out of order when you add more datasets:
 
 ```{r}
 alldata %>% #head(3000) %>%
@@ -425,6 +466,16 @@ alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
 # alldata_called <- readRDS(file = "Nov23_alldata_called.rds")
 # alldata_smoothed <- readRDS(file = "Nov23_alldata_smoothed.rds")
 
+#Making HKTFTDRX2
+
+alldata %>% filter(Pool == "HKTFTDRX2") %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> HKTFTDRX2_called
+
 ```
 
 ## Start Here for loading in data for subsequent analysis
@@ -438,9 +489,41 @@ alldata_smoothed %>%
   group_by(CHROM) %>% 
   filter(POS < End) -> alldata_smoothed_e
 
-saveRDS(alldata_smoothed_e, file = "Jan24_alldata_smoothed_e.rds")
+saveRDS(alldata_smoothed_e, file = "alldata_smoothed_e.rds")
 
-alldata_smoothed_e <- readRDS(file = "Jan24_alldata_smoothed_e.rds")
+#alldata_smoothed_e <- readRDS(file = "Jan24_alldata_smoothed_e.rds")
+
+```
+
+
+
+## For new additions:
+
+```{r}
+
+alldata_smoothed_e <- readRDS(file = "alldata_smoothed_e.rds") #%>% filter(Pool != "HTG3TDMXY")
+
+rawdata_smoothed %>%
+  filter(POS > 30000) %>% 
+  merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < End) %>%
+  rbind(alldata_smoothed_e) -> alldata_smoothed_e
+
+saveRDS(alldata_smoothed_e, file = "alldata_smoothed_e.rds")
+
+```
+**Feb 2024 update: changing all of the labels on these so that the glm runs the correct thing! **
+
+```{r}
+
+alldata_smoothed_e <- readRDS(file = "alldata_smoothed_e.rds") #%>% filter(Pool != "HTG3TDMXY")
+
+alldata_smoothed_e %>% ungroup() %>% select(Dataset) %>% summarize(unique(Dataset))
+
+alldata_smoothed_e %>% mutate(DatasetRenamed = gsub("_D", "_zD", Dataset)) -> alldata_smoothed_e_r
+#saveRDS(alldata_smoothed_e, file = "alldata_smoothed_e.rds")
 
 ```
 
@@ -471,11 +554,15 @@ alldata_smoothed_e %>% filter(Pool == "HJ5HKDRX3") -> HJ5HKDRX3_smoothed
 alldata_smoothed_e %>% filter(Pool == "HKTMWDRX2") -> HKTMWDRX2_smoothed
 #HKTMWDRX2_smoothed %>% group_by(CHROM, POS, Dataset) %>% count(Allele) -> HKTMWDRX2_counts
 
+################################################################################
 # ADD NEW ONES DOWN HERE
-# CuSO4 done again
-alldata_smoothed_e %>% filter(Pool == "xHNGLVDRXY") -> xHNGLVDRXY_smoothed
+################################################################################
+
+# CuSO4 done again with multiple doses
+alldata_smoothed_e %>% filter(Pool == "HTG3TDMXY") -> HTG3TDMXY_smoothed
 
 ```
+
 
 Save all (then open the GLM script)
 
@@ -487,13 +574,71 @@ saveRDS(HGVMVDRX2_smoothed, file = "StandardGLM/HGVMVDRX2_smoothed.rds")
 saveRDS(HJ5HKDRX3_smoothed, file = "StandardGLM/HJ5HKDRX3_smoothed.rds")
 saveRDS(HKTMWDRX2_smoothed, file = "StandardGLM/HKTMWDRX2_smoothed.rds")
 saveRDS(xHNGLVDRXY_smoothed, file = "StandardGLM/xHNGLVDRXY_smoothed.rds")
+
+saveRDS(HTG3TDMXY_smoothed, file = "StandardGLM/HTG3TDMXY_smoothed.rds")
+
 ```
+
+## Change All Windows
+
+Optional, added 2/22/24; change window size and group for ALL. This will take forever.
+
+```{r}
+alldata_called <- readRDS(file = "alldata_called.rds") #%>% rbind(HKTFTDRX2_called)
+
+#saveRDS(alldata_called, file = "alldata_called.rds")
+
+#Check that these are right for later
+# alldata_called %>% ungroup() %>% select(Pool) %>% distinct() %>% filter(Pool %in% c("HKTFTDRX2", "HNGLVDRXY", "HTG3TDMXY", "HVYTYDRX2")) %>% summarize(uniquepool = unique(Pool))
+# 
+# alldata  %>% ungroup() %>% select(Pool) %>% distinct() %>% filter(Pool %in% c("HKTFTDRX2", "HNGLVDRXY", "HTG3TDMXY", "HVYTYDRX2")) %>% summarize(uniquepool = unique(Pool))
+
+alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center"))) -> alldata_smoothed_300 #%>% na.omit()
+
+alldata_smoothed_300 %>% filter(POS > 30000) %>% 
+  merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < End) %>%
+  rbind(alldata_smoothed_300) -> alldata_smoothed_300_e
+
+saveRDS(alldata_smoothed_300_e, file = "alldata_smoothed_300_e.rds")
+
+alldata_smoothed_300_e %>% filter(Pool %in% c("HKTFTDRX2", "HNGLVDRXY", "HTG3TDMXY", "HVYTYDRX2")) -> allCuSO4_300_e
+
+saveRDS(allCuSO4_300_e, file = "allCuSO4_300_e.rds")
+
+```
+
+```{r}
+alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 400, FUN = median, align = "center"))) -> alldata_smoothed_400 #%>% na.omit()
+
+alldata_smoothed_400 %>% filter(POS > 30000) %>% 
+  merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < End) %>%
+  rbind(alldata_smoothed_400) -> alldata_smoothed_400_e
+
+saveRDS(alldata_smoothed_400_e, file = "alldata_smoothed_400_e.rds")
+
+alldata_smoothed_400_e %>% filter(Pool %in% c("HKTFTDRX2", "HNGLVDRXY", "HTG3TDMXY", "HVYTYDRX2")) -> allCuSO4_400_e
+
+saveRDS(allCuSO4_400_e, file = "allCuSO4_400_e.rds")
+
+```
+
+* Move on to AllSequencingRuns_GLM after this point *
+
+***
 
 # Looking at mitochondrial genomes for each set
 
 ```{r}
 
-alldata_called <- readRDS("Nov23_alldata_called.rds")
+alldata_called <- readRDS("alldata_called.rds")
 
 alldata_called %>% filter(CHROM == "M") -> Mito_called
 
@@ -532,7 +677,10 @@ MitoAll %>% filter(Pool == "HVYTYDRX2") %>%
   ggplot(aes(y = logOdds, x = POS, color = Dataset)) + geom_jitter(alpha = 0.3)
 ```
 
+
 # Copy Number of CUP1
+
+This actually can be used for identifying genes in peaks since it's a super easy function to write, and the labels in the ggplot might be useful...
 
 ```{r, fig.height = 4, fig.width = 12}
 alldata <- readRDS("allseqruns_nov23.rds")
@@ -548,10 +696,120 @@ unique(Chr8Fixed$Dataset)
 
 #Chr8Fixed %>% ggplot(aes(x = POS, y = Coverage, color = Dataset)) + geom_point(alpha = 0.4) + ggtitle("Chr 8 Fixed")
 
-Chr8Fixed %>% group_by(Dataset) %>% summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% merge(Chr8Fixed) %>% mutate(Copies = log(Coverage/LibCoverage)) -> Chr8Fixed_Copy
-Chr8_NotFixed %>% group_by(Dataset) %>% summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% merge(Chr8_NotFixed) %>% mutate(Copies = log(Coverage/LibCoverage)) -> Chr8_NotFixed_Copy
+Chr8Fixed %>% group_by(Dataset) %>% 
+  summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% 
+  merge(Chr8Fixed) %>% mutate(Copies = log(Coverage/LibCoverage),
+                              ds = "Chr8Fixed") -> Chr8Fixed_Copy
+
+Chr8_NotFixed %>% group_by(Dataset) %>% 
+  summarize(LibCoverage = mean(Coverage, na.rm = TRUE)) %>% 
+  merge(Chr8_NotFixed) %>% mutate(Copies = log(Coverage/LibCoverage),
+                                  ds = "Chr8Unfixed") -> Chr8_NotFixed_Copy
 
 Chr8Fixed_Copy %>% ggplot(aes(x = POS, y = Copies, color = Dataset)) + geom_point(alpha = 0.4) + ggtitle("Chr 8 Copy Numbers")
+
+rbind(Chr8Fixed_Copy, Chr8_NotFixed_Copy) %>%
+  #filter(POS > 200000, POS < 225000) %>% #CUP1 locations
+  ggplot(aes(x = POS, y = Copies, color = grepl("W", Dataset))) + 
+  geom_vline(xintercept = c(212535,212720, 214533,214718)) +
+  geom_point(alpha = 0.4) + facet_grid(rows = "ds")
+
+#Maybe do a t test for each one...?
+rbind(Chr8Fixed_Copy, Chr8_NotFixed_Copy) %>%
+  mutate(WineParent = grepl("W", Dataset)) %>%
+  na.omit()  %>% 
+    filter(Copies != -Inf) %>%
+  group_by(POS, ds, WineParent) %>%
+  summarize(lc = length(Copies)) %>%
+  filter(lc > 1) %>% 
+  pivot_wider(names_from = c(ds, WineParent), values_from = lc) %>%
+  na.omit() %>%
+  merge(rbind(Chr8Fixed_Copy, Chr8_NotFixed_Copy)) %>%
+  mutate(WineParent = grepl("W", Dataset)) %>%
+  filter(Copies != -Inf) %>%
+  group_by(POS, ds) %>% na.omit() %>%
+  summarize(pval = t.test(Copies ~ WineParent)$p.value) -> ttests
+
+ttests %>% filter(POS > 200000, POS < 225000) %>% ggplot(aes(x = POS, y = -log(pval), color = ds)) + geom_point(alpha = 0.5, size = 2) + ggtitle("CUP1 locus copy difference")
+  
+ttests %>% ggplot(aes(x = POS, y = -log(pval), color = ds)) + geom_point(alpha = 0.5, size = 0.8) + geom_vline(xintercept = c(200000, 225000)) + ggtitle("Chr 8 locus copy difference")
+
+quantile(ttests$pval[ttests$ds == "Chr8Unfixed"], 0.05)
+
+ttests %>% ggplot(aes(x = POS, y = -log(pval), color = ds)) + geom_line(alpha = 0.5, size = 0.8) + 
+  geom_vline(xintercept = c(200000, 225000)) + 
+  geom_hline(yintercept = -log(0.009027215 )) +
+  ggtitle("Chr 8 locus copy difference") + facet_grid(rows = "ds")
+
+ttests %>% filter(ds != "Chr8Unfixed") %>%
+  ggplot(aes(x = POS, y = -log(pval))) + geom_line(alpha = 0.4) + geom_point(aes(color = pval < 0.009027215), alpha = 0.5, size = 0.8) + 
+  geom_vline(xintercept = c(200000, 225000)) + 
+  geom_hline(yintercept = -log(0.009027215 )) +
+  ggtitle("Chr 8 Fixed copy difference")
+
+ttests %>% group_by(ds) %>% arrange(POS) %>%
+  reframe(POS = POS, 
+          SmoothPval_3 = frollapply(pval, n = 3, FUN = mean, align = "center"),
+          SmoothPval_5 = frollapply(pval, n = 5, FUN = mean, align = "center"),
+          SmoothPval_7 = frollapply(pval, n = 7, FUN = mean, align = "center"),
+          SmoothPval_9 = frollapply(pval, n = 9, FUN = mean, align = "center")) %>%
+  pivot_longer(c(SmoothPval_3, SmoothPval_5,SmoothPval_7,SmoothPval_9))-> ttests_smoothed
+
+ttests_smoothed %>% filter(ds != "Chr8Unfixed") %>%
+  ggplot(aes(x = POS, y = -log(value))) + geom_line(alpha = 0.4) + geom_point(aes(color = value < 0.009027215), alpha = 0.5, size = 0.8) + 
+  geom_vline(xintercept = c(200000, 225000)) + #CUP1
+    geom_vline(xintercept = c(120091-10000,121683+10000), color = "purple") +  #ERG11
+  geom_hline(yintercept = -log(0.009027215 )) +
+  ggtitle("Chr 8 Fixed copy difference") +
+  facet_grid(rows = "name")
+
+ttests_smoothed %>% filter(ds == "Chr8Unfixed") %>%
+  ggplot(aes(x = POS, y = -log(value))) + geom_line(alpha = 0.4) + geom_point(aes(color = value < 0.009027215), alpha = 0.5, size = 0.8) + 
+  geom_vline(xintercept = c(200000, 225000)) + 
+      geom_vline(xintercept = c(120091-10000,121683+10000), color = "purple") +  #ERG11
+
+  geom_hline(yintercept = -log(0.009027215 )) +
+  ggtitle("Chr 8 Unfixed copy difference") +
+  facet_grid(rows = "name")
+
+ttests_smoothed %>% filter(ds != "Chr8Unfixed",  value < 0.009027215, name == "SmoothPval_7") -> w7_peaks
+
+#load the genes to see what they are in these
+genelist <- read.csv("C:\\Users\\cassa\\Downloads//SGD_ORFs.csv") %>% mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>%
+  select(Gene = Gene.symbol,
+         Start = Gene.chromosomeLocation.start,
+         End = Gene.chromosomeLocation.end,
+         Strand = Gene.chromosomeLocation.strand,
+         Type = Gene.featureType,
+         CHROM = CHROM)
+
+findSNP <- function(Start, End, Target){
+  toreturn <- Target[Target %in% (Start-1000):(End+1000)]
+  return(toreturn)
+}
+
+genelist %>% filter(Type == "ORF", CHROM == "VIII", Gene != "") %>% group_by(Gene) %>%
+  summarize(SNPs = findSNP(Start, End, w7_peaks$POS),
+            Start, End, Type) -> w7genes
+
+w7genes %>% select(-SNPs) %>% distinct() -> genestoplot
+
+#Plots
+ttests_smoothed %>% filter(ds != "Chr8Unfixed", name == "SmoothPval_7") %>%
+  ggplot(aes(x = POS, y = -log(value))) + 
+  #All genes
+  geom_vline(data = genestoplot, aes(xintercept = Start, color = Gene), alpha = 0.2, size = 2) +
+  geom_label(data = genestoplot, aes(x = Start, y = sample(35:65, size = length(genestoplot$Gene), replace = FALSE), 
+                                     label = Gene, color = Gene), alpha = 0.3, size = 2) +
+
+  #All actual pvalues
+  geom_line(alpha = 0.4) + 
+  geom_point(alpha = 0.5, size = 0.8) + 
+  geom_vline(xintercept = c(200000, 225000)) + 
+  geom_hline(yintercept = -log(0.009027215 )) +
+  ggtitle("Chr 8 Fixed copy difference") +
+
+  theme(legend.position = "none", legend.key.size = unit(0.5,"line"))
 
 ```
 
@@ -574,4 +832,114 @@ Chr8Fixed_Copy %>%
   #facet_grid(rows = "Dataset") + 
   ggtitle("Chr 8 Fixed Copy Numbers")
 ```
+
+## Distribution of MQC Coverage across successful or nonsuccessful runs
+
+It's worth noting that the best (least noisy) experiments were of the highest coverage, so that might need to be a priority next run.
+
+```{r}
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+
+MQCRuns %>% filter(grepl("undetermined", Library) == FALSE) %>% group_by(ShortName) %>%
+  summarize(MinCoverage = min(MillionReads),
+            MaxCoverage = max(MillionReads)) %>%
+  mutate(Range = MaxCoverage - MinCoverage)
+
+MQCRuns %>% filter(grepl("undetermined", Library) == FALSE) %>%
+  ggplot(aes(x = MillionReads, y = ShortName, color = ShortName)) + geom_boxplot(outlier.shape = NA) + geom_jitter(size = 2, alpha = 0.5) +
+  scale_color_manual(values = c("skyblue", "skyblue", "skyblue", "skyblue", "skyblue","darkred", "darkred")) +
+  ggtitle("Coverage Colored by Success of Experiment")
+
+MQCRuns %>% filter(grepl("undetermined", Library) == FALSE) %>%
+  filter(Bulk != "Dilute") %>%
+  ggplot(aes(x = SurvivalPercentage, y = ShortName, color = ShortName)) + geom_boxplot(outlier.shape = NA) + geom_jitter(size = 2, alpha = 0.5) +
+  scale_color_manual(values = c("skyblue", "skyblue", "skyblue", "skyblue", "skyblue","darkred", "darkred")) +
+  ggtitle("Selection % Colored by Success of Experiment")
+```
+
+## Finding SNPs in common between Oak and Wine
+
+GQ Cutoff is 98 for all samples, so find out how many of these are under 98 and in which samples that tends to occur
+
+```{r}
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+parentSNPid_alls <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = FALSE)
+
+#20k loci where oak and wine are both the same but different from reference
+parentSNPid_alls %>% filter(Type == 0) %>% select(CHROM, POS) %>% distinct() %>% mutate(Type = "both") -> pSNPs_both
+
+#400 loci where oak and wine are both different from reference in different ways
+parentSNPid_alls %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 2) %>%
+  select(CHROM, POS) %>% distinct() %>% mutate(Type = "diff") -> pSNPs_diff
+
+```
+
+Looking at what each mutation actually is? This will find those that are more than a single insertion.
+
+```{r}
+parentSNPid_alls %>% filter(nchar(REF) > 2 | nchar(Wine) > 2 | nchar(Oak) > 2) -> parentSNP_ins
+```
+
+Which of these are in CUP1?
+
+```{r, fig.height = 4, fig.width = 15}
+rbind(pSNPs_both, pSNPs_diff) %>% filter(CHROM == "VIII") %>%
+  filter(POS > 200000, POS < 225000) %>%
+  ggplot(aes(x = POS, y = Type)) + geom_point(size = 2, alpha = 0.4) +
+  geom_vline(xintercept = c(212535, 212720)) +
+  geom_vline(xintercept = c(214533,214718)) 
+
+```
+
+
+Align reads to all of the ones that are just both the same - see how many non-alt alleles we have as a measure of error
+
+```{r}
+alldata <- readRDS(file = "allseqruns_jan24.rds")
+
+alldata %>% merge(pSNPs_diff) %>% mutate(AD.REF= as.numeric(AD.REF),
+                                 AD.ALT = as.numeric(AD.ALT))  -> alldata_differentSNPs
+
+alldata_differentSNPs %>% pivot_longer(c(AD.REF, AD.ALT), names_to = "Allele", values_to = "Reads") %>% 
+  ggplot(aes(x = Reads, y = Pool, color = Allele)) + geom_boxplot()
+
+alldata_differentSNPs %>% mutate(logOdds = log(AD.ALT/AD.REF)) %>% ggplot(aes(x = logOdds, y = Coverage, color = Pool)) + geom_point(alpha = 0.4)
+
+alldata_differentSNPs %>% filter(AD.REF > 0) %>% ggplot(aes(x = AD.REF, y = Pool)) + geom_boxplot()
+
+#4000 total in EVERYTHING that didn't have any reference alleles to what wasn't there
+alldata_differentSNPs %>% filter(AD.REF == 0) %>% ggplot(aes(x = Pool)) + geom_bar()
+```
+
+Look at what the ratios would be for all of the ones that aren't there
+
+```{r}
+alldata %>% merge(pSNPs_both) %>% mutate(AD.REF= as.numeric(AD.REF),
+                                 AD.ALT = as.numeric(AD.ALT)) -> alldata_bothSNPs
+
+alldata_bothSNPs %>% pivot_longer(c(AD.REF, AD.ALT), names_to = "Allele", values_to = "Reads") %>% 
+  ggplot(aes(x = Reads, y = Pool, color = Allele)) + geom_boxplot(outlier.alpha = 0.2)
+
+```
+```{r, fig.height=5, fig.width=12}
+alldata_bothSNPs %>% mutate(logOdds = log(AD.ALT/AD.REF)) %>% ggplot(aes(x = POS, y = abs(logOdds), color = Pool)) + 
+  geom_point(size = 0.5, alpha = 0.4) + facet_grid(Pool~CHROM, scales = "free", space = "free")
+```
+
+# Plot HT Chr 2?
+
+```{r, fig.width=6, fig.height=6, eval = FALSE}
+
+rawdata_called %>% group_by(Pool, Dataset, POS, CHROM, Allele) %>% count() %>% filter(n == 1) %>% merge(rawdata_called) -> HTG3TDMXY_called
+HTG3TDMXY_called %>% pivot_wider(names_from = Allele, values_from = Reads) %>% mutate(logOdds = log(Wine/Oak)) -> HTG3TDMXY_logOdds
+HTG3TDMXY_logOdds %>% separate(Dataset, into = c("Background", "Selection", "Day"), sep = "_") -> HTG3TDMXY_logOdds
+
+HTG3TDMXY_logOdds %>% filter(CHROM == "VII") %>% ggplot(aes(x = POS, y = logOdds, color = Selection)) + geom_point(size = 0.5, alpha = 0.5) + facet_grid(Background~CHROM, scales = "free", space = "free")
+```
+
+```{r, fig.width=6, fig.height=12, eval = FALSE}
+HTG3TDMXY_logOdds %>% filter(CHROM == "II") %>% ggplot(aes(x = POS, y = logOdds)) + geom_point(size = 0.5, alpha = 0.5) + facet_grid(Dataset~CHROM, scales = "free", space = "free")
+```
+
 
