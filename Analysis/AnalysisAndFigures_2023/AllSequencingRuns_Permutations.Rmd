@@ -584,7 +584,7 @@ HVYTYDRX2_Fluc_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_pre
 
 #CuSO4 CSS1
 HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
-  mutate(Bulk = gsub("Unselected", "D", Bulk))
+  mutate(Bulk = gsub("aUnselected", "aD", Bulk))
 
 HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
 
@@ -646,13 +646,13 @@ cybrPermute_byCHRParent <- function(dataset, R = FALSE){
    }
    
     #these are now all of the ones that can be used to permute
-    newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+    newnewtest %>% filter(Bulk == "aD") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(CHROM, Parent) %>%
       summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
                 POS2 = sample(POS)) %>%
       mutate(Bulk = "A") -> shuffled_DiluteA
     
-     newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+     newnewtest %>% filter(Bulk == "aD") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(CHROM, Parent) %>%
       summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
                 POS2 = sample(POS)) %>%
@@ -715,7 +715,7 @@ cybrPermute_byParent <- function(dataset, R = FALSE){
   }
   
   #these are now all of the ones that can be used to permute
-    newnewtest %>% filter(Bulk == "D",
+    newnewtest %>% filter(Bulk == "aD",
                           CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
       select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
@@ -723,7 +723,7 @@ cybrPermute_byParent <- function(dataset, R = FALSE){
                 Loc = sample(Loc)) %>%
       mutate(Bulk = "A") -> shuffled_DiluteA2
     
-    newnewtest %>% filter(Bulk == "D",
+    newnewtest %>% filter(Bulk == "aD",
                           CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
       select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
@@ -772,7 +772,7 @@ cybrPermute_byCHRParent_Rep <- function(dataset){
       pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
     
     #these are now all of the ones that can be used to permute
-    newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+    newnewtest %>% filter(Bulk == "aD") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(CHROM, Parent) %>%
       summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
                 POS2 = sample(POS)) %>%
@@ -782,7 +782,7 @@ cybrPermute_byCHRParent_Rep <- function(dataset){
                 Rep = sample(c("a", "b"))) %>%
       mutate(Bulk = "A") -> shuffled_DiluteA
     
-    newnewtest %>% filter(Bulk == "D") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
+    newnewtest %>% filter(Bulk == "aD") %>% select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(CHROM, Parent) %>%
       summarize(CHROM = CHROM, Parent = Parent, Oak = Oak, Wine = Wine, POS = POS,
                 POS2 = sample(POS)) %>%
@@ -833,7 +833,7 @@ cybrPermute_byParent_Rep <- function(dataset){
   pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
   
   #these are now all of the ones that can be used to permute
-    newnewtest %>% filter(Bulk == "D",
+    newnewtest %>% filter(Bulk == "aD",
                           CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
       select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
@@ -845,7 +845,7 @@ cybrPermute_byParent_Rep <- function(dataset){
                 Rep = sample(c("a", "b"))) %>%
       mutate(Bulk = "A") -> shuffled_DiluteA2
     
-    newnewtest %>% filter(Bulk == "D",
+    newnewtest %>% filter(Bulk == "aD",
                           CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
       select(CHROM, POS, Parent, Oak, Wine) %>% 
       group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
@@ -887,7 +887,7 @@ cybrPermute_byParent_Rep <- function(dataset){
 
 ## Non-Replicated Samples
 
-### HNGLVDRXY_CSS1 (CuSO4 CSS I A)
+### HNGLVDRXY_CSS1 (CuSO4 CSS I A) - failed Feb 24
 ```{r}
 HNGLVDRXY_CSS1_glm_prep_chrparent <- cybrPermute_byCHRParent(HNGLVDRXY_CSS1_glm_prep)
 HNGLVDRXY_CSS1_glm_prep_parentonly <- cybrPermute_byParent(HNGLVDRXY_CSS1_glm_prep)
@@ -998,7 +998,7 @@ saveRDS(HGVMVDRX2_F_CSS1_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1_parQs.rds")
 ### NEW: CuSO4 2024, no replicates
 
 ```{r}
-HTG3TDMXY_CSS8_glm_prep <- readRDS("HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
   select(-Bulk) %>% 
   select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM) %>% na.omit() %>% filter(CHROM != "VIII", CHROM != "M")
 
@@ -1143,7 +1143,7 @@ cybrPermute_byCHRParent_Rep6 <- function(dataset){
       filter(culprits == 1) %>% 
       ungroup() %>%
       distinct() %>% #THIS IS IMPORTANT
-      pivot_wider(names_from = Allele, values_from = SmoothCount) %>% filter(Bulk == "D") %>% select(CHROM, POS, Rep, #ADDED REP 1/8/24
+      pivot_wider(names_from = Allele, values_from = SmoothCount) %>% filter(Bulk == "aD") %>% select(CHROM, POS, Rep, #ADDED REP 1/8/24
                                                                                                      Parent, Oak, Wine) -> newnewtest
     
     #these are now all of the ones that can be used to permute
@@ -1356,7 +1356,7 @@ saveRDS(HGVMVDRX2_F_CSS1d_parQs, file = "StandardGLM/HGVMVDRX2_F_CSS1d_parQs.rds
 ## HTG3TDMXY CuSO4 2024 with replicates
 
 ```{r}
-HTG3TDMXY_CSS8_glm_prep <- readRDS("HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
   select(-Bulk) %>% 
   select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, Rep = Rep) %>% na.omit()  %>% filter(CHROM != "VIII", CHROM != "M")
 

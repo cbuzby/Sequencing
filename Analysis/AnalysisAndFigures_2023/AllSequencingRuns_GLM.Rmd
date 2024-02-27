@@ -1349,6 +1349,7 @@ saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all_E, file = "StandardGLM/HKTFTDRX2_CuSO4_CSS1
 
 ### CuSO4 CSS VIII WITH EXTRA REPS 2024
 
+**names changed but need to run glm**
 ```{r}
 # Pick out the specific groups of the dataset
 HTG3TDMXY_smoothed %>% separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "_") %>% 
@@ -1371,7 +1372,7 @@ HTG3TDMXY_CSS8_glm_prep <- HTG3TDMXY_CSS8_glm_prep_edit
 #saveRDS(HTG3TDMXY_CSS8_glm_prep, file = "HTG3TDMXY_CSS8_glm_prep.rds")
 
 #RENAME 2024
-HTG3TDMXY_CSS8_glm_prep %>% mutate(Bulk = gsub("D", "aD", Bulk)) -> HTG3TDMXY_CSS8_glm_prep
+HTG3TDMXY_CSS8_glm_prep %>% mutate(B = gsub("D", "aD", B)) -> HTG3TDMXY_CSS8_glm_prep
 saveRDS(HTG3TDMXY_CSS8_glm_prep, file = "StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds")
 
 #Test once
@@ -1379,7 +1380,7 @@ testdata <- HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM == "I", POS == 151478) %>% 
 table(testdata$B, testdata$Parent)
 table(testdata$B, testdata$Parent, testdata$Rep)
 
-sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+#sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
 
 formula = "Allele ~ B * Parent"
 glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
@@ -1401,6 +1402,7 @@ HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_noreps
 
 saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_noreps, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_noreps.rds")
+
 ```
 
 ### High Dose Only
@@ -1446,6 +1448,7 @@ HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
 
 saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE.rds")
 ```
+
 ### Compare Doses in GLM
 
 ```{r}
@@ -1503,9 +1506,9 @@ HTG3TDMXY_CuSO4_CSS8_glm_noreps %>% filter(Factor != "Intercept") %>% ggplot(aes
 # HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE %>% mutate(Dose = "LOW") -> lowdose
 # HTG3TDMXY_CuSO4_CSS8_glm_noreps_HIGHDOSE %>% mutate(Dose = "HIGH") %>% rbind(lowdose) -> AllCuSO4NoRep
 
-AllCuSO4NoRep %>% filter(Factor != "Intercept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = .7) + facet_grid(Factor~CHROM, space = "free", scales = "free") + scale_color_manual(values = c("#065465", "turquoise")) + ggtitle("Selection Comparison, No Replicates")
-
-AllCuSO4NoRep %>% filter(Factor != "Intercept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line(size = .7) + facet_grid(Dose~CHROM, space = "free", scales = "free") + ggtitle("Allele ~ B * Parent")
+# AllCuSO4NoRep %>% filter(Factor != "Intercept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = .7) + facet_grid(Factor~CHROM, space = "free", scales = "free") + scale_color_manual(values = c("#065465", "turquoise")) + ggtitle("Selection Comparison, No Replicates")
+# 
+# AllCuSO4NoRep %>% filter(Factor != "Intercept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line(size = .7) + facet_grid(Dose~CHROM, space = "free", scales = "free") + ggtitle("Allele ~ B * Parent")
 
 HTG3TDMXY_CuSO4_CSS8_glm %>% filter(Factor != "Intercept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line(size = 0.7) + facet_grid(~CHROM, space = "free", scales = "free") + scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF", "gray", "gray")) + ggtitle("Allele ~ B * Parent + Rep")
 
@@ -1537,7 +1540,7 @@ glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCou
 HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
   #filter(CHROM == "X", POS == 640028) %>%
   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
-  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>% 
   group_by(CHROM, POS) %>%
   mutate_if(is.character, as.factor) %>%
   summarize(Summary = glm_cb2_short(Allele = Allele,
@@ -1549,7 +1552,7 @@ HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
                              outputlength = 6),
             Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm
 
-saveRDS(HTG3TDMXY_CuSO4_CSS8_glm, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm.rds")
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_ad.rds")
 
 #LOW ONLY
 
@@ -1570,7 +1573,7 @@ HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
                              outputlength = 6),
             Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_LOW
 
-saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_LOW, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_LOW.rds")
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_LOW, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_LOW_ad.rds")
 
 #HIGH ONLY
 
@@ -1591,7 +1594,7 @@ HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
                              outputlength = 6),
             Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_HIGH
 
-saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_HIGH, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_HIGH.rds")
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_HIGH, file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm_HIGH_ad.rds")
 ```
 
 ### Incorporating glmer
@@ -1681,5 +1684,142 @@ HTG3TDMXY_CuSO4_CSS8_glm %>% filter(Factor != "Intercept", CHROM == "VII") %>%
   ggtitle("CuSO4 CSS 8 200 window") +
   xlab("abs(Zscore)") +
   theme(axis.text.x = element_blank())
+```
+
+# Running only Allele ~ Bulk
+
+```{r}
+#Function
+glm_cb2_BULKONLY <- function(..., W, formula, outputlength = 2, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+```
+
+### Load In Data
+
+```{r}
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(Bulk = gsub("aUnselected", "aD", Bulk))
+
+HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
+
+#CuSO4 CSS8
+HVYTYDRX2_cu_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  select(-Bulk) %>% 
+  select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM) %>% na.omit() %>% filter(CHROM != "VIII", CHROM != "M")
+
+################################################################################
+
+#Fluc CSS8
+HVYTYDRX2_Fluc_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_prep.rds")
+
+#H2O2 CSS8
+HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/HJ5HKDRX3_CSS8_glm_prep.rds")
+HJ5HKDRX3_CSS8_glm_prep_noreps <- readRDS("HJ5HKDRX3_CSS8_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
+
+#Zeocin CSS1
+HKTMWDRX2_Zeo_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Zeo_CSS1_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
+
+
+#Cycloheximide CSS1
+HKTMWDRX2_Cyc_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Cyc_CSS1_glm_prep_noreps.rds") %>% mutate(SmoothCount = AvgCount)
+
+```
+
+### Copper Sulfate
+
+```{r}
+#CSS I a
+HNGLVDRXY_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_BULKONLY(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HNGLVDRXY_CSS1_glm_BULK
+
+#CSS I b
+HKTFTDRX2_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_BULKONLY(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HKTFTDRX2_CSS1_glm_BULK
+
+#CSS 8 a
+HVYTYDRX2_cu_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  select(-Dose) %>% na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_BULKONLY(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HVYTYDRX2_cu_CSS8_glm_BULK
+
+#CSS 8 b
+HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_BULKONLY(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HTG3TDMXY_CSS8_glm_BULK
+
+saveRDS(HTG3TDMXY_CSS8_glm_BULK, file = "StandardGLM/HTG3TDMXY_CSS8_glm_BULK.rds")
+saveRDS(HVYTYDRX2_cu_CSS8_glm_BULK, file = "StandardGLM/HVYTYDRX2_cu_CSS8_glm_BULK.rds")
+saveRDS(HKTFTDRX2_CSS1_glm_BULK, file = "StandardGLM/HKTFTDRX2_CSS1_glm_BULK.rds")
+saveRDS(HNGLVDRXY_CSS1_glm_BULK, file = "StandardGLM/HNGLVDRXY_CSS1_glm_BULK.rds")
+
 ```
 

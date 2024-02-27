@@ -112,6 +112,16 @@ HTG3TDMXY_CuSO4_CSS8_glm_noreps_all <- readRDS(file = "StandardGLM/HTG3TDMXY_CuS
 HTG3TDMXY_CuSO4_CSS8_glm <- readRDS(file = "StandardGLM/HTG3TDMXY_CuSO4_CSS8_glm.rds") %>% 
   mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu8
 
+## Bulk Only
+HTG3TDMXY_CSS8_glm_BULK <- readRDS(file = "StandardGLM/HTG3TDMXY_CSS8_glm_BULK.rds") %>% 
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu8
+HVYTYDRX2_cu_CSS8_glm_BULK <- readRDS(file = "StandardGLM/HVYTYDRX2_cu_CSS8_glm_BULK.rds") %>% 
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu8
+HKTFTDRX2_CSS1_glm_BULK <- readRDS(file = "StandardGLM/HKTFTDRX2_CSS1_glm_BULK.rds") %>% 
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu1
+HNGLVDRXY_CSS1_glm_BULK <- readRDS(file = "StandardGLM/HNGLVDRXY_CSS1_glm_BULK.rds") %>% 
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu1
+
 
 #Fluc
 HGVMVDRX2_CSS1_glm_alld <- readRDS("StandardGLM/HGVMVDRX2_CSS1_glm_alld.rds")	%>% 
@@ -290,6 +300,28 @@ HTG3TDMXY_CuSO4_CSS8_glm_noreps %>% merge(HTG3TDMXY_CSS8_glm_parQs) %>% filter(F
   geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8 No Replicates")
 ```
+
+### Bulk Only Effects
+
+```{r}
+HTG3TDMXY_CSS8_glm_BULK %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS8 b")
+
+#This one's blank?
+HVYTYDRX2_cu_CSS8_glm_BULK %>% filter(Factor != "Intercept") %>% na.omit()
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS8 a")
+
+HKTFTDRX2_CSS1_glm_BULK %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS1 b")
+
+HNGLVDRXY_CSS1_glm_BULK %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS1 a")
+```
+
 
 ## Plot Fluconazole Data
 
@@ -589,6 +621,7 @@ HKTMWDRX2_Cyc_CSS1_glm_all_noreps %>%  #CHANGE DATASET
   
   ggtitle("Cycloheximide CSS I Factor-Specific Cutoffs") #CHANGE TITLE
 ```
+
 
 # Plotting only whole-genome FDR 0.05 cutoffs
 
@@ -1255,7 +1288,7 @@ HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
   xlab("abs(Zscore)") +
   theme(axis.text.x = element_blank()) 
 ```
-```
+
 
 # Plotting Interactions based on 5% FDR
 
@@ -1380,6 +1413,7 @@ cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL,
   circos.clear()
 }
 ```
+
 
 ## CuSO4 Interactions
 

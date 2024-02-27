@@ -191,6 +191,7 @@ BulkModel %>% filter(Reads > 0) %>%
 
 
 ```
+
 ### Parental Epistasis
 
 Okay so now what if this is actually epistatic, ie there is a 2x difference in the wine parent but a 4x difference in oak?
@@ -253,6 +254,8 @@ ParentalModel %>% filter(Reads > 0) %>%
 
 
 ```
+
+
 
 What if only one parent has the effect?
 
@@ -369,13 +372,84 @@ EpistaticModel %>% filter(Reads > 0) %>%
                              outputlength = 4),
             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> Epistatic_GLM
 
-Epistatic_GLM %>% ggplot(aes(x = POS, y = Summary, color = Factor)) + geom_point()
+#Reversing the order
+EpistaticModel %>% mutate(Bulk = gsub("C", "S", Bulk),
+                          Parent = gsub("W", "A", Parent)) %>%
+  filter(Reads > 0) %>%
+  group_by(POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = Reads,
+                             formula = "Allele ~ Bulk * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> Epistatic_GLM_revall
 
-Epistatic_GLM %>% pivot_wider(names_from = Factor, values_from = Summary) %>% ggplot(aes(x = Bulk, y = Intercept)) + geom_point()
-Epistatic_GLM %>% pivot_wider(names_from = Factor, values_from = Summary) %>% ggplot(aes(x = Parent, y = Interaction)) + geom_point()
+#Reversing the order
+EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
+  filter(Reads > 0) %>%
+  group_by(POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = Reads,
+                             formula = "Allele ~ Bulk * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> Epistatic_GLM_rev
 
+Epistatic_GLM %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, C vs D")
 
+Epistatic_GLM_revall  %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1)) + ggtitle("Sign Epistasis, aD vs C, A vs O")
 
+Epistatic_GLM_rev %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1)) + ggtitle("Sign Epistasis, aD vs C")
+
+```
+
+What if we reverse Oak and Wine?
+
+```{r}
+#Reversing the order
+EpistaticModel %>% mutate(Parent = gsub("W", "A", Parent)) %>%
+  filter(Reads > 0) %>%
+  group_by(POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = Reads,
+                             formula = "Allele ~ Bulk * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> Epistatic_GLM_PA
+
+Epistatic_GLM %>% ggplot(aes(x = Factor, y = abs(Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, O/W")
+
+Epistatic_GLM_PA %>% ggplot(aes(x = Factor, y = abs(Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, A/O")
+```
+
+Finally, what if we just look at bulk?
+
+```{r}
+EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
+  filter(Reads > 0) %>%
+  group_by(POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_short(Allele = Allele,
+                             Bulk = Bulk,
+                             # Parent = Parent,
+                             W = Reads,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> Epistatic_BulkOnly
+
+Epistatic_BulkOnly %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, Bulk Only")
 ```
 
 Let's compare all of the models
