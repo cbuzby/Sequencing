@@ -1769,7 +1769,7 @@ HKTMWDRX2_Cyc_CSS1_glm_prep_noreps <- readRDS("HKTMWDRX2_Cyc_CSS1_glm_prep_norep
 
 ```{r}
 #CSS I a
-HNGLVDRXY_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+HNGLVDRXY_CSS1_glm_prep %>% filter(CHROM %in% c("M", "I") == FALSE) %>%
   group_by(CHROM, POS) %>%
   na.omit() %>%
   mutate_if(is.character, as.factor) %>%
@@ -1779,9 +1779,10 @@ HNGLVDRXY_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
                              formula = "Allele ~ Bulk",
                              outputlength = 2),
             Factor = (c("Intercept", "Bulk"))) -> HNGLVDRXY_CSS1_glm_BULK
+saveRDS(HNGLVDRXY_CSS1_glm_BULK, file = "StandardGLM/HNGLVDRXY_CSS1_glm_BULK.rds")
 
 #CSS I b
-HKTFTDRX2_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+HKTFTDRX2_CSS1_glm_prep %>% filter(CHROM %in% c("M", "I") == FALSE) %>%
   group_by(CHROM, POS) %>%
   na.omit() %>%
   mutate_if(is.character, as.factor) %>%
@@ -1791,6 +1792,8 @@ HKTFTDRX2_CSS1_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
                              formula = "Allele ~ Bulk",
                              outputlength = 2),
             Factor = (c("Intercept", "Bulk"))) -> HKTFTDRX2_CSS1_glm_BULK
+
+saveRDS(HKTFTDRX2_CSS1_glm_BULK, file = "StandardGLM/HKTFTDRX2_CSS1_glm_BULK.rds")
 
 #CSS 8 a
 HVYTYDRX2_cu_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
@@ -1803,6 +1806,7 @@ HVYTYDRX2_cu_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
                              formula = "Allele ~ Bulk",
                              outputlength = 2),
             Factor = (c("Intercept", "Bulk"))) -> HVYTYDRX2_cu_CSS8_glm_BULK
+saveRDS(HVYTYDRX2_cu_CSS8_glm_BULK, file = "StandardGLM/HVYTYDRX2_cu_CSS8_glm_BULK.rds")
 
 #CSS 8 b
 HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
@@ -1817,9 +1821,8 @@ HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
             Factor = (c("Intercept", "Bulk"))) -> HTG3TDMXY_CSS8_glm_BULK
 
 saveRDS(HTG3TDMXY_CSS8_glm_BULK, file = "StandardGLM/HTG3TDMXY_CSS8_glm_BULK.rds")
-saveRDS(HVYTYDRX2_cu_CSS8_glm_BULK, file = "StandardGLM/HVYTYDRX2_cu_CSS8_glm_BULK.rds")
-saveRDS(HKTFTDRX2_CSS1_glm_BULK, file = "StandardGLM/HKTFTDRX2_CSS1_glm_BULK.rds")
-saveRDS(HNGLVDRXY_CSS1_glm_BULK, file = "StandardGLM/HNGLVDRXY_CSS1_glm_BULK.rds")
+
+
 
 ```
 

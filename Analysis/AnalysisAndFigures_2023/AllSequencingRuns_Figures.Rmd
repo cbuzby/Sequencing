@@ -303,23 +303,33 @@ HTG3TDMXY_CuSO4_CSS8_glm_noreps %>% merge(HTG3TDMXY_CSS8_glm_parQs) %>% filter(F
 
 ### Bulk Only Effects
 
-```{r}
-HTG3TDMXY_CSS8_glm_BULK %>% filter(Factor != "Intercept") %>%
+```{r, fig.height = 3, fig.width = 9}
+HTG3TDMXY_CSS8_glm_BULK %>% 
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS8 b")
 
 #This one's blank?
-HVYTYDRX2_cu_CSS8_glm_BULK %>% filter(Factor != "Intercept") %>% na.omit()
+HVYTYDRX2_cu_CSS8_glm_BULK %>% 
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS8 a")
 
-HKTFTDRX2_CSS1_glm_BULK %>% filter(Factor != "Intercept") %>%
+HKTFTDRX2_CSS1_glm_BULK %>% 
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS1 b")
 
-HNGLVDRXY_CSS1_glm_BULK %>% filter(Factor != "Intercept") %>%
+HNGLVDRXY_CSS1_glm_BULK %>% 
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + 
   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CSS1 a")
+
+rbind(data.frame(HTG3TDMXY_CSS8_glm_BULK, ds = "CSS8b", CSS = "VIII"),
+      data.frame(HVYTYDRX2_cu_CSS8_glm_BULK, ds = "CSS8a", CSS = "VIII"),
+      data.frame(HKTFTDRX2_CSS1_glm_BULK, ds = "CSS1b", CSS = "I"),
+      data.frame(HNGLVDRXY_CSS1_glm_BULK, ds = "CSS1a", CSS = "I")) %>%
+  filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + geom_line() + 
+  facet_grid(ds~CHROM, space = "free", scales = "free") +
+  scale_color_manual(values = c("navy", "darkorange"))
+  
 ```
 
 
@@ -1159,7 +1169,7 @@ HVYTYDRX2_Fluc_CSS8_glm_all %>%  #CHANGE DATASET
 
 ```
 
-## CuSO4 Plotting for TAGC
+# CuSO4 Plotting for TAGC
 ```{r, fig.height = 4, fig.width = 12}
 ################################################################################ CuSO4 CSS I
 xHNGLVDRXY_CuSO4_CSS1_glm_all %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor != "Intercept") %>%

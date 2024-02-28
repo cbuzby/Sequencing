@@ -62,6 +62,46 @@ glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, 
   
 }
 
+glm_cb2_effectsize <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.25))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
 ```
 
 ## Simulations
@@ -129,6 +169,7 @@ NullModel %>% #filter(POS == 1) %>%
 
 
 ```
+
 ### Bulk Effects Only
 
 Both parents have the same distribution in the selected bulks
@@ -450,6 +491,24 @@ EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
 
 Epistatic_BulkOnly %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
   geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, Bulk Only")
+```
+And what is the effect size?
+
+```{r}
+EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
+  filter(Reads > 0) %>%
+  group_by(POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effectsize(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             W = Reads,
+                             formula = "Allele ~ Bulk*Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> Epistatic_EffectSize
+
+Epistatic_EffectSize %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + geom_hline(yintercept = 0) +
+  geom_boxplot(size = 1, alpha = 0.4) + geom_point(size = 2, alpha = 0.2, position = position_jitterdodge(jitter.width = 0.1))  + ggtitle("Sign Epistasis, Effect Size")
 ```
 
 Let's compare all of the models

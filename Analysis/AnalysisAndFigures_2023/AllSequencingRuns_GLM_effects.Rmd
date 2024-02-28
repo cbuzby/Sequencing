@@ -1,0 +1,1189 @@
+---
+title: "2024 GLM Effects for All Experiments"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+require(lme4)
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+# Functions
+
+```{r}
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return effects only
+
+  output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.25))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+```
+
+
+## Load In GLM Prep Data
+
+```{r}
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(Bulk = gsub("aUnselected", "aD", Bulk))
+
+HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")
+
+#CuSO4 CSS8
+HVYTYDRX2_cu_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  select(-Bulk) %>% 
+  select(Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM) %>% na.omit() %>% filter(CHROM != "VIII", CHROM != "M")
+
+################################################################################
+
+#Fluc CSS8
+HVYTYDRX2_Fluc_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_Fluc_CSS8_glm_prep.rds")
+
+```
+
+# DONE RUNNING
+
+## Analysis Standard
+
+### HGVMDRX2 = Fluconazole CSS I without replicates
+ 
+```{r, eval = FALSE}
+#Test once
+testdata <- HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HGVMVDRX2norep_CSS1_glm_all
+
+
+saveRDS(HGVMVDRX2norep_CSS1_glm_all, file = "StandardGLM/E_HGVMVDRX2norep_CSS1_glm_all.rds")
+```
+
+### HVYTYDRX2 into Fluc8, CuSO48, and Fluc1
+
+### Fluc CSS VIII - DONE (Z score)
+
+```{r}
+#Test once
+testdata <- HVYTYDRX2_Fluc_CSS8_glm_prep %>% filter(CHROM == "I", POS == 60526) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HVYTYDRX2_Fluc_CSS8_glm_prep %>% select(-Dose) %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                             outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_Fluc_CSS8_glm_all
+
+saveRDS(HVYTYDRX2_Fluc_CSS8_glm_all, file = "StandardGLM/E_HVYTYDRX2_Fluc_CSS8_glm_all.rds")
+```
+
+
+### CuSO4 CSS VIII - DONE
+
+```{r, eval = FALSE}
+
+#Test once
+testdata <- HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>% filter(CHROM == "I", POS == 106953) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+#This isn't right
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>%
+# Run full dataset
+#HVYTYDRX2_CuSO4_CSS8_glm_prep %>% 
+  select(-Dose) %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_CuSO4_CSS8_glm_all
+
+saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_all, file = "StandardGLM/E_HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+```
+
+
+
+### H2O2 CSS  VIII - DONE (Z score)
+
+```{r, eval = FALSE}
+# 
+# # Pick out the specific groups of the dataset
+# HJ5HKDRX3_smoothed %>% separate(Dataset, into = c("Bulk", "Parent", "Rep"), sep = "_") %>% 
+#   mutate(Parent = gsub("0", "O", Parent)) %>%
+#   #Filter for Chr 8 and Bulk D or H
+#   filter(stringr::str_detect(Parent, '8')) %>% 
+#   filter(Bulk != "Z") %>%
+#   mutate_if(is.character, as.factor) -> HJ5HKDRX3_CSS8_glm_prep
+# 
+# #SAVE FOR PERMUTATIONS
+# saveRDS(HJ5HKDRX3_CSS8_glm_prep, file = "StandardGLM/E_HJ5HKDRX3_CSS8_glm_prep.rds")
+# 
+# #Test once
+# # testdata <- HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% filter(CHROM == "X", POS == 640028) %>% arrange(Bulk, Parent, Rep)
+# # table(testdata$Rep, testdata$Bulk, testdata$Parent)
+# # sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+# # formula = "Allele ~ Bulk * Parent + Rep"
+# # glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+# 
+# # Run full dataset
+# HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% 
+#   #filter(CHROM == "X", POS == 640028) %>%
+#   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+#   filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+#   group_by(CHROM, POS) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   summarize(Summary = glm_cb2_effect(Allele = Allele,
+#                              Bulk = Bulk,
+#                              Parent = Parent,
+#                              Rep = Rep,
+#                              W = SmoothCount,
+#                              formula = "Allele ~ Bulk * Parent + Rep",
+#                             numgroups = 16, outputlength = 5),
+#             Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all
+# 
+# HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>% dim()
+# 
+# saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/E_HJ5HKDRX3_CSS8_glm_all.rds")
+
+```
+
+
+### CuSO4a, CSS I - DONE (Z score)
+
+```{r, eval = FALSE}
+#Test once
+testdata <- HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+coffee <- glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HNGLVDRXY_CuSO4_CSS1_glm_all
+
+saveRDS(HNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/E_HNGLVDRXY_CuSO4_CSS1_glm_all.rds")
+```
+
+***NOT RENAMED YET***
+```{r, eval = FALSE}
+
+# Pick out the specific groups of the dataset
+xHNGLVDRXY_smoothed %>% #head() %>%
+    mutate(Dataset = gsub("CuSO4_CSSI_", "", Dataset)) %>%
+    mutate(Dataset = gsub("Unselected", "Unselected_", Dataset)) %>%
+    mutate(Dataset = gsub("Selected", "Selected_", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Parent"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> xHNGLVDRXY_CSS1_glm_prep
+
+
+#RENAME 2024
+xHNGLVDRXY_CSS1_glm_prep %>% mutate(Bulk = gsub("Unselected", "aUnselected", Bulk)) -> xHNGLVDRXY_CSS1_glm_prep
+saveRDS(xHNGLVDRXY_CSS1_glm_prep, file = "StandardGLM/xHNGLVDRXY_CSS1_glm_prep.rds")
+
+#SAVE FOR PERMUTATIONS
+#saveRDS(xHNGLVDRXY_CSS1_glm_prep, file = "StandardGLM/xHNGLVDRXY_CSS1_glm_prep.rds")
+```
+
+```{r}
+#Test once
+# testdata <- xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> xHNGLVDRXY_CuSO4_CSS1_glm_all
+
+#xHNGLVDRXY_CuSO4_CSS1_glm_all %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "xHNGLVDRXY", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# xHNGLVDRXY_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> xHNGLVDRXY_CSS8_merge_all
+
+saveRDS(xHNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/E_xHNGLVDRXY_CuSO4_CSS1_glm_all.rds")
+```
+# START HERE 2/27/24 RERUN
+
+### CuSO4b, CSS I - DONE
+
+```{r, eval = FALSE}
+
+#Test once
+testdata <- HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 152004) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>% 
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            #numgroups = 16, 
+                            outputlength = 5),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HKTFTDRX2_CuSO4_CSS1_glm_all
+
+
+saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all, file = "StandardGLM/E_HKTFTDRX2_CuSO4_CSS1_glm_all.rds")  #saved 1/8/24
+
+#HKTFTDRX2_CuSO4_CSS1_glm_all %>% na.omit()
+```
+
+
+
+
+
+## Duplicating reps to balance them (should have fixed effect of 0)
+### HGVMDRX2 = Fluconazole CSS I - DONE (Z)
+ 
+```{r, eval = FALSE}
+# Pick out the specific groups of the dataset
+HGVMVDRX2_smoothed %>% separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> HGVMVDRX2_CSS1_glm_prep
+
+#DUPLICATE MISSING REPLICATES (this experiment only)
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "OakI", Bulk == "Dilute", Rep %in% c("B")) %>% 
+  mutate(Rep = "C") %>% rbind(HGVMVDRX2_CSS1_glm_prep) -> HGVMVDRX2_CSS1_glm_prepd
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "OakI", Bulk == "Dilute", Rep %in% c("B")) %>% 
+  mutate(Rep = "D") %>% rbind(HGVMVDRX2_CSS1_glm_prepd) -> HGVMVDRX2_CSS1_glm_prepd
+HGVMVDRX2_CSS1_glm_prep %>% filter(Parent == "WineI", Bulk == "Fluc", Rep %in% c("C")) %>% 
+  mutate(Rep = "B") %>% rbind(HGVMVDRX2_CSS1_glm_prepd) -> HGVMVDRX2_CSS1_glm_prepd
+
+saveRDS(HGVMVDRX2_CSS1_glm_prepd, file = "HGVMVDRX2_CSS1_glm_prepd.rds")
+
+#Test once
+testdata <- HGVMVDRX2_CSS1_glm_prepd %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq)
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HGVMVDRX2_CSS1_glm_prepd %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 18, outputlength = 6),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HGVMVDRX2_CSS1_glm_alld
+
+saveRDS(HGVMVDRX2_CSS1_glm_alld, file = "StandardGLM/E_HGVMVDRX2_CSS1_glm_alld.rds")
+```
+
+## Averaging across replicates to fill in missing data (HJ5HKDRX3 and HKTMWDRX2)
+
+### H2O2 
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
+# 
+# HJ5HKDRX3_CSS8_glm_prep <- readRDS("StandardGLM/E_HJ5HKDRX3_CSS8_glm_prep.rds")
+# 
+# HJ5HKDRX3_CSS8_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS8_glm_prep_noreps
+# 
+# saveRDS(HJ5HKDRX3_CSS8_glm_prep_noreps, file = "HJ5HKDRX3_CSS8_glm_prep_noreps.rds")
+# 
+# #Test once
+# testdata <- HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30782) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
+# 
+# # Run full dataset
+# HJ5HKDRX3_CSS8_glm_prep_noreps %>% na.omit() %>% 
+#   #filter(CHROM == "X", POS == 640028) %>%
+#   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+#   filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+#   group_by(CHROM, POS) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   summarize(Summary = glm_cb2_effect(Allele = Allele,
+#                              Bulk = Bulk,
+#                              Parent = Parent,
+#                              W = AvgCount,
+#                              formula = "Allele ~ Bulk * Parent",
+#                             outputlength = 4),
+#             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all_noreps
+# 
+# 
+# # #Merge with GQ if you want
+# # alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# # HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
+# #   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
+# 
+# saveRDS(HJ5HKDRX3_CSS8_glm_all_noreps, file = "StandardGLM/E_HJ5HKDRX3_CSS8_glm_all_noreps.rds")
+```
+
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
+# HJ5HKDRX3_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HJ5HKDRX3_CSS1_glm_prep_noreps
+# 
+# #Test once
+# testdata <- HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 30479) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
+# 
+# # Run full dataset
+# HJ5HKDRX3_CSS1_glm_prep_noreps %>% na.omit() %>% 
+#   #filter(CHROM == "X", POS == 640021) %>%
+#   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+#   filter(CHROM %in% c("M", "I") == FALSE) %>%
+#   group_by(CHROM, POS) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   summarize(Summary = glm_cb2_effect(Allele = Allele,
+#                              Bulk = Bulk,
+#                              Parent = Parent,
+#                              W = AvgCount,
+#                              formula = "Allele ~ Bulk * Parent",
+#                             numgroups = 1, outputlength = 4),
+#             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HJ5HKDRX3_CSS1_glm_all_noreps
+# 
+# HJ5HKDRX3_CSS1_glm_all_noreps %>% na.omit() %>% dim()
+# 
+# saveRDS(HJ5HKDRX3_CSS1_glm_all_noreps, file = "StandardGLM/Z_HJ5HKDRX3_CSS1_glm_all_noreps.rds")
+
+```
+
+
+### Zeocin and Cycloheximide CSSI
+
+Do the same no-rep thing for Zeocin and Cycloheximide to see if that helps
+
+
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
+# 
+# #Test once
+# testdata <- HKTMWDRX2_Cyc_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 34991) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
+# 
+# HKTMWDRX2_Cyc_CSS1_glm_prep_noreps %>% na.omit() %>% 
+#   #filter(CHROM == "X", POS == 640021) %>%
+#   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+#   filter(CHROM %in% c("M", "I") == FALSE) %>%
+#   group_by(CHROM, POS) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   summarize(Summary = glm_cb2_effect(Allele = Allele,
+#                              Bulk = Bulk,
+#                              Parent = Parent,
+#                              W = AvgCount,
+#                              formula = "Allele ~ Bulk * Parent",
+#                             numgroups = 1, outputlength = 4),
+#             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HKTMWDRX2_Cyc_CSS1_glm_all_noreps
+# 
+# saveRDS(HKTMWDRX2_Cyc_CSS1_glm_all_noreps, file = "StandardGLM/E_HKTMWDRX2_Cyc_CSS1_glm_all_noreps.rds")
+
+```
+
+```{r, eval = FALSE, fig.width = 15, fig.height = 4}
+# HKTMWDRX2_Zeo_CSS1_glm_prep %>% group_by(CHROM, POS, Bulk, Parent, Allele) %>% na.omit() %>% summarize(AvgCount = mean(SmoothCount, na.rm = TRUE)) -> HKTMWDRX2_Zeo_CSS1_glm_prep_noreps
+# 
+# saveRDS(HKTMWDRX2_Zeo_CSS1_glm_prep_noreps, file = "HKTMWDRX2_Zeo_CSS1_glm_prep_noreps.rds")
+# 
+# #Test once
+# # testdata <- HKTMWDRX2_Zeo_CSS1_glm_prep_noreps %>% na.omit() %>% filter(CHROM == "I", POS == 34991) %>% arrange(Bulk, Parent)
+# # table(testdata$Bulk, testdata$Parent)
+# # sum(as.data.frame(table(testdata$Bulk, testdata$Parent))$Freq)
+# # formula = "Allele ~ Bulk * Parent"
+# # glm(formula = formula, family = "binomial", data = testdata, weights = AvgCount)
+# 
+# HKTMWDRX2_Zeo_CSS1_glm_prep_noreps %>% na.omit() %>% 
+#   #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+#   filter(CHROM %in% c("M", "I") == FALSE) %>%
+#   group_by(CHROM, POS) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   summarize(Summary = glm_cb2_effect(Allele = Allele,
+#                              Bulk = Bulk,
+#                              Parent = Parent,
+#                              W = AvgCount,
+#                              formula = "Allele ~ Bulk * Parent",
+#                             numgroups = 1, outputlength = 4),
+#             Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HKTMWDRX2_Zeo_CSS1_glm_all_noreps
+# 
+# saveRDS(HKTMWDRX2_Zeo_CSS1_glm_all_noreps, file = "StandardGLM/E_HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds")
+
+
+```
+
+
+
+## Standard for Effect Size rather than Z Score - not done
+
+### HGVMDRX2 = Fluconazole CSS I without replicates
+ 
+```{r, eval = FALSE}
+# Pick out the specific groups of the dataset
+HGVMVDRX2_smoothed %>% separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "_") %>% 
+  mutate_if(is.character, as.factor) -> HGVMVDRX2_CSS1_glm_prep
+
+#saveRDS(HGVMVDRX2_CSS1_glm_prep, file = "HGVMVDRX2_CSS1_glm_prep.rds")
+
+#Test once
+testdata <- HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 128455) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# test <- glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+# summary(test)
+
+# Run full dataset
+HGVMVDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640021) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HGVMVDRX2norep_CSS1_glm_all
+
+
+saveRDS(HGVMVDRX2norep_CSS1_glm_all, file = "StandardGLM/E_HGVMVDRX2norep_CSS1_glm_all.rds")
+```
+
+
+### HVYTYDRX2 into Fluc8, CuSO48, and Fluc1
+
+### Fluc CSS VIII  Effect
+
+```{r}
+#Test once
+testdata <- HVYTYDRX2_Fluc_CSS8_glm_prep %>% filter(CHROM == "I", POS == 60526) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HVYTYDRX2_Fluc_CSS8_glm_prep %>% select(-Dose) %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                             outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_Fluc_CSS8_glm_all
+
+saveRDS(HVYTYDRX2_Fluc_CSS8_glm_all, file = "StandardGLM/E_HVYTYDRX2_Fluc_CSS8_glm_all.rds")
+```
+
+
+### CuSO4 CSS VIII  Effect
+
+```{r, eval = FALSE}
+
+#Test once
+testdata <- HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>% filter(CHROM == "I", POS == 106953) %>% arrange(Bulk, Parent, Rep)
+table(testdata$Rep, testdata$Bulk, testdata$Parent)
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+#This isn't right
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% filter((Parent == "O8" & Dose == 6) |
+                                         (Parent == "W8" & Dose == 5) | 
+                                         (Parent == "O8" & is.na(Dose) == T) |
+                                         (Parent == "W8" & is.na(Dose) == T) ) %>%
+# Run full dataset
+#HVYTYDRX2_CuSO4_CSS8_glm_prep %>% 
+  select(-Dose) %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HVYTYDRX2_CuSO4_CSS8_glm_all
+
+saveRDS(HVYTYDRX2_CuSO4_CSS8_glm_all, file = "StandardGLM/E_HVYTYDRX2_CuSO4_CSS8_glm_all.rds")
+```
+
+
+
+### H2O2 CSS  VIII Effect
+
+```{r, eval = FALSE}
+
+#Test once
+# testdata <- HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% filter(CHROM == "X", POS == 640028) %>% arrange(Bulk, Parent, Rep)
+# table(testdata$Rep, testdata$Bulk, testdata$Parent)
+# sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+# formula = "Allele ~ Bulk * Parent + Rep"
+# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HJ5HKDRX3_CSS8_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            numgroups = 16, outputlength = 5),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HJ5HKDRX3_CSS8_glm_all
+
+HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "HJ5HKDRX3", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# HJ5HKDRX3_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> HJ5HKDRX3_CSS8_merge_all
+
+saveRDS(HJ5HKDRX3_CSS8_glm_all, file = "StandardGLM/E_HJ5HKDRX3_CSS8_glm_all.rds")
+
+#HJ5HKDRX3_CSS8_perm <- cybrPermute_Rep(dataset = HJ5HKDRX3_CSS8_glm_prep)
+
+```
+
+
+### CuSO4a, CSS I -  (Z score)
+
+
+```{r, eval = FALSE}
+#Test once
+testdata <- HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent"
+coffee <- glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HNGLVDRXY_CuSO4_CSS1_glm_all
+
+
+saveRDS(HNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/E_HNGLVDRXY_CuSO4_CSS1_glm_all.rds")
+```
+
+
+```{r}
+#Test once
+# testdata <- xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "II", POS == 65975) %>% arrange(Bulk, Parent)
+# table(testdata$Bulk, testdata$Parent)
+# formula = "Allele ~ Bulk * Parent"
+# glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+xHNGLVDRXY_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent",
+                            numgroups = 8, outputlength = 4),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> xHNGLVDRXY_CuSO4_CSS1_glm_all
+
+#xHNGLVDRXY_CuSO4_CSS1_glm_all %>% na.omit() %>% dim()
+
+# #Merge with GQ if you want
+# alldata %>% filter(Pool == "xHNGLVDRXY", CHROM %in% c("M", "VIII") == FALSE) %>% mutate_if(is.character, as.factor) -> alldata_H2O2
+# xHNGLVDRXY_CSS8_glm_all %>% na.omit() %>%
+#   merge(alldata_H2O2[,c("POS", "CHROM", "GQ")]) -> xHNGLVDRXY_CSS8_merge_all
+
+saveRDS(xHNGLVDRXY_CuSO4_CSS1_glm_all, file = "StandardGLM/xHNGLVDRXY_CuSO4_CSS1_glm_all.rds")
+```
+
+### CuSO4b, CSS I - 
+
+```{r, eval = FALSE}
+
+# Pick out the specific groups of the dataset
+HKTFTDRX2_smoothed %>% 
+  separate(Dataset, into = c("Parent", "Bulk", "Rep"), sep = "(?<=[a-z,A-Z,0-9])") %>% 
+  mutate_if(is.character, as.factor) -> HKTFTDRX2_CSS1_glm_prep
+
+saveRDS(HKTFTDRX2_CSS1_glm_prep, file = "StandardGLM/E_HKTFTDRX2_CSS1_glm_prep.rds") #saved 1/8/24
+
+#Test once
+testdata <- HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% filter(CHROM == "I", POS == 152004) %>% arrange(Bulk, Parent)
+table(testdata$Bulk, testdata$Parent)
+formula = "Allele ~ Bulk * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HKTFTDRX2_CSS1_glm_prep %>% na.omit() %>% 
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>% 
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk * Parent + Rep",
+                            #numgroups = 16, 
+                            outputlength = 5),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep", "Interaction"))) -> HKTFTDRX2_CuSO4_CSS1_glm_all
+
+
+saveRDS(HKTFTDRX2_CuSO4_CSS1_glm_all, file = "StandardGLM/E_HKTFTDRX2_CuSO4_CSS1_glm_all.rds")  #saved 1/8/24
+
+#HKTFTDRX2_CuSO4_CSS1_glm_all %>% na.omit()
+```
+
+
+
+## 2024 CuSO4 Nested Replicates
+
+### CuSO4 CSS VIII WITH EXTRA REPS 2024
+
+**names changed but need to run glm**
+```{r}
+#Test once
+testdata <- HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM == "I", POS == 151478) %>% arrange(Bulk, Parent, Rep)
+table(testdata$B, testdata$Parent)
+table(testdata$B, testdata$Parent, testdata$Rep)
+
+#sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+
+formula = "Allele ~ B * Parent"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_noreps
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_noreps, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_noreps.rds")
+
+```
+
+### High Dose Only
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  filter(Selection != "Low") %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_noreps_HIGHDOSE
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_noreps_HIGHDOSE, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_noreps_HIGHDOSE.rds")
+```
+
+### Low Dose Only
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  filter(Selection != "High") %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             #Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent",
+                             outputlength = 4),
+            Factor = (c("Intercept", "Bulk", "Parent", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_noreps_LOWDOSE.rds")
+```
+
+### Compare Doses in GLM
+
+```{r}
+#HTG3TDMXY_CSS8_glm_prep %>% mutate(Selection = gsub("N", "A", Selection)) -> HTG3TDMXY_CSS8_glm_prep
+HTG3TDMXY_CSS8_glm_prep %>% mutate(B = gsub("C", "Tox", B)) -> HTG3TDMXY_CSS8_glm_prep
+
+HTG3TDMXY_CSS8_glm_prep %>% mutate(Selection = gsub("N", 0, Selection),
+                                   Selection = gsub("Low", 1, Selection),
+                                   Selection = gsub("High", 2, Selection)) -> HTG3TDMXY_CSS8_glm_prep_Num
+
+HTG3TDMXY_CSS8_glm_prep_Num$Selection <- as.numeric(HTG3TDMXY_CSS8_glm_prep_Num$Selection)
+
+testdata <- HTG3TDMXY_CSS8_glm_prep_Num %>% filter(CHROM == "I", POS == 151478) %>% arrange(Bulk, Parent, Rep)
+
+formula = "Allele ~ Parent * B + Selection"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+HTG3TDMXY_CSS8_glm_prep_Num %>% na.omit() %>%
+  filter(Selection != "High") %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             Selection = Selection,
+                             W = SmoothCount,
+                             formula = "Allele ~ Parent * B + Selection",
+                             outputlength = 5),
+            Factor = (c("Intercept", "Parent", "Bulk", "Selection", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_snum
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_snum, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_snum.rds")
+```
+
+
+
+### Adding Replicates
+
+```{r}
+#Test once
+testdata <- HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM == "I", POS == 151478) %>% arrange(Bulk, Parent, Rep)
+table(testdata$B, testdata$Parent)
+table(testdata$B, testdata$Parent, testdata$Rep)
+
+sum(as.data.frame(table(testdata$Rep, testdata$Bulk, testdata$Parent))$Freq) == 16
+
+formula = "Allele ~ B * Parent + Rep"
+glm(formula = formula, family = "binomial", data = testdata, weights = SmoothCount)
+
+# Run full dataset
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>% 
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent + Rep",
+                             outputlength = 6),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_ad.rds")
+
+#LOW ONLY
+
+# Run full dataset
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  filter(Selection != "High") %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent + Rep",
+                             outputlength = 6),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_LOW
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_LOW, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_LOW_ad.rds")
+
+#HIGH ONLY
+
+# Run full dataset
+HTG3TDMXY_CSS8_glm_prep %>% na.omit() %>%
+  filter(Selection != "Low") %>%
+  #filter(CHROM == "X", POS == 640028) %>%
+  #REMOVE CHROMOSOME OF FIXATION (don't waste resources on that)
+  filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             B = B,
+                             Parent = Parent,
+                             Rep = Rep,
+                             W = SmoothCount,
+                             formula = "Allele ~ B * Parent + Rep",
+                             outputlength = 6),
+            Factor = (c("Intercept", "Bulk", "Parent", "Rep1", "Rep2", "Interaction"))) -> HTG3TDMXY_CuSO4_CSS8_glm_HIGH
+
+saveRDS(HTG3TDMXY_CuSO4_CSS8_glm_HIGH, file = "StandardGLM/E_HTG3TDMXY_CuSO4_CSS8_glm_HIGH_ad.rds")
+```
+
+
+## Running only Allele ~ Bulk
+
+```{r}
+#Function
+glm_cb2_BULKONLY <- function(..., W, formula, outputlength = 2, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+```
+
+
+### Copper Sulfate
+
+```{r}
+#CSS I a
+HNGLVDRXY_CSS1_glm_prep %>% filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HNGLVDRXY_CSS1_glm_BULK
+saveRDS(HNGLVDRXY_CSS1_glm_BULK, file = "StandardGLM/E_HNGLVDRXY_CSS1_glm_BULK.rds")
+
+#CSS I b
+HKTFTDRX2_CSS1_glm_prep %>% filter(CHROM %in% c("M", "I") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HKTFTDRX2_CSS1_glm_BULK
+
+saveRDS(HKTFTDRX2_CSS1_glm_BULK, file = "StandardGLM/E_HKTFTDRX2_CSS1_glm_BULK.rds")
+
+#CSS 8 a
+HVYTYDRX2_cu_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  select(-Dose) %>% na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HVYTYDRX2_cu_CSS8_glm_BULK
+saveRDS(HVYTYDRX2_cu_CSS8_glm_BULK, file = "StandardGLM/E_HVYTYDRX2_cu_CSS8_glm_BULK.rds")
+
+#CSS 8 b
+HTG3TDMXY_CSS8_glm_prep %>% filter(CHROM %in% c("M", "VIII") == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(Summary = glm_cb2_effect(Allele = Allele,
+                             Bulk = Bulk,
+                             W = SmoothCount,
+                             formula = "Allele ~ Bulk",
+                             outputlength = 2),
+            Factor = (c("Intercept", "Bulk"))) -> HTG3TDMXY_CSS8_glm_BULK
+
+saveRDS(HTG3TDMXY_CSS8_glm_BULK, file = "StandardGLM/E_HTG3TDMXY_CSS8_glm_BULK.rds")
+
+```
+
