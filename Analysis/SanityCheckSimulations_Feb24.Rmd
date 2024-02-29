@@ -21,7 +21,7 @@ ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
   data <- list(...)
   
@@ -110,7 +110,7 @@ glm_cb2_effectsize <- function(..., W, formula, numgroups = FALSE, outputlength 
 
 If you have a no effect, what does that look like?
 
-```{r}
+```{r, eval = FALSE}
 #let's just say everything is the same
 
 Unselected_O <- data.frame(POS = 1:100,
@@ -174,7 +174,7 @@ NullModel %>% #filter(POS == 1) %>%
 
 Both parents have the same distribution in the selected bulks
 
-```{r}
+```{r, eval = FALSE}
 #let's just say everything is the same
 
 Unselected_O <- data.frame(POS = 1:100,
@@ -237,7 +237,7 @@ BulkModel %>% filter(Reads > 0) %>%
 
 Okay so now what if this is actually epistatic, ie there is a 2x difference in the wine parent but a 4x difference in oak?
 
-```{r}
+```{r, eval = FALSE}
 #let's just say everything is the same
 
 Unselected_O <- data.frame(POS = 1:100,
@@ -300,7 +300,7 @@ ParentalModel %>% filter(Reads > 0) %>%
 
 What if only one parent has the effect?
 
-```{r}
+```{r, eval = FALSE}
 #let's just say everything is the same
 
 Unselected_O <- data.frame(POS = 1:100,
@@ -363,7 +363,7 @@ And now what if there's sign epistasis?
 
 Okay so now what if this is actually epistatic, ie there is a 2x difference in the wine parent but a 4x difference in oak?
 
-```{r}
+```{r, eval = FALSE}
 #let's just say everything is the same
 
 Unselected_O <- data.frame(POS = 1:100,
@@ -453,7 +453,7 @@ Epistatic_GLM_rev %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + g
 
 What if we reverse Oak and Wine?
 
-```{r}
+```{r, eval = FALSE}
 #Reversing the order
 EpistaticModel %>% mutate(Parent = gsub("W", "A", Parent)) %>%
   filter(Reads > 0) %>%
@@ -476,7 +476,7 @@ Epistatic_GLM_PA %>% ggplot(aes(x = Factor, y = abs(Summary), color = Factor)) +
 
 Finally, what if we just look at bulk?
 
-```{r}
+```{r, eval = FALSE}
 EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
   filter(Reads > 0) %>%
   group_by(POS) %>%
@@ -494,7 +494,7 @@ Epistatic_BulkOnly %>% ggplot(aes(x = Factor, y = (Summary), color = Factor)) + 
 ```
 And what is the effect size?
 
-```{r}
+```{r, eval = FALSE}
 EpistaticModel %>% mutate(Bulk = gsub("D", "aD", Bulk)) %>%
   filter(Reads > 0) %>%
   group_by(POS) %>%
@@ -550,7 +550,7 @@ Epistatic_GLM %>%  pivot_wider(values_from = Summary, names_from = Factor) %>%
 ```
 Combine these
 
-```{r, fig.width=12, fig.height=4}
+```{r, eval = FALSE, fig.width=12, fig.height=4}
 rbind(data.frame(Null_GLM, ds = "A_Null"),
       data.frame(Parental_GLM, ds = "B_Bulk"),
       data.frame(SingleParent_GLM, ds = "C_Single Parent"),
@@ -561,7 +561,7 @@ Simulations %>% ggplot(aes(x = ds, y = Summary, color = Factor)) + geom_hline(yi
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 
 Simulations %>% pivot_wider(values_from = Summary, names_from = Factor) %>%
   ggplot(aes(x = Parent, y = Interaction, color = ds, fill = ds)) + geom_point() + geom_smooth(method = "lm") + 
@@ -589,7 +589,7 @@ Simulations %>% pivot_wider(values_from = Summary, names_from = Factor) %>%
 
 How do we actually get more of a parentxinteraction effect? 
 
-```{r}
+```{r, eval = FALSE}
 Unselected_O <- data.frame(POS = 1:100,
                           Bulk = "D",
                           Parent = "O",
@@ -634,3 +634,123 @@ TestModel %>% filter(Reads > 0) %>%
 
 ```
 
+
+## Modeling epistasis data by different glms
+
+```{r}
+signepistasisdata <- data.frame(Bulk = c(0,0,1,1),
+                                Parent = c(0,1,0,1),
+                                A = c(50, 50, 80, 20),
+                                B = c(50, 50, 20, 80))
+
+signepistasisdata %>% ggplot(aes(x = Bulk, y = log2(A/B), color = as.factor(Parent))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+signepistasisdata %>% ggplot(aes(x = Parent, y = log2(A/B), color = as.factor(Bulk))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+
+signepistasisdata %>% pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads")  %>% mutate(across(where(is.character),as.factor))-> signepistasispivot
+
+glm_fit <- glm("Allele ~ Bulk*Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- data.frame(glm_fit$coefficients, model = "Bulk*Parent")
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk + Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk+Parent"))
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk"))
+glm_fit$aic
+
+maxcoefficients$names <- rownames(maxcoefficients)
+maxcoefficients %>% mutate(names = gsub("1", "", names)) %>% mutate(names = gsub("2", "", names)) %>%
+  ggplot(aes(x = names, y = glm_fit.coefficients, color = model)) + geom_point(size = 4, alpha = 0.3) +  geom_hline(yintercept = 0) +
+ ggtitle("Sign Epistasis")
+
+```
+
+```{r}
+signepistasisdata <- data.frame(Bulk = c(0,0,1,1),
+                                Parent = c(0,1,0,1),
+                                A = c(20, 20, 80, 20),
+                                B = c(80, 80, 20, 80))
+
+signepistasisdata %>% ggplot(aes(x = Bulk, y = log2(A/B), color = as.factor(Parent))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+signepistasisdata %>% ggplot(aes(x = Parent, y = log2(A/B), color = as.factor(Bulk))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+
+signepistasisdata %>% pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads")  %>% mutate(across(where(is.character),as.factor))-> signepistasispivot
+
+glm_fit <- glm("Allele ~ Bulk*Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- data.frame(glm_fit$coefficients, model = "Bulk*Parent")
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk + Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk+Parent"))
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk"))
+glm_fit$aic
+
+maxcoefficients$names <- rownames(maxcoefficients)
+maxcoefficients %>% mutate(names = gsub("1", "", names)) %>% mutate(names = gsub("2", "", names)) %>%
+  ggplot(aes(x = names, y = glm_fit.coefficients, color = model)) + geom_point(size = 4, alpha = 0.3) +  geom_hline(yintercept = 0) +
+ ggtitle("Magnitude Epistasis")
+```
+
+```{r}
+signepistasisdata <- data.frame(Bulk = c(0,0,1,1),
+                                Parent = c(0,1,0,1),
+                                A = c(40, 40, 20, 20),
+                                B = c(40, 40, 80, 80))
+
+signepistasisdata %>% ggplot(aes(x = Bulk, y = log2(A/B), color = as.factor(Parent))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+signepistasisdata %>% ggplot(aes(x = Parent, y = log2(A/B), color = as.factor(Bulk))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+
+signepistasisdata %>% pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads")  %>% mutate(across(where(is.character),as.factor))-> signepistasispivot
+
+glm_fit <- glm("Allele ~ Bulk*Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- data.frame(glm_fit$coefficients, model = "Bulk*Parent")
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk + Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk+Parent"))
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk"))
+glm_fit$aic
+
+maxcoefficients$names <- rownames(maxcoefficients)
+maxcoefficients %>% mutate(names = gsub("1", "", names)) %>% mutate(names = gsub("2", "", names)) %>%
+  ggplot(aes(x = names, y = glm_fit.coefficients, color = model)) + geom_point(size = 4, alpha = 0.3) +  geom_hline(yintercept = 0) +
+ ggtitle("Bulk Only")
+```
+
+```{r}
+signepistasisdata <- data.frame(Bulk = c(0,0,1,1),
+                                Parent = c(0,1,0,1),
+                                A = c(60, 60, 20, 20),
+                                B = c(40, 40, 80, 80))
+
+signepistasisdata %>% ggplot(aes(x = Bulk, y = log2(A/B), color = as.factor(Parent))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+signepistasisdata %>% ggplot(aes(x = Parent, y = log2(A/B), color = as.factor(Bulk))) + geom_point(size = 4, alpha = 0.3) + geom_line()
+
+signepistasisdata %>% pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads")  %>% mutate(across(where(is.character),as.factor))-> signepistasispivot
+
+glm_fit <- glm("Allele ~ Bulk*Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- data.frame(glm_fit$coefficients, model = "Bulk*Parent")
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk + Parent", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk+Parent"))
+glm_fit$aic
+
+glm_fit <- glm("Allele ~ Bulk", data = as.data.frame(signepistasispivot), weights = Reads, family = binomial)
+maxcoefficients <- rbind(maxcoefficients, data.frame(glm_fit$coefficients, model = "Bulk"))
+glm_fit$aic
+
+maxcoefficients$names <- rownames(maxcoefficients)
+maxcoefficients %>% mutate(names = gsub("1", "", names)) %>% mutate(names = gsub("2", "", names)) %>%
+  ggplot(aes(x = names, y = glm_fit.coefficients, color = model)) + geom_point(size = 4, alpha = 0.3) + 
+  geom_hline(yintercept = 0) +
+  ggtitle("Bulk Only") 
+```

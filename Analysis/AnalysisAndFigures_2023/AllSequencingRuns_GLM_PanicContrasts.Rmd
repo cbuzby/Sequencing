@@ -1,0 +1,376 @@
+---
+title: "2024 GLM Effects for All Experiments"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+require(lme4)
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+## Functions
+
+```{r}
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return effects only
+
+  output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.25))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return effects only
+
+  output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.5))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+```
+
+
+## Load In GLM Prep Data
+
+```{r}
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(Bulk = gsub("aUnselected", "aD", Bulk)) %>% mutate_if(is.character,as.factor)
+
+HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")%>% mutate_if(is.character,as.factor)
+
+#CuSO4 CSS8
+HVYTYDRX2_CuSO4_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")%>% mutate_if(is.character,as.factor)
+
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  mutate(DoseCol = Bulk) %>%
+  select(-Bulk) %>% 
+  select(DoseCol = DoseCol, Bulk = B, Allele = Allele, Bulk = Bulk,  POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+# HTG3TDMXY_CSS8_glm_prep %>% 
+#   mutate(DoseCol = gsub("5", "5_", DoseCol)) %>% 
+#   mutate(DoseCol = gsub("D", "D_", DoseCol)) %>%
+#   separate(DoseCol, into = c("Dose", "DoseRep"), sep = "_") %>% 
+#   mutate(Dose = paste(Parent,Dose, sep = "_")) %>%
+#   mutate(Dose = gsub("O8_35", "1", Dose)) %>%
+#   mutate(Dose = gsub("O8_45", "2", Dose)) %>%
+#   mutate(Dose = gsub("W8_35", "2", Dose)) %>%
+#   mutate(Dose = gsub("W8_25", "1", Dose)) %>%
+#   mutate(Dose = gsub(".*D", "0", Dose)) -> HTG3TDMXY_CSS8_glm_prep_selection
+
+
+```
+
+### Define contrasts for each
+
+```{r}
+contrasts(HNGLVDRXY_CSS1_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HNGLVDRXY_CSS1_glm_prep$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HNGLVDRXY_CSS1_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+contrasts(HKTFTDRX2_CSS1_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HKTFTDRX2_CSS1_glm_prep$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HKTFTDRX2_CSS1_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+contrasts(HTG3TDMXY_CSS8_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HTG3TDMXY_CSS8_glm_prep$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HTG3TDMXY_CSS8_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+```
+
+
+## Run the effects glm for each with the new contrasts
+
+CuSO4 1A
+
+```{r}
+HNGLVDRXY_CSS1_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HNGLVDRXY_CSS1_contrastGLM
+
+saveRDS(HNGLVDRXY_CSS1_contrastGLM, file = "HNGLVDRXY_CSS1_contrastGLM.rds")
+```
+
+CuSO4 1B
+
+```{r}
+HKTFTDRX2_CSS1_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HKTFTDRX2_CSS1_contrastGLM
+
+saveRDS(HKTFTDRX2_CSS1_contrastGLM, file = "HKTFTDRX2_CSS1_contrastGLM.rds")
+```
+
+CuSO4 8A
+
+```{r}
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  select(-Dose) %>% na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HVYTYDRX2_CuSO4_CSS8_contrastGLM
+
+saveRDS(HVYTYDRX2_CuSO4_CSS8_contrastGLM, file= "HVYTYDRX2_CuSO4_CSS8_contrastGLM.rds")
+```
+
+CuSO4 8B
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HTG3TDMXY_CSS8_contrastGLM
+
+saveRDS(HTG3TDMXY_CSS8_contrastGLM, file = "HTG3TDMXY_CSS8_contrastGLM.rds")
+```
+
+## Plot here
+
+```{r}
+rbind(HTG3TDMXY_CSS8_contrastGLM,
+      HVYTYDRX2_CuSO4_CSS8_contrastGLM,
+      HKTFTDRX2_CSS1_contrastGLM,
+      HNGLVDRXY_CSS1_contrastGLM) -> CuSO4_withcontrasts
+
+CuSO4_withcontrasts %>% ggplot(aes(x = POS, y = Effect, color = labels)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")
+```
+
+
+## Now let's try contrasts
+
+### Same as above, except let's make the Intecept 0
+
+```{r}
+simepistasis <- data.frame(Index = 1:100,
+                           S_1 = 1:100,
+           S_2 = 100, 
+           D_1 = 50, 
+           D_2 = 50)
+
+simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
+  mutate(B = 101-A) %>%
+  pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
+  separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
+  mutate_if(is.character, as.factor) -> testdata_c1
+
+contrasts(testdata_c1$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+testdata_c1 %>% group_by(Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,  
+                           Bulk = Bulk,
+                           Parent = Parent,
+                           W = count,
+                           formula = "Allele ~ 0+Bulk*Parent"),
+            label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c1
+
+testglm_c1 %>% ggplot(aes(x = Index, y = effect, color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 1")
+
+################################################################################
+simepistasis <- data.frame(Index = 1:100,
+                           S_2 = 1:100,
+           S_1 = 100, 
+           D_1 = 50, 
+           D_2 = 50)
+
+simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
+  mutate(B = 101-A) %>%
+  pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
+  separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
+  mutate_if(is.character, as.factor) -> testdata_c2
+ 
+contrasts(testdata_c2$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c2$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c2$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+testdata_c2 %>% group_by(Pool, Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,  
+                           Bulk = Bulk,
+                           Parent = Parent,
+                           W = count,
+                           formula = "Allele ~ 0+ Bulk*Parent"),
+            label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c2
+
+testglm_c2 %>% ggplot(aes(x = Index, y = effect, color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 2")
+```
