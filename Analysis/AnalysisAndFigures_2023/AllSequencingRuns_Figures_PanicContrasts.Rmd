@@ -1,0 +1,724 @@
+---
+title: "AllSequencingRuns Figures"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Effect = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Effect = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+
+
+## Load in Data
+
+### GLM Outputs
+
+```{r}
+#files <- as.data.frame(x = dir("StandardGLM"))
+#files %>% filter(grepl("glm_all.rds",`dir("StandardGLM")`)) %>% transmute(files = `dir("StandardGLM")`) -> all_files
+
+#Copper
+HNGLVDRXY_CSS1_contrastGLM <- readRDS("HNGLVDRXY_CSS1_contrastGLM.rds")	%>% filter(CHROM != "I") %>%
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000)))))	 #Cu1	
+
+HKTFTDRX2_CSS1_contrastGLM <- readRDS("HKTFTDRX2_CSS1_contrastGLM.rds")	%>% filter(CHROM != "I") %>%
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu1			
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM <- readRDS("HVYTYDRX2_CuSO4_CSS8_contrastGLM.rds") %>% filter(CHROM != "VIII") %>%
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu8
+
+HTG3TDMXY_CSS8_contrastGLM <- readRDS(file = "HTG3TDMXY_CSS8_contrastGLM.rds") %>% filter(CHROM != "VIII") %>%
+  mutate(CHROM = factor(CHROM, levels = as.character(as.roman(c(1:16,1000))))) #Cu8
+
+```
+
+### GLM Cutoffs
+
+```{r}
+
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_chrparentQs <- readRDS("StandardGLM/Ec_HNGLVDRXY_CSS1_chrparentQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
+HNGLVDRXY_CSS1_parQs <- readRDS("StandardGLM/Ec_HNGLVDRXY_CSS1_parQs.rds") %>% mutate(ds = "HNGLVDRXY", CSS = "I")
+
+HKTFTDRX2_CSS1_chrparentQs <- readRDS("StandardGLM/Ec_HKTFTDRX2_CSS1_chrparentQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
+HKTFTDRX2_CSS1_parQs <- readRDS("StandardGLM/Ec_HKTFTDRX2_CSS1_parQs.rds") %>% mutate(ds = "HKTFTDRX2", CSS = "I")
+
+#CuSO4 CSS8 - pending run
+HVYTYDRX2_cu_CSS8_chrparentQs <- readRDS("StandardGLM/Ec_HVYTYDRX2_cu_CSS8_chrparentQs.rds") %>% mutate(ds = "HVYTYDRX2", CSS = "VIII")
+HVYTYDRX2_cu_CSS8_parQs <- readRDS("StandardGLM/Ec_HVYTYDRX2_cu_CSS8_parQs.rds") %>% mutate(ds = "HVYTYDRX2", CSS = "VIII")
+
+#New 2024
+HTG3TDMXY_CSS8_glm_chrparentQs <- readRDS(file = "StandardGLM/Ec_HTG3TDMXY_CSS8_glm_chrparentQs.rds") %>% mutate(ds = "HTG3TDMXY", CSS = "VIII")
+HTG3TDMXY_CSS8_glm_parQs <- readRDS(file = "StandardGLM/Ec_HTG3TDMXY_CSS8_glm_parQs.rds")  %>% mutate(ds = "HTG3TDMXY", CSS = "VIII")
+
+```
+
+### Load Genes of Interest for CuSO4
+
+```{r}
+genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+
+sgd_orfs <- read.csv("SGD_ORFs.csv")
+
+sgd_orfs %>% filter(Gene.symbol %in% genes) -> sgd_copper
+```
+
+
+# Plotting by Experiment
+
+This includes all experiments and FDR of 0.05, 0.01, and 0.005. Each cutoff has only been run from one permutation, so multiple would ideally be done on the HPC.
+
+## Plot CuSO4 Data
+
+Individual Dataset HNGLVDRXY
+
+```{r, fig.height = 3, fig.width = 9}
+
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Chromosome-Specific Cutoffs")
+
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Factor-Specific Cutoffs")
+```
+
+Individual Set HKTFTDRX2_CSS1_parQs
+
+```{r, fig.height = 3, fig.width = 9}
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_chrparentQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Chromosome-Specific Cutoffs")
+
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI Factor-Specific Cutoffs")
+```
+
+
+```{r, fig.height = 3, fig.width = 9}
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_chrparentQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8 Chromosome-Specific Cutoffs")
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = Factor)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = Factor), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = Factor), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = Factor), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8 Factor-Specific Cutoffs")
+```
+
+```{r, fig.height = 3, fig.width = 9}
+
+HTG3TDMXY_CSS8_contrastGLM %>% merge(HTG3TDMXY_CSS8_glm_parQs) %>% filter(labels != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+    geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8 No Replicates")
+```
+
+```{r, fig.height = 3, fig.width = 9}
+rbind(data.frame(HKTFTDRX2_CSS1_contrastGLM, ds = "HKTFTDRX2", CSS = "I"),
+      data.frame(HVYTYDRX2_CuSO4_CSS8_contrastGLM, ds = "HVYTYDRX2", CSS = "VIII"),
+      data.frame(HTG3TDMXY_CSS8_contrastGLM, ds = "HTG3TDMXY", CSS = "VIII"), #2024 ADDITION
+      data.frame(HNGLVDRXY_CSS1_contrastGLM, ds = "HNGLVDRXYx", CSS = "I")) -> CuSO4_Data
+
+CuSO4_Data %>% filter(labels == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Effect), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Bulk Effects")
+
+CuSO4_Data %>% filter(labels == "Parent") %>% 
+  ggplot(aes(x = POS, y = abs(Effect), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Parent Effects")
+
+CuSO4_Data %>% filter(labels == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Effect), color = CSS)) + geom_line() + facet_grid(ds~CHROM, scales = "free", space = "free") + ggtitle("CuSO4 Interaction Effects")
+
+```
+
+
+
+
+
+# Plotting only whole-genome FDR 0.05 cutoffs
+
+```{r, fig.height = 5, fig.width = 12}
+
+################################################################################ CuSO4 CSS I 
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(labels != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI ")+
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank())
+
+################################################################################
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(labels != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8") + 
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) 
+
+
+################################################################################ CuSO4 CSS VIII 2024 with replicates
+HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  
+  filter(labels != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("CuSO4 CSS VIII ") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) 
+
+################################################################################ CuSO4 CSS VIII 2024 without replicates
+HTG3TDMXY_CuSO4_CSS8_glm_noreps %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  
+  filter(labels != "Intercept") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  
+  ggtitle("CuSO4 CSS VIII w/o Replicates") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) 
+```
+
+# Calling Peaks using 5% FDR Cutoffs
+
+```{r, fig.height = 5, fig.width = 12}
+
+
+################################################################################ CuSO4 CSS I 
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% 
+  filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+
+  facet_grid(labels~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI ")+
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank())+
+  scale_alpha_discrete(range = c(0, 0.006)) 
+
+################################################################################ CuSO4 CSS VIII
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+
+  facet_grid(labels~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8") + 
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.006))
+
+
+
+################################################################################ CuSO4 CSS VIII 2024 without replicates
+HTG3TDMXY_CSS8_contrastGLM %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  
+filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(size = 0.2, alpha = 0.5) + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+  
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(labels~CHROM, space = "free", scales = "free") + 
+  scale_color_manual(values = c("black",  "violet", "gray", "gray90", "gray90")) +
+  ggtitle("CuSO4 CSS 8 No Replicates") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.006))
+
+
+
+```
+
+
+### Plotting Multiple Experiments for Bulk Effects
+
+CuSO4 Merge
+
+```{r, fig.height = 5, fig.width = 12}
+
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(labels != "Intercept") %>%
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit()  -> da
+
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% 
+  filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit()  -> db
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit()  -> d8
+
+HTG3TDMXY_CSS8_contrastGLM %>% merge(HTG3TDMXY_CSS8_glm_parQs) %>% 
+  filter(labels != "Intercept") %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit()  -> d824r
+
+################################################################################
+
+rbind(da, db, d8, d824r) %>%
+  filter(labels == "Bulk") %>%
+
+  ggplot(aes(x = POS, y = abs(Effect), color = ds)) + geom_point(size = 0.4, alpha = 0.5) + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = ds), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = ds), linetype = "dashed") + 
+
+  facet_grid(CSS~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 Bulk Effects") + 
+  ylab("abs(Zscore)") +
+  scale_color_manual(values = c("gray30", "#24588A", "firebrick", "#ED7B01")) +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.004))
+
+rbind(da, db, d8, d824r) %>%
+  filter(labels == "Interaction") %>%
+
+  ggplot(aes(x = POS, y = abs(Effect), color = ds)) + geom_point(size = 0.4, alpha = 0.5) + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = ds), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = ds), linetype = "dashed") + 
+
+  facet_grid(CSS~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 Interaction Effects") + 
+  ylab("abs(Zscore)") +
+  scale_color_manual(values = c("gray30", "#24588A", "firebrick", "#ED7B01")) +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.004))
+
+################################################################################
+#Do bulk stuff separated by each run
+
+rbind(da, db, d8, d824r) %>%
+  filter(labels == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = CSS)) + geom_point(size = 0.4, alpha = 0.2) + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = CSS), size = 2) +
+  geom_hline(aes(yintercept = quant095, color = CSS)) + 
+
+  facet_grid(ds~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 Bulk Effects") + 
+  ylab("abs(Zscore)") +
+  scale_color_manual(values = c("#24588A", "#ED7B01")) +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.004))
+
+rbind(da, db, d8, d824r) %>%
+  filter(labels == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Effect), color = CSS)) + geom_point(size = 0.4, alpha = 0.2) + 
+  
+  geom_vline(aes(xintercept = POS, alpha = peakbroad, color = CSS), size = 2) +
+  geom_hline(aes(yintercept = quant095, color = CSS)) + 
+
+  facet_grid(ds~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 Interaction Effects") + 
+  ylab("abs(Zscore)") +
+  scale_color_manual(values = c("#24588A", "#ED7B01")) +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.004))
+```
+
+
+# CuSO4 Plotting for TAGC
+```{r, fig.height = 4, fig.width = 12}
+################################################################################ CuSO4 CSS I
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(labels != "Intercept") %>%
+    filter(grepl("Rep", labels) == FALSE) %>%
+
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(alpha = 0.2, size = 0.2) + 
+  
+  #geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  scale_color_manual(values = c("black",  "purple", "gray", "gray90", "gray90")) +
+
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI ") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank())+
+  scale_alpha_discrete(range = c(0, 0.006)) 
+
+################################################################################ CuSO4 CSS I 
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% 
+  filter(labels != "Intercept") %>%  filter(grepl("Rep", labels) == FALSE) %>%
+
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(alpha = 0.2, size = 0.2) + 
+  
+  #geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  scale_color_manual(values = c("black",  "purple", "gray", "gray90", "gray90")) +
+
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSSI ")+
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank())+
+  scale_alpha_discrete(range = c(0, 0.006)) 
+
+################################################################################ CuSO4 CSS VIII
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(labels != "Intercept") %>%
+    filter(grepl("Rep", labels) == FALSE) %>%
+
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(alpha = 0.2, size = 0.2) + 
+  
+  #geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+    geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  scale_color_manual(values = c("black",  "purple", "gray", "gray90", "gray90")) +
+
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("CuSO4 CSS8") + 
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.006))
+
+################################################################################ CuSO4 CSS VIII 24
+
+HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  mutate(CHROM = labels(CHROM, levels = as.character(as.roman(1:16)))) %>%
+  
+filter(labels != "Intercept") %>%
+  filter(grepl("Rep", labels) == FALSE) %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(alpha = 0.2, size = 0.2) + 
+  
+  #geom_vline(aes(xintercept = POS, alpha = peakbroad, color = labels), size = 2) +
+  
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+    scale_color_manual(values = c("black",  "purple", "gray", "gray90", "gray90")) +
+
+  ggtitle("CuSO4 CSS 8 Replicates") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) +
+  scale_alpha_discrete(range = c(0, 0.006)) 
+```
+
+Plotting interaction vs parent effects to see how well they match
+
+```{r, fig.height = 4, fig.width = 12}
+HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  mutate(CHROM = labels(CHROM, levels = as.character(as.roman(1:16)))) %>%
+  
+filter(labels != "Intercept", labels != "Bulk") %>%
+  filter(grepl("Rep", labels) == FALSE) %>%
+  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+  
+  ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_point(alpha = 0.2, size = 0.2) + 
+  
+  geom_hline(aes(yintercept = quant095, color = labels), linetype = 1) + 
+  #   geom_hline(aes(yintercept = quant099, color = labels), linetype = 2) + 
+  # geom_hline(aes(yintercept = quant0995, color = labels), linetype = 3) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+    scale_color_manual(values = c("purple", "gray", "gray90", "gray90")) +
+
+  ggtitle("CuSO4 CSS 8 Replicates, Parent vs Interaction") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank(), legend.position = "none") +
+  scale_alpha_discrete(range = c(0, 0.006)) 
+
+HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  mutate(CHROM = labels(CHROM, levels = as.character(as.roman(1:16)))) %>%
+  select(labels, CHROM, POS, Effect) %>%
+  pivot_wider(names_from = labels, values_from = Effect) %>%
+ # na.omit() %>%
+
+  ggplot(aes(x = POS, y = abs(Parent) - abs(Interaction))) + geom_point(alpha = 0.2, size = 0.2) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  ggtitle("CuSO4 CSS 8 Replicates, Parent MINUS Interaction") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank())
+
+HTG3TDMXY_CuSO4_CSS8_glm %>%  #CHANGE DATASET
+  merge(HTG3TDMXY_CSS8_glm_parQs)%>% #CHANGE CUTOFF FILE
+  mutate(CHROM = Factor(CHROM, levels = as.character(as.roman(1:16)))) %>%
+  select(Factor, CHROM, POS, Effect) %>% 
+  pivot_wider(names_from = Factor, values_from = Effect) %>%
+  ggplot(aes(x = POS, y = log2(abs(Parent)/abs(Interaction)))) + geom_point(alpha = 0.2, size = 0.2) + 
+  geom_hline(yintercept = 0) + 
+  facet_grid(~CHROM, space = "free", scales = "free") + 
+  ggtitle("CuSO4 CSS 8 Replicates, log2(Parent/Interaction)") +
+  xlab("abs(Zscore)") +
+  theme(axis.text.x = element_blank()) 
+```
+
+
+# Plotting Interactions based on 5% FDR
+
+### Function for circos plots
+
+```{r}
+# d1 = rbind(xHNGLVDRXY_CuSO4_CSS1_circ, ChromosomeScale2)
+# d8 = rbind(HVYTYDRX2_CuSO4_CSS8_circ, ChromosomeScale2)
+# peaklist8 = HVYTYDRX2_CuSO4_CSS8_circpeaks
+
+cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, color1 = "#24588A", color8 = "#ED7B01", opacity = "50"){
+  
+  color1fade_50 <- paste(color1, "50", sep = "")
+  color8fade_50 <- paste(color8, "50", sep = "")
+  
+  color1fade <- paste(color1, opacity, sep = "")
+  color8fade <- paste(color8, opacity, sep = "")
+
+  if(is.null(d8)){
+    d8 <- d1
+    include8 <- FALSE
+  }else{
+    include8 <- TRUE
+  }
+    #SET UP DATA
+  df8 <- data.frame(sectors = as.character(d8$CHROM),
+                 x = d8$POS,
+                 y = abs(d8$Effect),
+                  label = d8$label)
+
+  df1 <- data.frame(sectors = as.character(d1$CHROM),
+                 x = d1$POS,
+                 y = abs(d1$Effect),
+                  label = d1$label)
+
+  #Take just the interactions of each
+  df8int <- df8 %>% filter(label == "Interaction")
+  df1int <- df1 %>% filter(label == "Interaction")
+
+    #REORDER THE CHROMOSOMES
+  df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+  df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+  
+  ##############################################################################
+  dfall <- rbind(df1int, df8int) %>% na.omit()
+  circos.par("track.height" = 0.3, start.degree = 90, cell.padding = c(0,0))
+  circos.initialize(sectors = dfall$sectors, x = dfall$x)
+
+  if(is.null(maxy)){
+    #I think this makes the sizes?
+    circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, y = dfall$y, 
+        panel.fun = function(x, y) {
+            circos.text(CELL_META$xcenter, 
+                0 - mm_y(5), 
+                CELL_META$sector.index,
+                niceFacing = FALSE)
+            circos.axis(labels.cex = 0.1)
+    })
+  }else{
+    circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+      panel.fun = function(x, y) {
+          circos.text(CELL_META$xcenter, 
+              0 - mm_y(5), 
+              CELL_META$sector.index,
+              niceFacing = FALSE)
+          circos.axis(labels.cex = 0.1)
+      })
+  }
+  #Makes the chromosome overlap parts
+  #CHROMOSOME I
+  draw.sector(83.5, #RIGHT
+              90, #LEFT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color1fade_50, border = FALSE)
+  if(include8 == TRUE){
+    #CHROMOSOME VIII
+    draw.sector(289.5, #LEFT
+              305.4, #RIGHT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color8fade_50, border = FALSE)
+  }
+  
+  
+  #Makes the lines
+  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
+  circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
+  
+  if(is.null(peaklist8) == FALSE){
+    if(length(peaklist8$POS) >= 1){
+      for(i in 1:length(peaklist8$POS)){
+      circos.link(peaklist8$CHROM[i], 
+                  peaklist8$POS[i], 
+                  #Add 8 after
+                  "VIII", c(0, max(dfall$x[dfall$sectors == "VIII"])),  
+                  
+                  col = color8fade, 
+                  h.ratio = 0.3, 
+                  border = color8fade, 
+                  lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 8")
+    }
+    
+  }
+
+  if(is.null(peaklist1) == FALSE){
+    if(length(peaklist1$POS) >= 1){
+      for(i in 1:length(peaklist1$POS)){
+        circos.link("I",c(0, max(dfall$x[dfall$sectors == "I"])),  
+                    #add 1 first
+                    peaklist1$CHROM[i], 
+                    peaklist1$POS[i], 
+                    col = color1fade, 
+                    h.ratio = 0.3, 
+                    border = color1fade, 
+                    lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 1")
+    }
+  }  
+  
+  circos.clear()
+}
+```
+
+
+## CuSO4 Interactions
+
+### First CSSI Experiment (without replicates)
+
+```{r, fig.height= 8, fig.width= 8}
+################################################################################ CuSO4 CSS I
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor == "Interaction") %>%
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+transmute(CHROM = CHROM, POS = POS, Effect = Effect, label = Factor) -> xHNGLVDRXY_CuSO4_CSS1_circ
+
+HNGLVDRXY_CSS1_contrastGLM %>% merge(HNGLVDRXY_CSS1_parQs) %>% filter(Factor == "Interaction") %>%
+  filter(abs(Effect) >= quant095) %>% select(CHROM, POS) %>% mutate(label = "Interaction", Effect = 1) -> xHNGLVDRXY_CuSO4_CSS1_circpeaks
+
+################################################################################ CuSO4 CSS VIII
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+transmute(CHROM = CHROM, POS = POS, Effect = Effect, label = Factor) -> HVYTYDRX2_CuSO4_CSS8_circ
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+  filter(abs(Effect) >= quant095) %>% select(CHROM, POS) %>% mutate(label = "Interaction", Effect = 1) -> HVYTYDRX2_CuSO4_CSS8_circpeaks
+
+
+cybr_circos(d1 = rbind(xHNGLVDRXY_CuSO4_CSS1_circ, ChromosomeScale2), 
+            d8 = rbind(HVYTYDRX2_CuSO4_CSS8_circ, ChromosomeScale2),
+            peaklist1 = xHNGLVDRXY_CuSO4_CSS1_circpeaks, 
+            peaklist8 = HVYTYDRX2_CuSO4_CSS8_circpeaks)
+
+```
+
+### Second CSSI Experiment (with replicates)
+
+```{r, fig.height= 8, fig.width= 8}
+################################################################################ CuSO4 CSS I
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor == "Interaction") %>%
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+transmute(CHROM = CHROM, POS = POS, Effect = Effect, label = Factor) -> HKTFTDRX2_CSS1_circ
+
+HKTFTDRX2_CSS1_contrastGLM %>% merge(HKTFTDRX2_CSS1_parQs) %>% filter(Factor == "Interaction") %>%
+  filter(abs(Effect) >= quant095) %>% select(CHROM, POS) %>% mutate(label = "Interaction", Effect = 1) -> HKTFTDRX2_CSS1__circpeaks
+
+################################################################################ CuSO4 CSS VIII
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+ mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+transmute(CHROM = CHROM, POS = POS, Effect = Effect, label = Factor) -> HVYTYDRX2_CuSO4_CSS8_circ
+
+HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+  filter(abs(Effect) >= quant095) %>% select(CHROM, POS) %>% mutate(label = "Interaction", Effect = 1) -> HVYTYDRX2_CuSO4_CSS8_circpeaks
+
+
+cybr_circos(d1 = rbind(HKTFTDRX2_CSS1_circ, ChromosomeScale2), 
+            d8 = rbind(HVYTYDRX2_CuSO4_CSS8_circ, ChromosomeScale2),
+            peaklist1 = HKTFTDRX2_CSS1__circpeaks, 
+            peaklist8 = HVYTYDRX2_CuSO4_CSS8_circpeaks)
+
+```
+

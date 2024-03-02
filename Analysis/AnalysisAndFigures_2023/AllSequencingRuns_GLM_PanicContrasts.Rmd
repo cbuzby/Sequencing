@@ -145,45 +145,7 @@ glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4)
   
 }
 
-glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
-  data <- list(...)
-  
-  #Ensure that there is a formula and W parameter
-  if (is.null(W) || is.null(formula)) {
-    stop("Weights (W) and formula must be provided")
-  }
-  #Set formula
-  glm_formula <- as.formula(formula)
-  #Ensure that formula works for the data provided
-  if (!all(names(data) %in% all.vars(glm_formula))) {
-    stop("One or more variables in the formula are not provided as arguments")
-  }
-  
-  #########################
-  #MAYBEWORKS
-  for(i in all.vars(glm_formula)){
-    if(length(unique(as.data.frame(data)[,i])) < 2){
-      output <- rep(NA, outputlength)
-      #print("Not enough levels within groups")
-      
-      return(output)
-    }
-  }
-  
-  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
-  
-  #Return effects only
 
-  output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.5))]
-
-  
-  if(length(output) == outputlength){
-    return(output)
-  }else{
-    return(rep(NA, outputlength))
-  }
-  
-}
 
 ```
 
@@ -202,7 +164,7 @@ HVYTYDRX2_CuSO4_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_p
 
 HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
   mutate(DoseCol = Bulk) %>%
-  select(-Bulk) %>% 
+  #select(-Bulk) %>% 
   select(DoseCol = DoseCol, Bulk = B, Allele = Allele, Bulk = Bulk,  POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
   filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor)
 
@@ -306,25 +268,25 @@ saveRDS(HTG3TDMXY_CSS8_contrastGLM, file = "HTG3TDMXY_CSS8_contrastGLM.rds")
 
 ## Plot here
 
-```{r}
-rbind(HTG3TDMXY_CSS8_contrastGLM,
-      HVYTYDRX2_CuSO4_CSS8_contrastGLM,
-      HKTFTDRX2_CSS1_contrastGLM,
-      HNGLVDRXY_CSS1_contrastGLM) -> CuSO4_withcontrasts
+```{r, fig.width=12, fig.height=5}
+rbind(HTG3TDMXY_CSS8_contrastGLM[HTG3TDMXY_CSS8_contrastGLM$CHROM != "VIII",],
+      HVYTYDRX2_CuSO4_CSS8_contrastGLM[HVYTYDRX2_CuSO4_CSS8_contrastGLM$CHROM != "VIII",],
+      HKTFTDRX2_CSS1_contrastGLM[HKTFTDRX2_CSS1_contrastGLM$CHROM != "I",],
+      HNGLVDRXY_CSS1_contrastGLM[HNGLVDRXY_CSS1_contrastGLM$CHROM != "I",]) -> CuSO4_withcontrasts
 
-CuSO4_withcontrasts %>% ggplot(aes(x = POS, y = Effect, color = labels)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")
+CuSO4_withcontrasts %>% filter(labels != "Intercept") %>% ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")
 ```
 
 
 ## Now let's try contrasts
 
-### Same as above, except let's make the Intecept 0
+### Contrasts adjusted, and absolute values found for comparison between each
 
 ```{r}
 simepistasis <- data.frame(Index = 1:100,
                            S_1 = 1:100,
-           S_2 = 100, 
-           D_1 = 50, 
+           S_2 = 100,
+           D_1 = 50,
            D_2 = 50)
 
 simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
@@ -338,20 +300,20 @@ contrasts(testdata_c1$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
 contrasts(testdata_c1$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
 
 testdata_c1 %>% group_by(Index) %>%
-  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,  
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,
                            Bulk = Bulk,
                            Parent = Parent,
                            W = count,
                            formula = "Allele ~ 0+Bulk*Parent"),
             label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c1
 
-testglm_c1 %>% ggplot(aes(x = Index, y = effect, color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 1")
+testglm_c1 %>% ggplot(aes(x = Index, y = abs(effect), color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 1")
 
 ################################################################################
 simepistasis <- data.frame(Index = 1:100,
                            S_2 = 1:100,
-           S_1 = 100, 
-           D_1 = 50, 
+           S_1 = 100,
+           D_1 = 50,
            D_2 = 50)
 
 simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
@@ -359,18 +321,105 @@ simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
   pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
   separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
   mutate_if(is.character, as.factor) -> testdata_c2
- 
+
 contrasts(testdata_c2$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
 contrasts(testdata_c2$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
 contrasts(testdata_c2$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
 
-testdata_c2 %>% group_by(Pool, Index) %>%
-  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,  
+testdata_c2 %>% group_by(Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele,
                            Bulk = Bulk,
                            Parent = Parent,
                            W = count,
                            formula = "Allele ~ 0+ Bulk*Parent"),
             label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c2
 
-testglm_c2 %>% ggplot(aes(x = Index, y = effect, color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 2")
+testglm_c2 %>% ggplot(aes(x = Index, y = abs(effect), color = label)) + geom_point() + ggtitle("Index 1 = sign epistasis, Epistatic is parent 2")
 ```
+
+### What happens when the Parent effects match??
+
+```{r}
+simepistasis <- data.frame(Index = 1:100,
+           S_1 = 1:100, #1 is most different in selected bulk from parent 2
+           S_2 = 100,
+           D_1 = 1:100, #matches parent 1 selected, is further from dilute on either end
+           D_2 = 50) #equal ratios, different from selected
+
+simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
+  mutate(B = 101-A) %>%
+  pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
+  separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
+  mutate_if(is.character, as.factor) -> testdata_c1
+
+contrasts(testdata_c1$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+testdata_c1 %>% group_by(Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,
+                           Bulk = Bulk,
+                           Parent = Parent,
+                           W = count,
+                           formula = "Allele ~ 0+Bulk*Parent"),
+            label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c1
+
+testglm_c1 %>% ggplot(aes(x = Index, y = abs(effect), color = label)) + geom_point() + ggtitle("Parent Effect where they're all equal at 50 except S_2")
+```
+### Play with effects
+
+```{r}
+simepistasis <- data.frame(Index = 1:100,
+            S_1 = 1:100,
+           S_2 = 100,
+           D_1 = 100,
+           D_2 = 100)
+
+simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
+  mutate(B = 101-A) %>%
+  pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
+  separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
+  mutate_if(is.character, as.factor) -> testdata_c1
+
+contrasts(testdata_c1$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+testdata_c1 %>% group_by(Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,
+                           Bulk = Bulk,
+                           Parent = Parent,
+                           W = count,
+                           formula = "Allele ~ Bulk*Parent"),
+            label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c1
+
+testglm_c1 %>% ggplot(aes(x = Index, y = abs(effect), color = label, size = Index == 1)) + geom_jitter(alpha = 0.4) 
+```
+```{r}
+simepistasis <- data.frame(Index = 1:5,
+            S_1 = c(20,40,60,80,100),
+           S_2 = 100,
+           D_1 = 100,
+           D_2 = 100)
+
+simepistasis %>% pivot_longer(-Index, names_to = "Bulk", values_to = "A") %>%
+  mutate(B = 101-A) %>%
+  pivot_longer(c(A, B), names_to = "Allele", values_to = "count") %>%
+  separate(Bulk, into = c("Bulk", "Parent"), sep = "_") %>%
+  mutate_if(is.character, as.factor) -> testdata_c1
+
+contrasts(testdata_c1$Bulk) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(testdata_c1$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+testdata_c1 %>% group_by(Index) %>%
+  summarize(effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk,
+                           Bulk = Bulk,
+                           Parent = Parent,
+                           W = count,
+                           formula = "Allele ~ Bulk*Parent"),
+            label = c("Intercept", "Bulk", "Parent", "Interaction")) -> testglm_c1
+
+testglm_c1 %>% ggplot(aes(x = Index, y = abs(effect), color = label, size = Index == 1)) + geom_jitter(alpha = 0.4) 
+```
+
