@@ -77,10 +77,27 @@ glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
 
 ```
 
+### Initial Parameters
+```{r initial_params}
+ngenes <- 100
+nindividuals <- 10000
+selection <- 0.1
+
+#phenos <- rchisq(ngenes, df = 1)
+#phenos <- exp(1:ngenes)
+phenos <- (ngenes:1)/ngenes
+epistasis_plus <- 2*max(phenos)
+epistasis_minus <- 0.5*max(phenos)
+
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+plot(phenos)
+```
+
 
 ## Testing amounts of epistasis
 
-```{r, eval = FALSE}
+```{r, eval=FALSE}
 #Range of phenotypes
 hist(phenos)
 hist(phenos_fixedhigh_p0)
@@ -101,7 +118,7 @@ epistasis_plus
 epistasis_minus
 ```
 
-```{r}
+```{r function1}
 
 checkepistasis <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
                            phenos, genos, epistasis_plus, epistasis_minus){
@@ -186,7 +203,7 @@ checkepistasis <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
 
 ```
 
-```{r}
+```{r checkingepistasisratios}
 Epistasis_2_1 <- checkepistasis(phenos = phenos, 
                genos = genos, 
                epistasis_plus = 2, 
@@ -213,7 +230,7 @@ Epistasis_05_05 <- checkepistasis(phenos = phenos,
                epistasis_minus = 0.5)
 ```
 
-```{r}
+```{r plotting_ep_ratios}
 
 Epistasis_2_1 %>% filter(type == "Z", labels != "cept") %>%
   ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
@@ -237,7 +254,7 @@ Epistasis_05_05 %>% filter(type == "Z", labels != "cept") %>%
 ```
 ## Now to compare things in functions only
 
-```{r}
+```{r function2_allcomparisons}
 all_comparisons <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
                            phenos, genos, epistasis_plus, epistasis_minus,
                            s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
@@ -318,7 +335,7 @@ all_comparisons <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
 }
 ```
 
-```{r}
+```{r test1}
 
 Test1 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, minus = NA)
 for(i in seq(-2,2, length.out = 10)){
@@ -332,7 +349,7 @@ Test1 %>% filter(type == "Z") %>% ggplot(aes(x = factor(round(-minus, 3)), y = a
   ggtitle("Change in Epistasis Ratio")
 
 ```
-```{r}
+```{r test2}
 Test2 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA)
 
 for(i in 1:100){
@@ -346,7 +363,7 @@ for(i in 1:100){
 Test2 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
   ggtitle("Change in S1 Size Multiplier")
 ```
-```{r}
+```{r test3}
 Test3 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in 1:10){
@@ -365,7 +382,7 @@ Test3 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = l
   ggtitle("Change in S1 Size Multiplier, facet by Epistasis") + facet_grid(~var2) + xlab("Size")
 ```
 
-```{r, fig.height=4, fig.width=12}
+```{r test4, fig.height=4, fig.width=12}
 Test4 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in 1:10){
@@ -392,7 +409,7 @@ Test4 %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effect), color = 
 
 #### Bulk effect vs epistatic effect? Survival can just be 1%
 
-```{r}
+```{r test5}
 Test5 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in c(1:10)){
@@ -413,11 +430,11 @@ Test5$eminus <- Test5$var2/Test5$var
 Test5$diff = (1+Test5$eplus) - (1 - Test5$eminus)
 Test5$ratio = Test5$eplus/Test5$eminus
 
-Test5 %>% ggplot(aes(x = log(1/var), y = log(diff), color = var2)) + geom_point(alpha = 0.2, size = 2) + ylab("log(diff)") + xlab("i = Effect | Bulk") + ggtitle("Change in Selection")
+Test5 %>% ggplot(aes(x = log(1/var), y = log(diff), color = var2)) + geom_point(alpha = 0.2, size = 2) + ylab("log(diff)") + xlab("i = Effect | Bulk")
 
 ```
 
-```{r, fig.height=4, fig.width=8}
+```{r test5_plotting, fig.height=4, fig.width=8}
 ################################################################################
 
 Test5 %>% filter(type == "Z", var2 > -1) %>% ggplot(aes(x = var, y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
@@ -437,7 +454,7 @@ Test5 %>% filter(type == "Z",
 
 
 ```
-```{r}
+```{r test5_moreplots, eval = FALSE}
 Test5 %>% 
   ggplot(aes(x = log(1/var), y = var)) + geom_point(size = 3) + ggtitle("var = i | Division of Effect")
 
@@ -468,7 +485,7 @@ Test5 %>% filter(#eplus < 10,
 
 ### Changing total amount of epistasis
 
-```{r}
+```{r test6}
 Test6 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in seq(-2,2,length.out = 10)){
@@ -486,7 +503,7 @@ for(i in seq(-2,2,length.out = 10)){
 
 ```
 
-```{r, fig.width=10, fig.height=3}
+```{r test6plots, fig.width=10, fig.height=3}
 Test6 %>% filter(type == "Z") %>%
   ggplot(aes(x = (var+var2), y = abs(effect), color = factor(var))) + geom_point() + geom_line() +
   facet_grid(~labels) + theme(legend.position = "none")
@@ -513,7 +530,7 @@ Test6 %>% filter(type == "Z") %>%
 
 Seeing if magnitude vs sign matters
 
-```{r}
+```{r test6_moreplots}
 # Test6 %>% na.omit()%>% 
 #   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
 #           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
@@ -539,20 +556,20 @@ Seeing if magnitude vs sign matters
 #   geom_abline(slope = -1, linetype = "dashed") +
 #     geom_abline(slope = -0.5, linetype = "dashed") +
 #   scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
-
-Test6 %>% na.omit()%>% 
-  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
-          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
-  pivot_wider(names_from = labels, values_from = effect) %>%
-  ggplot(aes(x = Interaction, 
-             y = Bulk, 
-             shape = factor(round(abs(var2),2)), 
-             color = paste(PerfectOpp, Sign))) + 
-  #geom_point(size = 3) +
-  geom_line(aes(linetype = factor(var2)), size = 1) +
-  geom_abline(slope = -1, linetype = "dashed") +
-    geom_abline(slope = -0.5, linetype = "dashed") +
-  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
+# 
+# Test6 %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var2),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   #geom_point(size = 3) +
+#   geom_line(aes(linetype = factor(var2)), size = 1) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#     geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
 
 
 Test6 %>% na.omit()%>% 
@@ -592,7 +609,7 @@ Test6 %>% na.omit()%>%
 
 ### Changing Contrasts
 
-```{r}
+```{r function3_05}
 all_comparisons_c05 <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
                            phenos, genos, epistasis_plus, epistasis_minus,
                            s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
@@ -680,7 +697,7 @@ all_comparisons_c05 <- function(nindividuals = 10000, ngenes = 100, selection = 
 }
 ```
 
-```{r}
+```{r test05}
 Test_contrasts <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in seq(-2,2,length.out = 10)){
@@ -697,47 +714,47 @@ for(i in seq(-2,2,length.out = 10)){
 }
 ```
 
-```{r}
-Test_contrasts %>% na.omit()%>% 
-  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
-          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
-  pivot_wider(names_from = labels, values_from = effect) %>%
-  ggplot(aes(x = Interaction, 
-             y = Bulk, 
-             shape = factor(round(abs(var),2)), 
-             color = paste(PerfectOpp, Sign))) + 
-  geom_point(size = 3) +
-  geom_abline(slope = -1, linetype = "dashed") +
-  geom_abline(slope = -0.5, linetype = "dashed") +
-  scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
-
-Test_contrasts %>% na.omit()%>% 
-  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
-          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
-  pivot_wider(names_from = labels, values_from = effect) %>%
-  ggplot(aes(x = Interaction, 
-             y = Bulk, 
-             shape = factor(round(abs(var2),2)), 
-             color = paste(PerfectOpp, Sign))) + 
-  geom_point(size = 3) +
-  geom_abline(slope = -1, linetype = "dashed") +
-    geom_abline(slope = -0.5, linetype = "dashed") +
-  scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
-
-Test_contrasts %>% na.omit()%>% 
-  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
-          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
-  pivot_wider(names_from = labels, values_from = effect) %>%
-  ggplot(aes(x = Interaction, 
-             y = Bulk, 
-             shape = factor(round(abs(var2),2)), 
-             color = paste(PerfectOpp, Sign))) + 
-  #geom_point(size = 3) +
-  geom_line(aes(linetype = factor(var2)), size = 1) +
-  geom_abline(slope = -1, linetype = "dashed") +
-    geom_abline(slope = -0.5, linetype = "dashed") +
-  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
-
+```{r test05_plots}
+# Test_contrasts %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   geom_point(size = 3) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#   geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+# 
+# Test_contrasts %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var2),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   geom_point(size = 3) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#     geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+# 
+# Test_contrasts %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var2),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   #geom_point(size = 3) +
+#   geom_line(aes(linetype = factor(var2)), size = 1) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#     geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
+# 
 
 Test_contrasts %>% na.omit()%>% 
   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
@@ -792,7 +809,7 @@ Test_contrasts %>% na.omit()%>%
 
 ### Changing contrasts for the original test4
 
-```{r, fig.height=4, fig.width=12}
+```{r test4_05, fig.height=4, fig.width=12}
 Test4_contrasts <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in 1:10){
@@ -819,7 +836,7 @@ Test4_contrasts %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effect)
 
 ### Contrasts to 0/1 for Background but with unselected as 0
 
-```{r}
+```{r function4_01}
 all_comparisons_cbulk01 <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
                            phenos, genos, epistasis_plus, epistasis_minus,
                            s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
@@ -908,7 +925,7 @@ all_comparisons_cbulk01 <- function(nindividuals = 10000, ngenes = 100, selectio
 ```
 
 
-```{r, fig.height=4, fig.width=12}
+```{r test4_01, fig.height=4, fig.width=12}
 Test4_contrasts01 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in 1:10){
@@ -933,7 +950,7 @@ Test4_contrasts01 %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effec
 
 ```
 
-```{r}
+```{r test_01}
 Test_contrasts01 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
 
 for(i in seq(-2,2,length.out = 10)){
