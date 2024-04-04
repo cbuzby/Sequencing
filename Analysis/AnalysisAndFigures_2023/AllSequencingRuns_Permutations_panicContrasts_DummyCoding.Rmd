@@ -355,7 +355,7 @@ saveRDS(HTG3TDMXY_allpQs_rep, file = "StandardGLM/Ec01_HTG3TDMXY_allpQs_rep.rds"
 
 ```
 
-# Run the GLMs on these same samples with the contrasts at -0.5 and 0.5
+# Run the GLMs on these same samples with the contrasts at 1 and 0
 
 ### HNV
 
@@ -580,94 +580,9 @@ HVYTYDRX2_glm_Ec %>% merge(HVYTYDRX2_allpQs) %>% filter(CHROM != "VIII") %>%
 
 ```
 
-All at once?
-
-```{r, fig.width = 12, fig.height = 5, eval = FALSE}
-rbind(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",], 
-      #HTG3TDMXY_glm_Ec01_rep[HTG3TDMXY_glm_Ec01_rep$CHROM != "VIII",],
-      HNGLVDRXY_glm_Ec[HNGLVDRXY_glm_Ec$CHROM != "I",],
-      HKTFTDRX2_glm_Ec[HKTFTDRX2_glm_Ec$CHROM != "I",],
-      HVYTYDRX2_glm_Ec[HVYTYDRX2_glm_Ec$CHROM != "VIII",]) -> CuSO4_contrastglm
-
-CuSO4_contrastglm %>% filter(d == "Effect", Factor != "cept") %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Effects, 0/1")
-
-CuSO4_contrastglm %>% filter(d == "Z", Factor != "cept") %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1")
-
-```
-
-```{r, fig.width = 12, fig.height = 5, eval = FALSE}
-rbind(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",], 
-      #HTG3TDMXY_glm_Ec_rep[HTG3TDMXY_glm_Ec_rep$CHROM != "VIII",],
-      HNGLVDRXY_glm_Ec[HNGLVDRXY_glm_Ec$CHROM != "I",],
-      HKTFTDRX2_glm_Ec[HKTFTDRX2_glm_Ec$CHROM != "I",],
-      HVYTYDRX2_glm_Ec[HVYTYDRX2_glm_Ec$CHROM != "VIII",]) -> CuSO4_contrastglm
-
-CuSO4_contrastglm %>% filter(d == "Effect", Factor != "cept") %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Effects, 0/1")
-
-CuSO4_contrastglm %>% filter(d == "Z", Factor != "cept") %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1")
-
-```
-
-All at once WITH cutoffs?
-
-```{r, fig.width = 12, fig.height = 5, eval = FALSE}
-rbind(#merge(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",], HTG3TDMXY_allpQs), 
-      merge(HTG3TDMXY_glm_Ec_rep[HTG3TDMXY_glm_Ec_rep$CHROM != "VIII",], HTG3TDMXY_allpQs_rep), 
-      merge(HNGLVDRXY_glm_Ec[HNGLVDRXY_glm_Ec$CHROM != "I",], HNGLVDRXY_allpQs),
-      merge(HKTFTDRX2_glm_Ec[HKTFTDRX2_glm_Ec$CHROM != "I",], HKTFTDRX2_allpQs),
-      merge(HVYTYDRX2_glm_Ec[HVYTYDRX2_glm_Ec$CHROM != "VIII",], HVYTYDRX2_allpQs)) -> CuSO4_contrastglm_cutoffs
-
-IDkey <- data.frame(Pool = c("HTG3TDMXY", "HNGLVDRXY", "HKTFTDRX2", "HVYTYDRX2"),
-                    CSS = c("VIII", "I", "I", "VIII"),
-                    Label = c("CSS8 B", "CSS1 A", "CSS1 B", "CSS8 A"),
-                    Selection = c("High", "High", "Low", "Low"))
-
-CuSO4_contrastglm_cutoffs %>% merge(IDkey) -> CuSO4_contrastglm_cutoffs
-
-# CuSO4_contrastglm_cutoffs %>% filter(d == "Effect", Factor != "cept") %>%
-#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-#   geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-#   ggtitle("Effects, 0/1, Interaction Peaks")
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Interaction" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "lightgreen", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") + 
-  ggtitle("Z scores, 0/1, Interaction Peaks")
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Bulk" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "salmon", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Bulk Peaks")
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Parent" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "lightblue", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Parent Peaks")
-
-```
-
-# Plotting (just the new stuff)
-
 ### All at once?
 
-```{r, fig.width = 12, fig.height = 5, eval = FALSE}
+```{r, fig.width = 12, fig.height = 5}
 rbind(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",], 
       #HTG3TDMXY_glm_Ec_rep[HTG3TDMXY_glm_Ec_rep$CHROM != "VIII",],
       HNGLVDRXY_glm_Ec[HNGLVDRXY_glm_Ec$CHROM != "I",],
@@ -676,11 +591,11 @@ rbind(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",],
 
 CuSO4_contrastglm %>% filter(d == "Effect", Factor != "cept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Effects, 0.5/-0.5")
+  ggtitle("Effects, 0/1")
 
 CuSO4_contrastglm %>% filter(d == "Z", Factor != "cept") %>%
   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0.5/-0.5")
+  ggtitle("Z scores, 0/1")
 
 ```
 
@@ -695,38 +610,39 @@ rbind(#merge(HTG3TDMXY_glm_Ec[HTG3TDMXY_glm_Ec$CHROM != "VIII",], HTG3TDMXY_allp
 
 IDkey <- data.frame(Pool = c("HTG3TDMXY", "HNGLVDRXY", "HKTFTDRX2", "HVYTYDRX2"),
                     CSS = c("VIII", "I", "I", "VIII"),
-                    Label = c("CSS8 B", "CSS1 A", "CSS1 B", "CSS8 A"))
+                    Label = c("CSS8 H", "CSS1 H", "CSS1 L", "CSS8 L"),
+                    Selection = c("High", "High", "Low", "Low"))
 
-CuSO4_contrastglm_cutoffs %>% merge(IDkey) -> CuSO4_contrastglm_cutoffs
+CuSO4_contrastglm_cutoffs %>% merge(IDkey) %>% filter(Selection == "Low") -> CuSO4_contrastglm_cutoffs
 
 # CuSO4_contrastglm_cutoffs %>% filter(d == "Effect", Factor != "cept") %>%
 #   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
 #   geom_line() + facet_grid(Pool ~ CHROM, space = "free", scales = "free") +
 #   ggtitle("Effects, 0/1, Interaction Peaks")
 
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Interaction" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "lightgreen", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Interaction Peaks")
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Bulk" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "salmon", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Bulk Peaks")
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
-  mutate(peak = POS * as.numeric(Factor == "Parent" & abs(Summary) > quant095)) %>%
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(aes(xintercept = peak), color = "lightblue", alpha = 0.01) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Parent Peaks")
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
+#   mutate(peak = POS * as.numeric(Factor == "Interaction" & abs(Summary) > quant095)) %>%
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+#   geom_vline(aes(xintercept = peak), color = "lightgreen", alpha = 0.01) + 
+#   geom_hline(aes(yintercept = quant095, color = Factor)) +
+#   geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, 0/1, Interaction Peaks")
+# 
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
+#   mutate(peak = POS * as.numeric(Factor == "Bulk" & abs(Summary) > quant095)) %>%
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+#   geom_vline(aes(xintercept = peak), color = "salmon", alpha = 0.01) + 
+#   geom_hline(aes(yintercept = quant095, color = Factor)) +
+#   geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, 0/1, Bulk Peaks")
+# 
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
+#   mutate(peak = POS * as.numeric(Factor == "Parent" & abs(Summary) > quant095)) %>%
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+#   geom_vline(aes(xintercept = peak), color = "lightblue", alpha = 0.01) + 
+#   geom_hline(aes(yintercept = quant095, color = Factor)) +
+#   geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, 0/1, Parent Peaks")
 
 ```
 
@@ -734,14 +650,14 @@ CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>%
 
 ```{r, fig.width = 12, fig.height = 5}
 
-CuSO4_contrastglm_cutoffs %>% group_by(Pool, Label, Factor, CHROM, d) %>% arrange(POS) %>%
+CuSO4_contrastglm_cutoffs %>% group_by(Pool, Label, Factor, CHROM, d, CSS) %>% arrange(POS) %>%
   na.omit() %>%
   mutate(is_above_threshold = abs(Summary) > quant095) %>%
   
   mutate(segment_change = is_above_threshold != lag(is_above_threshold, default = FALSE)) %>%
   mutate(segment_id = cumsum(segment_change)) %>%
   # Group by chromosome and segment_id to count the points in each segment
-  group_by(Pool, Label, Factor, CHROM, d, segment_id) %>%
+  group_by(Pool, Label, Factor, CHROM, d, CSS, segment_id) %>%
   mutate(points_in_segment = n()) %>%
   # Now filter to keep only those segments that are above the threshold and have 5 or more points
   filter(is_above_threshold, points_in_segment >= 100) %>%
@@ -753,23 +669,29 @@ CuSO4_contrastglm_cutoffs %>% group_by(Pool, Label, Factor, CHROM, d) %>% arrang
             ppeakPOS = POS[which.max(abs(Summary))]) %>%
   ungroup() -> maybepeaks
 
+CuSO4_contrastglm_cutoffs %>% group_by(Pool, Label, Factor, CHROM, d, CSS) %>% arrange(POS) %>%
+  na.omit() %>%
+  mutate(is_above_threshold = abs(Summary) > quant095) %>%
+  filter(is_above_threshold == TRUE) %>%
+  summarize(max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) -> peaks
+
+maybepeaks %>% filter(Factor == "Interaction", d == "Z")
 #left_join(CuSO4_contrastglm_cutoffs, maybepeaks) -> CuSO4_contrastglm_peaks
 
 CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Parent") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
   geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), color = "purple", linewidth = 2, alpha = 0.3) +
   geom_hline(aes(yintercept = quant095)) +
-  geom_point(size = 0.4, alpha = 0.5) + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
+  geom_point(size = 0.2, alpha = 0.5) + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
   ggtitle("Z scores, 0/1, Interaction Peaks") +
-  scale_color_manual(values = c("black", "purple", "gray")) +
-  ylab("abs Z Score")
+  scale_color_manual(values = c("black", "purple3", "gray"))
 
 CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Parent") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
   geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), color = "black", linewidth = 2, alpha = 0.3) +
   geom_hline(aes(yintercept = quant095)) +
-  geom_point(size = 0.4, alpha = 0.5) + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
+  geom_point(size = 0.2, alpha = 0.5) + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
   ggtitle("Z scores, 0/1, Bulk Peaks") +
-  scale_color_manual(values = c("black", "purple", "gray")) +
-  ylab("abs Z Score")
+  scale_color_manual(values = c("black", "purple3", "gray"))
 
 # CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
 #   geom_vline(aes(xintercept = ppeakPOS*as.numeric(Factor == "Bulk" & d == "Z")), color = "black", linewidth = 2, alpha = 0.3) +
@@ -779,64 +701,381 @@ CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Pare
 # CuSO4_contrastglm_cutoffs %>% filter(Factor == "Interaction"& d == "Z") %>% ggplot(aes(x = POS, y = abs(Summary))) + geom_point(data = maybepeaks, aes(x = ppeakPOS, y = max_value, color = Factor)) +
 #   geom_hline(data = HTG3TDMXY_allpQs_rep, aes(yintercept = quant095, color = Factor)) + facet_grid( ~ CHROM, space = "free", scales = "free")
 ```
+
 ```{r, fig.width = 12, fig.height = 5}
 
-CuSO4_contrastglm_cutoffs %>% group_by(CSS, CHROM, POS) %>% 
+# CuSO4_contrastglm_cutoffs %>% group_by(CSS, CHROM, POS) %>% 
+#   mutate(peak = as.numeric(abs(Summary) > quant095)) %>%
+#   summarize(doublepeak = sum(peak) > 1) %>%
+#   filter(doublepeak == TRUE) -> doublepeaks
+#   
+#  CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#    geom_vline(data = doublepeaks, aes(xintercept = POS, color = CSS), alpha = 0.01) +
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   facet_grid(CSS~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, 0/1, Bulk Peaks") +
+#   scale_color_manual(values = c("navy", "navy", "darkorange", "darkorange", "navy", "orange"))
+
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 A", "CSS8 B")) %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#   #geom_line() + 
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   facet_grid(~ CHROM, space = "free", scales = "free") +
+#   ggtitle("High Selection") +
+#   scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
+# 
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 B", "CSS8 A")) %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#   #geom_line() + 
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   facet_grid(~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Low Selection") +
+#   scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
+
+#All Additive Effects AND Agreement Peaks
+
+CuSO4_contrastglm_cutoffs %>% group_by(CHROM, POS, d, Factor) %>% 
+  mutate(peak = as.numeric(abs(Summary) > quant095)) %>%
+  summarize(doublepeak = sum(peak) > 3) %>%
+  filter(doublepeak == TRUE) -> quadpeaks
+
+CuSO4_contrastglm_cutoffs %>% filter(CHROM %in% c("I", "VIII")) %>% group_by(CHROM, POS, d, Factor) %>% 
   mutate(peak = as.numeric(abs(Summary) > quant095)) %>%
   summarize(doublepeak = sum(peak) > 1) %>%
-  filter(doublepeak == TRUE) -> doublepeaks
-  
- CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-   geom_vline(data = doublepeaks, aes(xintercept = POS, color = CSS), alpha = 0.01) +
+  filter(doublepeak == TRUE) -> quadpeaks_CSS
+
+quadpeaks <- rbind(quadpeaks_CSS, quadpeaks)
+
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_vline(data = quadpeaks[quadpeaks$Factor == "Bulk" & quadpeaks$d == "Z",], aes(xintercept = POS), linewidth = 2, alpha = 0.3, color = "turquoise") +
+  geom_hline(aes(yintercept = quant095)) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid( ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#################################################################################
+
+```
+
+```{r, fig.width = 12, fig.height = 5}
+
+#CHANGE THESE TO PUT BACK THE HIGH BULKS
+maybepeaks %>% filter(Label != "Css8 H", Label != "CSS1 H") -> maybepeaks
+
+################################################################################
+
+#Comparison of Selection
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Selection)) + 
+  geom_hline(aes(yintercept = quant095, color = Selection)) +
   geom_point(size = 0.4, alpha = 0.1) + 
   facet_grid(CSS~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Bulk Peaks") +
-  scale_color_manual(values = c("navy", "navy", "darkorange", "darkorange", "navy", "orange")) +
-  ylab("abs Z Score")
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("darkturquoise",  "orange")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
 
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 A", "CSS8 B")) %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-  #geom_line() + 
+#Comparison of CSS
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + 
+  geom_hline(aes(yintercept = quant095, color = CSS)) +
   geom_point(size = 0.4, alpha = 0.1) + 
-  facet_grid(~ CHROM, space = "free", scales = "free") +
-  ggtitle("High Selection") +
-  scale_color_manual(values = c("navy",  "darkorange", "darkorange")) +
-  ylab("abs Z Score")
+  facet_grid( ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("navy",  "darkorange")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
 
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 B", "CSS8 A")) %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-  #geom_line() + 
+#Comparison of CSS but separated out
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = CSS)) + 
+  geom_hline(aes(yintercept = quant095, color = CSS)) +
   geom_point(size = 0.4, alpha = 0.1) + 
-  facet_grid(~ CHROM, space = "free", scales = "free") +
-  ggtitle("Low Selection") +
-  scale_color_manual(values = c("navy",  "darkorange", "darkorange")) +
-  ylab("abs Z Score")
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("navy",  "darkorange")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
 
-# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
-#   ggplot(aes(x = POS, y = abs(Summary))) + 
-#   geom_hline(aes(yintercept = quant095)) +
+#Comparison of CSS but then colored by Selection
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Selection)) + 
+  geom_hline(aes(yintercept = quant095, color = Selection)) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("black",  "darkturquoise")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#All Additive Effects
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid( ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#ALL EFFECTS
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+  geom_hline(aes(yintercept = quant095, color = Factor)) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid( ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("#000000",  "purple", "#80808020")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+
+#INTERACTION EFFECTS
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Parent") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+  geom_hline(aes(yintercept = quant095, color = Factor)) +
+  geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), color = "purple", linewidth = 2, alpha = 0.3) +
+
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("#00000020",  "purple")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#INTERACTION EFFECTS
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Parent") %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+#   geom_hline(aes(yintercept = quant095, color = Factor)) +
+#   geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS, color = CSS), linewidth = 2, alpha = 0.3) +
+# 
 #   geom_point(size = 0.4, alpha = 0.1) + 
-#   facet_grid(CSS~ CHROM, space = "free", scales = "free") +
-#   ggtitle("Z scores, 0/1")  +
-#   scale_color_manual(values = c("darkturquoise",  "orange")) +
-#   ylab("abs Z Score")
+#   facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, Selection")  +
+#   scale_color_manual(values = c("gray",  "#24588A", "purple", "#ED7B01")) +
+#   ylab("abs Z Score") +
+#   theme(legend.position = "none")
 
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Parent") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+  geom_hline(aes(yintercept = quant095, color = Factor)) +
+  # geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], 
+  #            aes(xintercept = ppeakPOS, color = CSS), linewidth = 2, alpha = 0.3) +
+  geom_vline(data = peaks[peaks$d == "Z" & peaks$Factor == "Interaction",], aes(xintercept = ppeakPOS, color = CSS), size = 2, alpha = 0.4) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("black",  "#24588A", "purple", "#ED7B01")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#INT ONLY
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
+  geom_hline(aes(yintercept = quant095, color = Factor)) +
+  # geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], 
+  #            aes(xintercept = ppeakPOS, color = CSS), linewidth = 2, alpha = 0.3) +
+  geom_vline(data = peaks[peaks$d == "Z" & peaks$Factor == "Interaction",], aes(xintercept = ppeakPOS, color = CSS), size = 2, alpha = 0.4) +
+  geom_point(size = 1, alpha = 0.1) + 
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("#24588A", "purple", "#ED7B01")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+#INT ONLY
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) +
+  # geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], 
+  #            aes(xintercept = ppeakPOS, color = CSS), linewidth = 2, alpha = 0.3) +
+  geom_vline(data = peaks[peaks$d == "Z" & peaks$Factor == "Interaction",], aes(xintercept = ppeakPOS, color = CSS), size = 2, alpha = 0.4) +
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid(CSS ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  scale_color_manual(values = c("purple", "#ED7B01")) +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
+
+
+#Additive wtih genes
+
+#genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+genes <- c("CUP1-1", "CUP1-2", "FRE1")
+
+sgd_orfs <- read.csv("SGD_ORFs.csv")
+sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+  transmute(Gene = Gene.symbol,
+            POS = Gene.chromosomeLocation.start,
+            CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+sgd_copper %>% arrange(CHROM)
+
+CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_vline(data = quadpeaks[quadpeaks$Factor == "Bulk" & quadpeaks$d == "Z",], aes(xintercept = POS), linewidth = 2, alpha = 0.3, color = "gray90") +
+  geom_hline(aes(yintercept = quant095)) +
+  geom_vline(data = sgd_copper, aes(xintercept = POS), size = 2, alpha = 0.4, color = "red") + 
+  geom_point(size = 0.4, alpha = 0.1) + 
+  facet_grid( ~ CHROM, space = "free", scales = "free") +
+  ggtitle("Z scores, Selection")  +
+  ylab("abs Z Score") +
+  theme(legend.position = "none")
 
 ```
+
+### Circos Plots????
 
 ```{r}
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", CHROM == "XI") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & 
-                                 maybepeaks$d == "Z" & 
-                                 maybepeaks$CHROM == "XI",], 
-             aes(xintercept = ppeakPOS), color = "black", linewidth = 2, alpha = 0.3) +
-  geom_hline(aes(yintercept = quant095)) + 
-  geom_line() + facet_grid(Label ~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0/1, Peaks")
+cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, color1 = "#24588A", color8 = "#ED7B01", opacity = "50"){
+  
+  color1fade_50 <- paste(color1, "50", sep = "")
+  color8fade_50 <- paste(color8, "50", sep = "")
+  
+  color1fade <- paste(color1, opacity, sep = "")
+  color8fade <- paste(color8, opacity, sep = "")
+
+  if(is.null(d8)){
+    d8 <- d1
+    include8 <- FALSE
+  }else{
+    include8 <- TRUE
+  }
+    #SET UP DATA
+  df8 <- data.frame(sectors = as.character(d8$CHROM),
+                 x = d8$POS,
+                 y = abs(d8$summary),
+                  label = d8$label)
+
+  df1 <- data.frame(sectors = as.character(d1$CHROM),
+                 x = d1$POS,
+                 y = abs(d1$summary),
+                  label = d1$label)
+
+  #Take just the interactions of each
+  df8int <- df8 %>% filter(label == "Interaction")
+  df1int <- df1 %>% filter(label == "Interaction")
+
+    #REORDER THE CHROMOSOMES
+  df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+  df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+  
+  ##############################################################################
+  dfall <- rbind(df1int, df8int) %>% na.omit()
+  circos.par("track.height" = 0.3, start.degree = 90, cell.padding = c(0,0))
+  circos.initialize(sectors = dfall$sectors, x = dfall$x)
+
+  if(is.null(maxy)){
+    #I think this makes the sizes?
+    circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, y = dfall$y, 
+        panel.fun = function(x, y) {
+            circos.text(CELL_META$xcenter, 
+                0 - mm_y(5), 
+                CELL_META$sector.index,
+                niceFacing = FALSE)
+            circos.axis(labels.cex = 0.1)
+    })
+  }else{
+    circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+      panel.fun = function(x, y) {
+          circos.text(CELL_META$xcenter, 
+              0 - mm_y(5), 
+              CELL_META$sector.index,
+              niceFacing = FALSE)
+          circos.axis(labels.cex = 0.1)
+      })
+  }
+  #Makes the chromosome overlap parts
+  #CHROMOSOME I
+  draw.sector(84, #RIGHT, originally 83.5
+              90, #LEFT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color1fade_50, border = FALSE)
+  if(include8 == TRUE){
+    #CHROMOSOME VIII
+    draw.sector(289.5, #LEFT
+              305.4, #RIGHT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color8fade_50, border = FALSE)
+  }
+  
+  
+  #Makes the lines
+  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
+  circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
+  
+  if(is.null(peaklist8) == FALSE){
+    if(length(peaklist8$POS) >= 1){
+      for(i in 1:length(peaklist8$POS)){
+      circos.link(peaklist8$CHROM[i], 
+                  peaklist8$POS[i], 
+                  #Add 8 after
+                  "VIII", c(0, max(dfall$x[dfall$sectors == "VIII"])),  
+                  
+                  col = color8fade, 
+                  h.ratio = 0.3, 
+                  border = color8fade, 
+                  lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 8")
+    }
+    
+  }
+
+  if(is.null(peaklist1) == FALSE){
+    if(length(peaklist1$POS) >= 1){
+      for(i in 1:length(peaklist1$POS)){
+        circos.link("I",c(0, max(dfall$x[dfall$sectors == "I"])),  
+                    #add 1 first
+                    peaklist1$CHROM[i], 
+                    peaklist1$POS[i], 
+                    col = color1fade, 
+                    h.ratio = 0.3, 
+                    border = color1fade, 
+                    lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 1")
+    }
+  }  
+  
+  circos.clear()
+}
 ```
+
+
+```{r fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+CuSO4_contrastglm_cutoffs %>% filter(Factor == "Interaction", Label == "CSS1 L", d == "Z") %>%
+ mutate(peakbroad = abs(Summary) >= quant095) %>% na.omit() %>%
+transmute(CHROM = factor(CHROM), POS = POS, summary = abs(Summary), label = Factor) -> CuSO4_CSS1_circ
+
+CuSO4_contrastglm_cutoffs %>% filter(Factor == "Interaction", Label == "CSS8 L", d == "Z") %>%
+ mutate(peakbroad = abs(Summary) >= quant095) %>% na.omit() %>%
+transmute(CHROM = factor(CHROM), POS = POS, summary = abs(Summary), label = Factor) -> CuSO4_CSS8_circ
+
+maybepeaks %>% filter(Factor == "Interaction", Label == "CSS1 L", d == "Z") %>% transmute(CHROM = factor(CHROM), POS = ppeakPOS) -> CSS1_peaks
+maybepeaks %>% filter(Factor == "Interaction", Label == "CSS8 L", d == "Z") %>% transmute(CHROM = factor(CHROM), POS = ppeakPOS) -> CSS8_peaks
+
+################################################################################ CuSO4 CSS VIII
+# HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+#  mutate(peakbroad = abs(Effect) >= quant095) %>% na.omit() %>%
+# transmute(CHROM = CHROM, POS = POS, Effect = Effect, label = Factor) -> HVYTYDRX2_CuSO4_CSS8_circ
+# 
+# HVYTYDRX2_CuSO4_CSS8_contrastGLM %>% merge(HVYTYDRX2_cu_CSS8_parQs) %>% filter(Factor == "Interaction") %>%
+#   filter(abs(Effect) >= quant095) %>% select(CHROM, POS) %>% mutate(label = "Interaction", Effect = 1) -> HVYTYDRX2_CuSO4_CSS8_circpeaks
+
+cybr_circos(d1 = rbind(CuSO4_CSS1_circ, ChromosomeScale2), 
+            d8 = rbind(CuSO4_CSS8_circ, ChromosomeScale2),
+            peaklist1 = CSS1_peaks, 
+            peaklist8 = CSS8_peaks)
+
+```
+

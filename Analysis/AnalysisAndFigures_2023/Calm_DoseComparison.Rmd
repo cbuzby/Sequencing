@@ -1,0 +1,803 @@
+---
+title: "Comparing Selection"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+
+require(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+
+
+## Functions for GLM all and Permutation all
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+
+################################################################################
+# No replicates, fix Parent
+cybrPermute_cb2_all <- function(dataset, 
+                                R = 0, perp = 1, outlength = 4, 
+                                glmform = "Allele ~ Bulk * Parent", 
+                                inputlabels = c("Intercept", "Bulk", "Parent", "Interaction")){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled aD")
+  print(paste("Your labels are:", inputlabels))
+
+    if(R > 0){ #INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Rep, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == 1) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+    }else{ #DO NOT INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == perp) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    }
+  
+    #PERMUTE TWICE
+  if(R > 0){
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Rep, 
+             Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep, 
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, 
+             Rep, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep,
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }else{
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #RUN THE GLM
+    if(R > 0) {
+      shuffletoglm2 %>% na.omit() %>%
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }else{
+      shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }
+    
+    
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+
+```
+
+# Load in pre-glm data
+
+```{r, eval = FALSE}
+HTG3TDMXY_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  mutate(DoseCol = Bulk) %>%
+  select(-Bulk) %>% 
+  select(DoseCol = DoseCol, Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+unique(HTG3TDMXY_prep$Bulk)
+unique(HTG3TDMXY_prep$DoseCol)
+
+HTG3TDMXY_prep %>% mutate(Dose = gsub("51", "", DoseCol),
+                          Dose = gsub("52", "", Dose),
+                          Dose = paste(Parent, Dose)) -> temp
+
+temp$Dose[temp$Dose == "O8 3"] <- "Low"
+temp$Dose[temp$Dose == "W8 3"] <- "High"
+temp$Dose[temp$Dose == "O8 4"] <- "High"
+temp$Dose[temp$Dose == "W8 2"] <- "Low"
+
+temp %>% filter(Dose != "Low") -> HTG3TDMXY_prep_highdose
+temp %>% filter(Dose != "High") -> HTG3TDMXY_prep_lowdose
+
+```
+
+## Do the glm on these like normal
+
+```{r, eval = FALSE}
+inputlabels <- c("cept", "Bulk", "Parent", "Interaction")
+HTG3TDMXY_prep_highdose %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent,#Rep = Rep,
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HTG3TDMXY_glm_highdose
+
+saveRDS(HTG3TDMXY_glm_highdose, file = "HTG3TDMXY_glm_highdose.rds")
+
+HTG3TDMXY_prep_lowdose %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent,#Rep = Rep,
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HTG3TDMXY_glm_lowdose
+
+saveRDS(HTG3TDMXY_glm_lowdose, file = "HTG3TDMXY_glm_lowdose.rds")
+```
+
+## Permutations
+
+```{r, eval = FALSE}
+
+HTG3TDMXY_permutation <- cybrPermute_cb2_all(HTG3TDMXY_prep)
+
+
+HTG3TDMXY_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_permutation_Qs
+
+
+saveRDS(HTG3TDMXY_permutation_Qs, file = "HTG3TDMXY_permutation_Qs.rds")
+```
+
+# Load in pre-run data
+```{r}
+HTG3TDMXY_permutation_Qs <- readRDS("HTG3TDMXY_permutation_Qs.rds")
+
+```
+
+```{r}
+
+HTG3TDMXY_glm_lowdose <- readRDS("HTG3TDMXY_glm_lowdose.rds")
+HTG3TDMXY_glm_highdose <- readRDS("HTG3TDMXY_glm_highdose.rds")
+
+```
+
+# Look at the traces
+
+```{r}
+HTG3TDMXY_glm_lowdose %>% filter(d == "Z", Factor != "cept") %>% mutate(Dose = "Low") -> lowtemp
+HTG3TDMXY_glm_highdose %>% filter(d == "Z", Factor != "cept") %>% mutate(Dose = "High") %>% rbind(lowtemp) -> DoseComparison
+
+#smooth this to get rid of the weird ones?
+DoseComparison %>% 
+  ungroup() %>% 
+  group_by(CHROM, Factor, Dose, d) %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+summarize(POS = POS, Summary = frollapply(x = Summary, n = 100, FUN = mean, align = "left")) %>% na.omit() %>% arrange(POS) -> DoseComp
+
+#length(unique(DoseComp$SmoothCount))
+```
+
+```{r, fig.height=4, fig.width=10}
+
+HTG3TDMXY_glm_lowdose %>% filter(d == "Z", Factor != "cept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_point(size = 0.1, alpha = 0.2) +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("Low Doses") +
+  scale_color_manual(values = c("black", "purple", "gray"))
+
+HTG3TDMXY_glm_highdose %>% filter(d == "Z", Factor != "cept") %>% ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + geom_point(size = 0.1, alpha = 0.2) +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("High Doses") +
+  scale_color_manual(values = c("black", "purple", "gray"))
+
+```
+
+```{r, fig.height=4, fig.width=10}
+
+DoseComp %>% ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_point(size = 0.1, alpha = 0.2) +
+  geom_hline(data = HTG3TDMXY_permutation_Qs, aes(yintercept = quant095)) + 
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Comparison of Doses") + scale_color_manual(values = c("black", "darkturquoise"))
+```
+
+### Calling Peaks
+
+```{r}
+DoseComp %>% merge(HTG3TDMXY_permutation_Qs) %>% group_by( Dose, Factor, CHROM, d) %>% arrange(POS) %>%
+  na.omit() %>%
+  mutate(is_above_threshold = abs(Summary) > quant095) %>%
+  
+  mutate(segment_change = is_above_threshold != lag(is_above_threshold, default = FALSE)) %>%
+  mutate(segment_id = cumsum(segment_change)) %>%
+  # Group by chromosome and segment_id to count the points in each segment
+  group_by( Dose, Factor, CHROM, d, segment_id) %>%
+  mutate(points_in_segment = n()) %>%
+  # Now filter to keep only those segments that are above the threshold and have 5 or more points
+  filter(is_above_threshold, points_in_segment >= 100) %>%
+ # mutate(change = is_above_threshold != lag(is_above_threshold, default = first(is_above_threshold))) %>%
+  #mutate(group_id = cumsum(change)) %>%
+  #group_by(Pool, Factor, CHROM, d, group_id) %>%
+ # filter(is_above_threshold) %>%
+  summarize(max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) %>%
+  ungroup() -> maybepeaks
+
+
+```
+
+```{r, fig.height=4, fig.width=10}
+
+DoseComp %>% ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = 1, alpha = 0.8) +
+  geom_hline(data = HTG3TDMXY_permutation_Qs, aes(yintercept = quant095)) + 
+  geom_vline(data = maybepeaks, aes(xintercept = ppeakPOS, color = Dose), alpha = 0.2, size = 2) +
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Comparison of Doses") + scale_color_manual(values = c("black", "darkturquoise"))
+
+DoseComp %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = 1, alpha = 0.8) +
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+  geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk",], aes(xintercept = ppeakPOS), alpha = 0.2, size = 2, color = "red2") +
+  facet_grid(Dose~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") + scale_color_manual(values = c("black", "black"))
+
+DoseComp %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = 1, alpha = 0.8) +
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+  geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction",], aes(xintercept = ppeakPOS), alpha = 0.2, size = 2, color = "red2") +
+  facet_grid(Dose~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Interaction Comparison of Doses") + scale_color_manual(values = c("purple", "purple"))
+
+DoseComp %>% filter(Factor == "Parent") %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + geom_line(size = 1, alpha = 0.8) +
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Parent",], aes(yintercept = quant095)) + 
+  geom_vline(data = maybepeaks[maybepeaks$Factor == "Parent",], aes(xintercept = ppeakPOS), alpha = 0.2, size = 2, color = "red2") +
+  facet_grid(Dose~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Parent Comparison of Doses") + scale_color_manual(values = c("gray7", "gray7"))
+
+## Looking at Bulk Effects that Overlap
+DoseComp %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+  geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk",], aes(xintercept = ppeakPOS, color = Dose), alpha = 0.2, size = 2) +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") + scale_color_manual(values = c("orange", "violet"))
+
+```
+
+## Bulk Peaks
+
+This plot shows the peaks that are between 50000bp from each other within both high and low doses, and can be called overlapping peaks that way. These are also based on peaks called by the entire region above the cutoff, which in particular affects Chr XII since there are two areas where peaks seem to occur. The peaks on Chr XIII don't seem to be called at all, probably because they're too far from one another.
+
+
+```{r, fig.height=4, fig.width=10}
+maybepeaks %>% filter(Factor == "Bulk") %>% select(-segment_id) %>% pivot_wider(names_from = Dose, values_from = max_value) -> bulkpeaks
+
+# DoseComp %>% filter(Factor == "Bulk") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+#   geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = High), color = "steelblue", alpha = 0.8, size = 4) +
+#   geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = Low), color = "darkorange", alpha = 0.8, size = 4) +
+#   geom_vline(data = bulkpeaks, aes(xintercept = ppeakPOS+(1/Low*High)), color = "red3", alpha = 0.2, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") 
+
+maybepeaks %>% filter(Factor == "Bulk") %>% select(-segment_id, -max_value) %>% mutate(peakish = 50000*round(ppeakPOS/50000, 0)) %>% pivot_wider(names_from = Dose, values_from = ppeakPOS) -> bulkpeaksa
+
+bulkpeaksa %>% group_by(Factor, CHROM, d, peakish) %>% mutate(avg = mean(c(High, Low), na.rm = TRUE)) %>% na.omit() -> bulkpeaksavg
+
+# DoseComp %>% filter(Factor == "Bulk") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+#   geom_vline(data = bulkpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.4, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") 
+
+DoseComp %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+  geom_vline(data = bulkpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") 
+
+```
+
+## Interaction Peaks
+
+This plot shows the peaks that are between 50000bp from each other within both high and low doses, and can be called overlapping peaks that way. These are also based on peaks called by the entire region above the cutoff, which in particular affects Chr XII since there are two areas where peaks seem to occur. The peaks on Chr XIII don't seem to be called at all, probably because they're too far from one another.
+
+
+```{r, fig.height=4, fig.width=10}
+
+maybepeaks %>% filter(Factor == "Interaction") %>% select(-segment_id) %>% pivot_wider(names_from = Dose, values_from = max_value) -> Interactionpeaks
+
+# DoseComp %>% filter(Factor == "Interaction") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+#   geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = High), color = "steelblue", alpha = 0.8, size = 4) +
+#   geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = Low), color = "darkorange", alpha = 0.8, size = 4) +
+#   geom_vline(data = Interactionpeaks, aes(xintercept = ppeakPOS+(1/Low*High)), color = "red3", alpha = 0.2, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Interaction Comparison of Doses") 
+
+maybepeaks %>% filter(Factor == "Interaction") %>% select(-segment_id, -max_value) %>% mutate(peakish = 600000*round(ppeakPOS/600000, 1)) %>% pivot_wider(names_from = Dose, values_from = ppeakPOS) -> Interactionpeaks6
+
+maybepeaks %>% filter(Factor == "Interaction") %>% select(-segment_id, -max_value) %>% mutate(peakish = 500000*round(ppeakPOS/500000, 1)) %>% pivot_wider(names_from = Dose, values_from = ppeakPOS) -> Interactionpeaks5
+
+
+rbind(Interactionpeaks6,Interactionpeaks5) %>% group_by(Factor, CHROM, d, peakish) %>% mutate(avg = mean(c(High, Low), na.rm = TRUE)) %>% na.omit() -> Interactionpeaksavg
+
+# DoseComp %>% filter(Factor == "Interaction") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+#   geom_vline(data = Interactionpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.4, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Interaction Comparison of Doses") 
+
+DoseComp %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+  geom_vline(data = Interactionpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Interaction Comparison of Doses") 
+
+```
+
+## Parent Peaks
+
+There is no difference between parents in the high and low doses, which is good since that shouldn't affect the baseline
+
+```{r, fig.height=4, fig.width=10}
+
+maybepeaks %>% filter(Factor == "Parent") %>% select(-segment_id) %>% pivot_wider(names_from = Dose, values_from = max_value) -> Parentpeaks
+
+# DoseComp %>% filter(Factor == "Parent") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Parent",], aes(yintercept = quant095)) + 
+#   geom_point(data = Parentpeaks, aes(x = ppeakPOS, y = High), color = "steelblue", alpha = 0.8, size = 4) +
+#   geom_point(data = Parentpeaks, aes(x = ppeakPOS, y = Low), color = "darkorange", alpha = 0.8, size = 4) +
+#   geom_vline(data = Parentpeaks, aes(xintercept = ppeakPOS+(1/Low*High)), color = "red3", alpha = 0.2, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Parent Comparison of Doses") 
+
+maybepeaks %>% filter(Factor == "Parent") %>% select(-segment_id, -max_value) %>% mutate(peakish = 50000*round(ppeakPOS/50000, 0)) %>% pivot_wider(names_from = Dose, values_from = ppeakPOS) -> Parentpeaksa
+
+Parentpeaksa %>% group_by(Factor, CHROM, d, peakish) %>% mutate(avg = mean(c(High, Low), na.rm = TRUE)) %>% na.omit() -> Parentpeaksavg
+
+# DoseComp %>% filter(Factor == "Parent") %>%
+#   ggplot(aes(x = POS, y = abs(Summary))) + geom_line(aes(linetype = Dose), size = 1, alpha = 0.8, color = "black") +
+#   geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Parent",], aes(yintercept = quant095)) + 
+#   geom_vline(data = Parentpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.4, size = 2) +
+#   facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Parent Comparison of Doses") 
+
+DoseComp %>% filter(Factor == "Parent") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Parent",], aes(yintercept = quant095)) + 
+  geom_vline(data = Parentpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = Parentpeaks, aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = Parentpeaks, aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Parent Comparison of Doses") 
+
+```
+
+
+
+
+
+## Comparing smoothed vs unsmoothed ones
+
+```{r, eval = FALSE}
+DoseComp %>% ggplot(aes(x = POS, y = abs(Summary), color = Dose)) + 
+  geom_point(data = DoseComparison, aes(x = POS, y = abs(Summary)), alpha = 0.1, size = 0.1, color = "red") +
+  geom_line(size = 1, alpha = 0.8) +
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Comparison of Doses") + scale_color_manual(values = c("black", "darkturquoise"))
+
+DoseComp
+DoseComparison %>% transmute(CHROM = CHROM, Factor = Factor, Dose = Dose, POS = POS, Original = Summary) %>% merge(DoseComp) %>% mutate(Diff = abs(Original - Summary)) -> Compcomp
+
+Compcomp %>% ggplot(aes(x = Diff)) + geom_density() + theme(axis.text.x=element_text())
+
+```
+
+## Finding the genes in those regions
+
+```{r}
+#genes <- c("CUP1-1", "CUP1-2", "FRE1")
+
+sgd_orfs <- read.csv("SGD_ORFs.csv") %>% 
+  transmute(Gene = Gene.symbol,
+            CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier),
+            POS.Start = Gene.chromosomeLocation.start,
+            POS.End = Gene.chromosomeLocation.end)
+
+# sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+#   transmute(Gene = Gene.symbol,
+#             POS = Gene.chromosomeLocation.start,
+#             CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+# bulkpeaksavg
+# sgd_orfs
+
+#Bulks
+for(i in 1:nrow(bulkpeaksavg)){
+  sgd_orfs %>% filter(CHROM == bulkpeaksavg$CHROM[i]) %>%
+    filter(POS.Start %in% seq(min(bulkpeaksavg$High[i], bulkpeaksavg$Low[i]) - 5000, 
+                              max(bulkpeaksavg$High[i], bulkpeaksavg$Low[i]) + 5000, 
+                              by = 1) |
+             POS.End %in% seq(min(bulkpeaksavg$High[i], bulkpeaksavg$Low[i]) - 5000, 
+                              max(bulkpeaksavg$High[i], bulkpeaksavg$Low[i]) + 5000, 
+                              by = 1)) %>%
+  mutate(avg = bulkpeaksavg$avg[i]) -> mypeaks
+  
+  if(i == 1){
+    allpeaks <- mypeaks
+  }else{
+    allpeaks <- rbind(allpeaks, mypeaks)
+  }
+}
+
+bulkgenes <- allpeaks
+
+getwd()
+```
+
+### Adding gene names to the top perhaps
+
+Adding ggrepel to do this
+
+```{r, fig.height=4, fig.width=10, warning=FALSE}
+DoseComp %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+  geom_vline(data = bulkpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = bulkpeaks, aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  geom_vline(data = bulkgenes, aes(xintercept = POS.Start, color = CHROM)) +
+      #coord_cartesian(clip = "off", ylim = c(0, 16))+
+
+  
+  ggrepel::geom_label_repel(data=bulkgenes, 
+                            aes(x=POS.Start, y = 17, label = Gene, color = CHROM), 
+                            size=2, direction = "both", min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+                                        show.legend =F) +
+
+  # ggrepel::geom_text_repel(data=bulkgenes, aes(x=POS.Start, color = CHROM, y = 17, 
+  #                                          label=Gene),
+  #                                      size=2, direction = "both", segment.size = 0.4,
+  #                                      min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+  #                                      show.legend =F, hjust =0) +
+  theme(legend.position = "none") +
+
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Bulk Comparison of Doses") 
+
+```
+
+```{r, fig.height=4, fig.width=10, warning=FALSE}
+
+for(i in unique(DoseComp$CHROM)){
+  DoseComp %>% filter(Factor == "Bulk", CHROM == i) %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Bulk",], aes(yintercept = quant095)) + 
+  #geom_vline(data = bulkpeaksavg[bulkpeaksavg$CHROM == i,], aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = bulkpeaks[bulkpeaks$CHROM == i,], aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = bulkpeaks[bulkpeaks$CHROM == i,], aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  geom_vline(data = bulkgenes[bulkgenes$CHROM == i,], aes(xintercept = POS.Start, color = Gene)) +
+        #coord_cartesian(clip = "off", ylim = c(0, max(abs(DoseComp$Summary[DoseComp$CHROM == i])))) +
+
+  
+  #geom_label_repel(data=bulkgenes, aes(label=POS.Start), size=2) +
+  ggrepel::geom_label_repel(data=bulkgenes[bulkgenes$CHROM == i,], 
+                            aes(x=POS.Start, y = max(abs(DoseComp$Summary[DoseComp$CHROM == i])), label = Gene, color = Gene), 
+                            size=2, direction = "both", min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+                                        show.legend =F) +
+    
+  # ggrepel::geom_text_repel(data=bulkgenes[bulkgenes$CHROM == i,], 
+  #                          aes(x=POS.Start, color = Gene,
+  #                                          y = max(abs(DoseComp$Summary[DoseComp$CHROM == i])), #color=!!rlang::sym(grouping_factor),
+  #                                          label=Gene),
+  #                                      size=2, direction = "both", #segment.size = 0.4,
+  #                                      min.segment.length = 0, nudge_y = +1, nudge_x = 30,
+  #                                      show.legend =F, hjust =0) +
+  theme(legend.position = "none") + 
+    #theme(plot.title = element_text(margin = margin(b = 4 * 5.5))) + 
+    ggtitle(i) -> myplot
+  
+  print(myplot)
+}
+```
+
+```{r}
+bulkgenes %>% select(Gene) %>% distinct() -> bulkgenelist
+```
+
+## Finding the genes in those regions
+
+```{r}
+#genes <- c("CUP1-1", "CUP1-2", "FRE1")
+
+# sgd_orfs <- read.csv("SGD_ORFs.csv") %>% 
+#   transmute(Gene = Gene.symbol,
+#             CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier),
+#             POS.Start = Gene.chromosomeLocation.start,
+#             POS.End = Gene.chromosomeLocation.end)
+
+# sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+#   transmute(Gene = Gene.symbol,
+#             POS = Gene.chromosomeLocation.start,
+#             CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+# Interactionpeaksavg
+# sgd_orfs
+
+#Interactions
+for(i in 1:nrow(Interactionpeaksavg)){
+  sgd_orfs %>% filter(CHROM == Interactionpeaksavg$CHROM[i]) %>%
+    filter(POS.Start %in% seq(min(Interactionpeaksavg$High[i], Interactionpeaksavg$Low[i]) - 5000, 
+                              max(Interactionpeaksavg$High[i], Interactionpeaksavg$Low[i]) + 5000, 
+                              by = 1) |
+             POS.End %in% seq(min(Interactionpeaksavg$High[i], Interactionpeaksavg$Low[i]) - 5000, 
+                              max(Interactionpeaksavg$High[i], Interactionpeaksavg$Low[i]) + 5000, 
+                              by = 1)) %>%
+  mutate(avg = Interactionpeaksavg$avg[i]) -> mypeaks
+  
+  if(i == 1){
+    allpeaks <- mypeaks
+  }else{
+    allpeaks <- rbind(allpeaks, mypeaks)
+  }
+}
+
+Interactiongenes <- allpeaks
+
+
+```
+
+### Adding gene names to the top perhaps
+
+Adding ggrepel to do this
+
+```{r, fig.height=4, fig.width=10, warning=FALSE}
+DoseComp %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+  geom_vline(data = Interactionpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = Interactionpeaks, aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  geom_vline(data = Interactiongenes, aes(xintercept = POS.Start, color = CHROM)) +
+      #coord_cartesian(clip = "off", ylim = c(0, 16))+
+
+  
+  ggrepel::geom_label_repel(data=Interactiongenes, 
+                            aes(x=POS.Start, y = 17, label = Gene, color = CHROM), 
+                            size=2, direction = "both", min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+                                        show.legend =F) +
+
+  # ggrepel::geom_text_repel(data=Interactiongenes, aes(x=POS.Start, color = CHROM, y = 17, 
+  #                                          label=Gene),
+  #                                      size=2, direction = "both", segment.size = 0.4,
+  #                                      min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+  #                                      show.legend =F, hjust =0) +
+  theme(legend.position = "none") +
+
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("HTG3TDMXY Interaction Comparison of Doses") 
+
+```
+
+```{r, fig.height=4, fig.width=10, warning=FALSE}
+
+for(i in unique(DoseComp$CHROM)){
+  DoseComp %>% filter(Factor == "Interaction", CHROM == i) %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(data = HTG3TDMXY_permutation_Qs[HTG3TDMXY_permutation_Qs$Factor == "Interaction",], aes(yintercept = quant095)) + 
+  #geom_vline(data = Interactionpeaksavg[Interactionpeaksavg$CHROM == i,], aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = Interactionpeaks[Interactionpeaks$CHROM == i,], aes(x = ppeakPOS, y = High), color = "gray6", alpha = 0.4, size = 4) +
+  geom_point(data = Interactionpeaks[Interactionpeaks$CHROM == i,], aes(x = ppeakPOS, y = Low), color = "darkturquoise", alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  geom_vline(data = Interactiongenes[Interactiongenes$CHROM == i,], aes(xintercept = POS.Start, color = Gene)) +
+        #coord_cartesian(clip = "off", ylim = c(0, max(abs(DoseComp$Summary[DoseComp$CHROM == i])))) +
+
+  
+  #geom_label_repel(data=Interactiongenes, aes(label=POS.Start), size=2) +
+  ggrepel::geom_label_repel(data=Interactiongenes[Interactiongenes$CHROM == i,], 
+                            aes(x=POS.Start, y = max(abs(DoseComp$Summary[DoseComp$CHROM == i])), label = Gene, color = Gene), 
+                            size=2, direction = "both", min.segment.length = 0, nudge_y = +2, nudge_x = 3,
+                                        show.legend =F) +
+    
+  # ggrepel::geom_text_repel(data=Interactiongenes[Interactiongenes$CHROM == i,], 
+  #                          aes(x=POS.Start, color = Gene,
+  #                                          y = max(abs(DoseComp$Summary[DoseComp$CHROM == i])), #color=!!rlang::sym(grouping_factor),
+  #                                          label=Gene),
+  #                                      size=2, direction = "both", #segment.size = 0.4,
+  #                                      min.segment.length = 0, nudge_y = +1, nudge_x = 30,
+  #                                      show.legend =F, hjust =0) +
+  theme(legend.position = "none") + 
+    #theme(plot.title = element_text(margin = margin(b = 4 * 5.5))) + 
+    ggtitle(i) -> myplot
+  
+  print(myplot)
+}
+```
+
+## Rolling Windows for peaks in common
+
+```{r}
+DoseComp
+#Make function that takes in the vector of positions, and finds all of the distances between the nearest 5 peaks, and then filters by an amount
+samepeaks <- function(vector, amount){
+  
+}
+```
+
+# Loading in original data to test GQ
+
+```{r, fig.height=4, fig.width=12, eval = FALSE}
+#LOAD IN TABLE
+MQCRuns <- read.csv("C:\\Users\\cassa\\OneDrive\\Documents\\SiegalLab\\Sequencing_Tuboweb\\AllMultiQCRuns.csv")
+
+MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
+
+var <- 8 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
+RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
+
+for(i in var){
+  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
+
+}
+
+rawdata %>% distinct() %>%
+  mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> rawdata
+
+rawdata %>% select(-AD.REF, -AD.ALT, -Coverage) %>% pivot_wider(names_from = Dataset, values_from = c(GQ)) -> tcomp
+
+Compcomp %>% merge(tcomp) -> Compcomp
+Compcomp %>% pivot_longer(c(-CHROM, -POS, -Pool, -Factor, -Dose, -Original, -d, -Summary, -Diff), names_to = "Dataset", values_to = "GQ") -> Compcomp
+
+Compcomp %>% ggplot(aes(x = Diff, y = GQ)) + geom_point(size = 0.1, alpha = 0.2)
+```
+
+```{r, eval = FALSE}
+Compcomp %>% ggplot(aes(x = Diff, color = GQ < 99)) + geom_density()
+
+Compcomp %>% group_by(CHROM, Factor, POS) %>% summarize(Diff = Diff, GQ = GQ, minGQ = min(GQ, na.rm = TRUE)) %>% distinct() %>% 
+  ggplot(aes(x = Diff, y = minGQ)) + geom_point() + theme(axis.text.x=element_text())
+
+ Compcomplow %>% filter(is.na(Low))
+
+Compcomplow %>% ggplot(aes(x = Low, y = Diff, color = Low)) + geom_violin() + theme(axis.text.x=element_text())
+```
+

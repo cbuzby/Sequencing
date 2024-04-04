@@ -1,0 +1,1887 @@
+---
+title: "Contrast Simulations"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+# ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+#                      theme(#axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()))
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+
+```
+
+
+```{r, eval = FALSE, include = FALSE}
+#Simulations for what it looks like for epistasis to happen in different contrasts
+
+#SITUATION ONE: no effect, so range from even to uneven bulk sizes for this one
+
+#make ratios for each
+alleles <- data.frame(A = round(rnorm(4, mean = 20)),
+                      B = round(rnorm(4, mean = 20)))
+
+bulks <- data.frame(Bulk = c(1,1,0,0),
+                    Parent = c(1,0,1,0))
+
+cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+  mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> testdata
+
+# testdata %>% summarize(Effects = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+#                                                                          formula = "Allele ~ Bulk * Parent",
+#                                                                          W = round(reads)),
+#                        Labels = rep())
+
+glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+               data = as.data.frame(testdata), weights = reads, family = binomial)
+
+```
+
+# Playing with Contrasts
+
+In all of these, the bulk which is affected is 1 and allele affected is A, so when changing contrasts, "selected" is 1 and therefore the non-intercept value. Allele being A makes it the 0 value. Parent is rarely changed.
+
+## Contrasts being Default
+
+```{r, warning=FALSE}
+iterations <- 10
+alleles <- data.frame(A = rep(20, 4),
+                      B = rep(20, 4))
+
+bulks <- data.frame(Bulk = c(1,1,0,0),
+                      Parent = c(1,0,1,0))
+
+cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+    mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+contrasts(OG$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(0, 1), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(which(contrasts(OG$Bulk) == 0) - 1)
+plotOG$Parent <- as.factor(which(contrasts(OG$Parent) == 0) - 1)
+
+#contrasts(OG$Allele) 
+# contrasts(OG$Bulk) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Parent) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Allele) <- matrix(c(-1/2, 1/2), ncol = 1)
+
+
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() + 
+  geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) +
+  theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+
+
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+
+```
+
+## Contrasts being Half/Half
+
+```{r, warning=FALSE}
+# iterations <- 10
+# alleles <- data.frame(A = rep(20, 4),
+#                       B = rep(20, 4))
+# 
+# bulks <- data.frame(Bulk = c(1,1,0,0),
+#                       Parent = c(1,0,1,0))
+# 
+# cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+#     mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+# contrasts(OG$Bulk) <- matrix(c(0, 1), ncol = 1)
+# contrasts(OG$Parent) <- matrix(c(0, 1), ncol = 1)
+# contrasts(OG$Allele) <- matrix(c(0, 1), ncol = 1)
+
+contrasts(OG$Bulk) <- matrix(c(-1/2, 1/2), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(-1/2, 1/2), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(-1/2, 1/2), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(0.5)
+plotOG$Parent <- as.factor(0.5)
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+
+```
+
+## Making these all reversed?
+
+```{r, warning=FALSE}
+# iterations <- 10
+# alleles <- data.frame(A = rep(20, 4),
+#                       B = rep(20, 4))
+# 
+# bulks <- data.frame(Bulk = c(1,1,0,0),
+#                       Parent = c(1,0,1,0))
+# 
+# cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+#     mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+contrasts(OG$Bulk) <- matrix(c(1, 0), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(1, 0), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(1, 0), ncol = 1)
+
+# contrasts(OG$Bulk) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Parent) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Allele) <- matrix(c(-1/2, 1/2), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(which(contrasts(OG$Bulk) == 0) - 1)
+plotOG$Parent <- as.factor(which(contrasts(OG$Parent) == 0) - 1)
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + 
+  theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+```
+
+## Reversing ONLY bulk
+
+```{r, warning=FALSE}
+# iterations <- 10
+# alleles <- data.frame(A = rep(20, 4),
+#                       B = rep(20, 4))
+# 
+# bulks <- data.frame(Bulk = c(1,1,0,0),
+#                       Parent = c(1,0,1,0))
+# 
+# cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+#     mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+contrasts(OG$Bulk) <- matrix(c(1, 0), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(0, 1), ncol = 1)
+
+# contrasts(OG$Bulk) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Parent) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Allele) <- matrix(c(-1/2, 1/2), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(which(contrasts(OG$Bulk) == 0) - 1)
+plotOG$Parent <- as.factor(which(contrasts(OG$Parent) == 0) - 1)
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+
+```
+
+
+## Reversing ONLY allele
+
+```{r, warning=FALSE}
+# iterations <- 10
+# alleles <- data.frame(A = rep(20, 4),
+#                       B = rep(20, 4))
+# 
+# bulks <- data.frame(Bulk = c(1,1,0,0),
+#                       Parent = c(1,0,1,0))
+# 
+# cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+#     mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+contrasts(OG$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(1, 0), ncol = 1)
+
+# contrasts(OG$Bulk) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Parent) <- matrix(c(-1/2, 1/2), ncol = 1)
+# contrasts(OG$Allele) <- matrix(c(-1/2, 1/2), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(which(contrasts(OG$Bulk) == 0) - 1)
+plotOG$Parent <- as.factor(which(contrasts(OG$Parent) == 0) - 1)
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+
+
+```
+
+## Setting Parents to 0.5 and Bulk to 0/1
+
+```{r, warning=FALSE}
+# iterations <- 10
+# alleles <- data.frame(A = rep(20, 4),
+#                       B = rep(20, 4))
+# 
+# bulks <- data.frame(Bulk = c(1,1,0,0),
+#                       Parent = c(1,0,1,0))
+# 
+# cbind(alleles, bulks) %>% pivot_longer(c(A,B), values_to = "reads", names_to = "Allele") %>% 
+#     mutate_all(as.factor) %>% mutate(reads = as.numeric(reads))-> OG
+
+contrasts(OG$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(OG$Parent) <- matrix(c(-0.5, 0.5), ncol = 1)
+contrasts(OG$Allele) <- matrix(c(1, 0), ncol = 1)
+
+plotOG <- data.frame(Bulk = NA, Parent = NA)
+plotOG$Bulk <- as.factor(which(contrasts(OG$Bulk) == 0) - 1)
+plotOG$Parent <- as.factor(0.5)
+```
+
+```{r, warning=FALSE}
+################################################################################
+
+#BULK EFFECTS 
+df_bulkeffects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+
+
+
+for(i in 1:iterations){
+  OG -> testdata
+  
+  testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulkeffects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulkeffects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in Bulk x Index")
+
+
+################################################################################
+#PARENT EFFECTS 
+df_bulk_parent_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_bulk_parent_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_bulk_parent_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Allele A in one parent of one Bulk x Index")
+
+
+################################################################################
+#MAGNITUDE EPISTASIS EFFECTS 
+df_magnitude_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+    OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "A"]*i*2
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_magnitude_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_magnitude_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Magnitude Epistasis")
+
+################################################################################
+#SIGN EPISTASIS EFFECTS 
+df_epistasis_effects <- data.frame(Index = 1:iterations,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  
+  OG -> testdata
+
+  
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+  testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 0 & 
+                   testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                             testdata$Parent == 0 & 
+                                                             testdata$Allele == "B"]*i
+  
+  glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+  df_epistasis_effects[i,c(2:5)] <- glm_fit$coefficients
+
+}
+
+# testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+df_epistasis_effects %>% pivot_longer(-Index, names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Index, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(size = 3, alpha = 0.8) + 
+  ggtitle("Sign Epistasis")
+
+
+
+```
+
+# Changing Two Variables At Once
+
+Parent can stay the same, but what if the bulk effects between the two change? Ie, magnitude epistasis to sign epistasis?
+
+```{r}
+################################################################################
+#Allele_B EPISTASIS EFFECTS 
+new <- data.frame(Allele_A = 0,
+                  Allele_B = 0,
+                             zIntercept = 0,
+                             Bulk = 0,
+                             Parent = 0,
+                             Interaction = 0)
+for(i in 1:iterations){
+  for(k in 1:iterations){
+    OG -> testdata
+    testdata$reads[testdata$Bulk == 1 & 
+                   testdata$Parent == 1 & 
+                   testdata$Allele == "A"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 1 & 
+                                                               testdata$Allele == "A"]*i
+    testdata$reads[testdata$Bulk == 1 & 
+                     testdata$Parent == 0 & 
+                     testdata$Allele == "B"] <- testdata$reads[testdata$Bulk == 1 & 
+                                                               testdata$Parent == 0 & 
+                                                               testdata$Allele == "B"]*k
+    glm_fit <- glm(formula = "Allele ~ Bulk * Parent", 
+                 data = as.data.frame(testdata), weights = reads, family = binomial)
+  
+    new[nrow(new)+1,] <- c(i, k, glm_fit$coefficients)
+
+  }
+  
+}
+
+testdata %>% pivot_wider(names_from = Allele, values_from = reads)
+
+testdata %>% group_by(Bulk, Parent) %>% pivot_wider(names_from = Allele, values_from = reads) %>% summarize(ratio = log(A/B)) -> logratio
+logratio %>% ggplot(aes(x = Bulk, y = Parent, color = ratio, size = abs(ratio))) + geom_point() +    geom_point(data = plotOG, aes(x = Bulk, y = Parent), color = "gray", shape = 0, size = 10, stroke = 2) + theme_minimal() + theme(axis.text = element_text(size = 15)) +  scale_color_gradient(high = "blue",  low = "red")
+
+new %>% pivot_longer(-c(Allele_A, Allele_B), names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Allele_B, y = Allele_A, size = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(alpha = 0.8) + 
+  ggtitle("Allele_B Epistasis")
+
+#original
+new %>% pivot_longer(-c(Allele_A, Allele_B), names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Allele_B, y = abs(Effect), color = Param, shape = Param == "Interaction", shape = Param == "Interaction")) + geom_jitter(alpha = 0.8) + 
+  facet_wrap("Allele_A") 
+
+new %>% pivot_longer(-c(Allele_A, Allele_B), names_to = "Param", values_to = "Effect") %>%
+  mutate(logRatio = log(Allele_A/Allele_B)) %>%
+  ggplot(aes(x = abs(logRatio), y = abs(Effect), color = Param)) + geom_jitter()
+
+#lines
+new %>% filter(Allele_A %in% c(1, 10)) %>% 
+  pivot_longer(-c(Allele_A, Allele_B), names_to = "Param", values_to = "Effect") %>% 
+  ggplot(aes(x = Allele_B, y = abs(Effect), color = Param, linetype = factor(Allele_A))) + geom_line(alpha = 0.8) 
+
+new %>% ggplot(aes(x = (Bulk), y = (Interaction), color = factor(Allele_A), size = factor(Allele_B))) + geom_point(alpha = 0.4)
+
+new %>% filter(Allele_A != 0) %>% ggplot(aes(x = factor(Allele_A), y = factor(Allele_B), color = Bulk/Interaction)) + geom_point(size = 4)  +  
+  scale_colour_gradient2(low = muted("red"),
+                          mid = "white",
+                          high = muted("blue"),
+                          midpoint = 0)
+
+new %>% filter(Allele_A != 0) %>% ggplot(aes(x = Bulk, y = Interaction, color = Bulk/Interaction)) + geom_point(size = 4)  +  
+  scale_colour_gradient2(low = muted("red"),
+                          mid = "white",
+                          high = muted("blue"),
+                          midpoint = 0)
+  
+  #scale_color_gradient(high = "blue",  low = "red", midpoint = "white")
+
+```
+
+# Shifting gears; how to convert this into a phenotype that makes sense
+
+We have as a phenotype % survival advantage. But if we were to have real sign epistasis, it might be in growth rate. Can we use selection coefficient as a way to look at this?
+
+First, in every generation t-1, the frequency before selection is p(t-1) or q(t-1) in populations A (p) and B (q). The relative fitness is w or 1, where B is 1. After selection, the frequency is p(t-1)w or q(t-1) so B is unchanged. Finally, the genotype of A at generation t is p(t-1)w/p(t-1)w + q(t-1). So over time, with generation _t_ on the x axis and p on the y axis, we will have:
+
+```{r}
+t = 1:100
+q = 1
+p = 1
+w = 0.9
+
+for(i in 1:100){
+  p <- (p*w)/(p*w + q)
+  t[i] <- p
+}
+
+plot(t)
+```
+
+In continuous time, this is now in terms of m instead of w, where m = ln(w). So we're now looking at exponential population growths A and B in rates rather than... ratios?
+
+A(t)/B(t) = A(0)/B(0) e(a' - b')t
+
+A(0)/B(0) e(a' - b')t = A(0)/B(0) e^(mt)
+
+A and B are number of cells, and t is time
+
+```{r}
+t = 1:100
+r <- vector()
+
+m = log(w)
+
+A = 100
+B = 100
+
+ratio = A/B
+
+for(i in 1:100){
+  r[i] <- ratio * (exp(m*t[i]))
+}
+
+plot(r)
+```
+
+Okay so I'm only looking at one timepoint, 24 hours, with one selection amount which is 0.1. This means that my phenotype is still just survival or number of cells, since that's all that I can see.
+
+```{r}
+#duh
+(1/1)*(exp(log(0.1)))
+
+```
+
+So if we have sign epistasis, that means that all of the alleles would change the probability of growth in the next round by... a summed amount?
+
+```{r}
+#in this case, B is just not under selection? So does it even matter?
+
+PercSurvival_A <- c(1:100)/100
+PercSurvival_B <- c(1:100)/100
+
+g1 <- sample(PercSurvival_A, 100)
+g2 <- sample(PercSurvival_B, 100)
+
+data.frame(geno = 1:100, pheno = g1*g2) %>% arrange(desc(pheno)) %>% head(10) %>% summarize(mean(pheno))
+
+mean(sample(g1*g2, 10))
+```
+It's hard to make an actual phenotype here because just % doesn't necessarily help with the selection
+
+```{r, eval = FALSE}
+popsize <- 10000
+
+Resistance = rnorm(popsize, mean = 10)
+# data.frame(Resistance) %>% arrange(desc(Resistance)) %>% head(10) %>% summarize(mean(Resistance))
+# data.frame(Resistance) %>% summarize(mean(Resistance))
+
+data.frame(Resistance) %>% arrange(desc(Resistance)) %>% head(popsize/10) %>%
+  ggplot(aes(x = Resistance)) + 
+  geom_density(data = data.frame(Resistance), aes(x = Resistance), size = 1) + 
+  geom_density(color = "steelblue", size = 1) + xlim(0, 20)
+
+################################################################################
+Resistance = rnorm(popsize, mean = 15)
+
+# data.frame(Resistance) %>% arrange(desc(Resistance)) %>% head(10) %>% summarize(mean(Resistance))
+# data.frame(Resistance) %>% summarize(mean(Resistance))
+
+data.frame(Resistance) %>% arrange(desc(Resistance)) %>% head(popsize/10) %>%
+  ggplot(aes(x = Resistance)) + 
+  geom_density(data = data.frame(Resistance), aes(x = Resistance), size = 1) + 
+  geom_density(color = "maroon", size = 1)+ xlim(0, 20)
+```
+
+Okay so if there are genes that contribute to EACH of the traits, what if we have high effect genes fixed and then look at the other 10%?
+
+## Simulating Effects - 100 Genes, 1% Selection
+
+```{r}
+ngenes <- 100
+nindividuals <- 10000
+selection <- 0.01
+
+#phenos <- rchisq(ngenes, df = 1)
+#phenos <- exp(1:ngenes)
+phenos <- (ngenes:1)/ngenes
+epistasis_plus <- 2*max(phenos)
+epistasis_minus <- 0.5*max(phenos)
+
+plot(phenos)
+```
+
+```{r, eval = FALSE}
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+genos %*% phenos -> parentpopulation
+
+################################################################################
+
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+genos_fixed0 %*% phenos -> pop_0
+genos_fixed1 %*% phenos -> pop_1
+
+#mean(pop_0)
+#mean(pop_1)
+
+################################################################################
+#genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),]
+#genos_fixed1[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),]
+
+################################################################################
+s0 <- colSums(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),])/(nindividuals*selection)
+s1 <- colSums(genos_fixed1[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),])/(nindividuals*selection)
+u0 <- colSums(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),])/(nindividuals*selection)
+u1 <- colSums(genos_fixed1[which(pop_1 %in% sample(pop_1, nindividuals*selection)),])/(nindividuals*selection)
+
+################################################################################
+data.frame(phenos, s0, s1, u0, u1) %>% pivot_longer(-phenos, names_to = "Bulk", values_to = "Freq") %>%
+  ggplot(aes(x = phenos, y = Freq, color = Bulk, fill = Bulk)) + geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.3)
+
+```
+
+What if we do this for something with a high effect?
+
+```{r}
+phenos_fixedhigh <- phenos
+phenos_fixedhigh[1] <- max(phenos)
+
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+genos %*% phenos_fixedhigh -> parentpopulation
+
+################################################################################
+
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+genos_fixed0 %*% phenos_fixedhigh -> pop_0
+genos_fixed1 %*% phenos_fixedhigh -> pop_1
+
+#mean(pop_0)
+#mean(pop_1)
+
+################################################################################
+#genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),]
+#genos_fixed1[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),]
+
+################################################################################
+s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+################################################################################
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% pivot_longer(-phenos_fixedhigh, names_to = "Bulk", values_to = "Freq") %>%
+  ggplot(aes(x = phenos_fixedhigh, y = Freq, color = Bulk, fill = Bulk)) + geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.3) + ggtitle("Fixed High Effect")
+```
+
+```{r}
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+  mutate(Index = row_number()) %>%
+  tail(-1) %>% 
+  pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+  mutate(logAllele = log(Freq/(1-Freq))) %>% mutate(Effect = "High") -> HighEffectFixation
+
+# data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+#   mutate(Index = row_number()) %>%
+#   tail(-1) %>% 
+#   pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+#   mutate(logAllele = log(Freq/(1-Freq))) %>%
+#   ggplot(aes(x = Index, y = abs(logAllele), color = Bulk, fill = Bulk)) + geom_point(alpha = 0.5, size = 2) +
+#   facet_grid(rows = "Bulk")
+```
+
+```{r}
+phenos_fixedhigh <- phenos
+phenos_fixedhigh[1] <- 0
+
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+genos %*% phenos_fixedhigh -> parentpopulation
+
+################################################################################
+
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+genos_fixed0 %*% phenos_fixedhigh -> pop_0
+genos_fixed1 %*% phenos_fixedhigh -> pop_1
+
+#mean(pop_0)
+#mean(pop_1)
+
+################################################################################
+#genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),]
+#genos_fixed1[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),]
+
+################################################################################
+# s0 <- colSums(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),])/(nindividuals*selection)
+# s1 <- colSums(genos_fixed1[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),])/(nindividuals*selection)
+# u0 <- colSums(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),])/(nindividuals*selection)
+# u1 <- colSums(genos_fixed1[which(pop_1 %in% sample(pop_1, nindividuals*selection)),])/(nindividuals*selection)
+
+s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+################################################################################
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% pivot_longer(-phenos_fixedhigh, names_to = "Bulk", values_to = "Freq") %>%
+  ggplot(aes(x = phenos_fixedhigh, y = Freq, color = Bulk, fill = Bulk)) + geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.3) + ggtitle("Fixed No Effect")
+```
+
+```{r}
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+  mutate(Index = row_number()) %>%
+  tail(-1) %>% 
+  pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+  mutate(logAllele = log(Freq/(1-Freq))) %>% mutate(Effect = "Low") -> LowEffectFixation
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>%
+  ggplot(aes(x = Index, y = abs(logAllele), color = Effect, fill = Bulk)) + geom_point(alpha = 0.5, size = 2) +
+  facet_grid(rows = "Bulk")
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% select(-phenos_fixedhigh, -Freq) %>%
+  pivot_wider(names_from = Effect, values_from = logAllele) %>% ungroup() %>% mutate(Diff = abs(Low - High)) %>% 
+  ggplot(aes(x = Index, y = Diff, fill = Bulk)) + geom_jitter(alpha = 0.5, size = 2) +
+  facet_grid(rows = "Bulk")
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% select(-Index, -Freq) %>%
+  pivot_wider(names_from = Effect, values_from = logAllele) %>% ungroup() %>% mutate(Diff = abs(Low - High)) %>% 
+  ggplot(aes(x = phenos_fixedhigh, y = Diff, color = Bulk, fill = Bulk)) + geom_jitter(alpha = 0.5, size = 2) +
+  ggtitle("Differences by Phenotype") + geom_smooth(method = "lm", alpha = 0.3)
+```
+
+
+
+### What do the actual logistic regressions look like for these?
+
+```{r}
+LowEffectFixation %>% rbind(HighEffectFixation) %>% ggplot(aes(x = Freq, color = Bulk)) + geom_density()
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*100, B = (1-Freq)*100) %>% 
+  pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)-> logregdata
+
+logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                           labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                           type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+
+
+logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+  ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = labels, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+  geom_smooth(method = "lm", alpha = 0.1)
+```
+
+
+
+## Simulating Effects - 100 Genes, 10% Selection WITH EPISTASIS
+
+```{r}
+ngenes <- 100
+nindividuals <- 10000
+selection <- 0.1
+
+#phenos <- rchisq(ngenes, df = 1)
+```
+
+
+What if we do this for something with a high effect?
+
+```{r}
+phenos_fixedhigh <- phenos
+phenos_fixedhigh[1] <- max(phenos)
+
+phenos_fixedhigh_p0 <- phenos_fixedhigh
+phenos_fixedhigh_p1 <- phenos_fixedhigh
+
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+################################################################################
+
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+
+genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+
+################################################################################
+s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+################################################################################
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% pivot_longer(-phenos_fixedhigh, names_to = "Bulk", values_to = "Freq") %>%
+  ggplot(aes(x = phenos_fixedhigh, y = Freq, color = Bulk, fill = Bulk)) + geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.3) + ggtitle("Fixed High Effect")
+```
+
+```{r}
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+  mutate(Index = row_number()) %>%
+  tail(-1) %>% 
+  pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+  mutate(logAllele = log(Freq/(1-Freq))) %>% mutate(Effect = "High") -> HighEffectFixation
+
+```
+
+```{r}
+phenos_fixedhigh <- phenos
+phenos_fixedhigh[1] <- 0
+phenos_fixedhigh_p0 <- phenos_fixedhigh
+phenos_fixedhigh_p1 <- phenos_fixedhigh
+
+genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+
+################################################################################
+
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+
+phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+
+genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+
+
+s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+
+################################################################################
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% pivot_longer(-phenos_fixedhigh, names_to = "Bulk", values_to = "Freq") %>%
+  ggplot(aes(x = phenos_fixedhigh, y = Freq, color = Bulk, fill = Bulk)) + geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.3) + ggtitle("Fixed No Effect")
+```
+
+```{r, eval = FALSE}
+data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+  mutate(Index = row_number()) %>%
+  tail(-1) %>% 
+  pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+  mutate(logAllele = log(Freq/(1-Freq))) %>% mutate(Effect = "Low") -> LowEffectFixation
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>%
+  ggplot(aes(x = Index, y = abs(logAllele), color = Effect, fill = Bulk)) + geom_point(alpha = 0.5, size = 2) +
+  facet_grid(rows = "Bulk")
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% select(-phenos_fixedhigh, -Freq) %>%
+  pivot_wider(names_from = Effect, values_from = logAllele) %>% ungroup() %>% mutate(Diff = abs(Low - High)) %>% 
+  ggplot(aes(x = Index, y = Diff, fill = Bulk)) + geom_jitter(alpha = 0.5, size = 2) +
+  facet_grid(rows = "Bulk")
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% select(-Index, -Freq) %>%
+  pivot_wider(names_from = Effect, values_from = logAllele) %>% ungroup() %>% mutate(Diff = abs(Low - High)) %>% 
+  ggplot(aes(x = phenos_fixedhigh, y = Diff, color = Bulk, fill = Bulk)) + geom_jitter(alpha = 0.5, size = 2) +
+  ggtitle("Differences by Phenotype") + geom_smooth(method = "lm", alpha = 0.3)
+```
+
+
+
+### What do the actual logistic regressions look like for these?
+
+```{r}
+#LowEffectFixation %>% rbind(HighEffectFixation) %>% ggplot(aes(x = Freq, color = Bulk)) + geom_density()
+
+LowEffectFixation %>% rbind(HighEffectFixation) %>% separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*100, B = (1-Freq)*100) %>% 
+  pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+  mutate_if(is.character, as.factor)-> logregdata
+
+```
+
+### 0/1 Contrasts
+```{r}
+#MAKE CONTRASTS 0/1
+contrasts(logregdata$Bulk) <- matrix(c(0,1),ncol = 1)
+contrasts(logregdata$Parent) <- matrix(c(0,1),ncol = 1)
+
+logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                           labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                           type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+
+
+logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+  ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = Index == 2, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+  geom_smooth(method = "lm", alpha = 0.1) + facet_wrap(facets = "labels")
+```
+
+### -0.5/0.5 Contrasts
+```{r}
+#MAKE CONTRASTS 0/1
+contrasts(logregdata$Bulk) <- matrix(c(-0.5,0.5),ncol = 1)
+contrasts(logregdata$Parent) <- matrix(c(-0.5,0.5),ncol = 1)
+
+logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                           labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                           type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+
+
+logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+  ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = Index == 2, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+  geom_smooth(method = "lm", alpha = 0.1) + facet_wrap(facets = "labels")
+```
+
+```{r}
+#MAKE CONTRASTS REVERSED
+contrasts(logregdata$Bulk) <- matrix(c(0.5,-0.5),ncol = 1)
+contrasts(logregdata$Parent) <- matrix(c(0.5,-0.5),ncol = 1)
+
+logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                           labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                           type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+
+
+logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+  ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = Index == 2, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+  geom_smooth(method = "lm", alpha = 0.1) + facet_wrap(facets = "labels")
+```
+
+```{r}
+#MIX AND MATCH
+contrasts(logregdata$Bulk) <- matrix(c(0,1),ncol = 1)
+contrasts(logregdata$Parent) <- matrix(c(-0.5,0.5),ncol = 1)
+
+logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                           labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                           type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+
+
+logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+  ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = Index == 2, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+  geom_smooth(method = "lm", alpha = 0.1) + facet_wrap(facets = "labels")
+```
+
+### What is the percentage variance explained by each of these?
+
+```{r}
+#genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+#genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+
+var(pop_0)
+var(pop_1)
+
+var(head(sort(pop_0, decreasing = TRUE), nindividuals*selection))
+var(head(sort(pop_1, decreasing = TRUE), nindividuals*selection))
+
+```
+```{r}
+#Fix genotypes in parent 0 vs 1
+genos_fixed1 <- genos
+genos_fixed1[,1] <- 1
+
+genos_fixed0 <- genos
+genos_fixed0[,1] <- 0
+
+#Add epistasis to phenotypes
+phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+
+#Calculate population genotypes
+genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+
+#Select new populations
+pop_0_selected <- head(sort(pop_0, decreasing = TRUE), nindividuals*selection)
+pop_1_selected <- head(sort(pop_1, decreasing = TRUE), nindividuals*selection)
+pop_0_u <- sample(pop_0, nindividuals*selection)
+pop_1_u <- sample(pop_1, nindividuals*selection)
+
+#Find genotypes of bulks
+s0 <- colSums(head(genos_fixed0[which(pop_0 %in% pop_0_selected),], (nindividuals*selection)))/(nindividuals*selection)
+s1 <- colSums(head(genos_fixed1[which(pop_1 %in% pop_1_selected),], (nindividuals*selection)))/(nindividuals*selection)
+u0 <- colSums(head(genos_fixed0[which(pop_0 %in% pop_0_u),], (nindividuals*selection)))/(nindividuals*selection)
+u1 <- colSums(head(genos_fixed0[which(pop_1 %in% pop_1_u),], (nindividuals*selection)))/(nindividuals*selection)
+```
+
+Percent Variance from slope
+
+```{r}
+
+dfdata <- rbind(data.frame(pheno = pop_0, Fixed = 0, genos_fixed0),
+                data.frame(pheno = pop_1, Fixed = 1, genos_fixed1))
+
+#Effects
+dfdata %>% pivot_longer(-c(pheno, Fixed), names_to = "Gene", values_to = "Allele") %>%
+  group_by(Gene, Fixed) %>% summarize(slope = lm(pheno ~ Allele)$coefficient[2]) -> df_effects_pheno
+
+df_effects_pheno %>% mutate(Gene = as.numeric(gsub("X", "", Gene))) %>% 
+  arrange(Gene) %>% cbind(Pheno = rep(phenos, each = 2)) %>% 
+  ggplot(aes(x = slope, y = Pheno, color = factor(Fixed))) + geom_point()
+
+#Variance Explained
+dfdata %>% pivot_longer(-c(pheno, Fixed), names_to = "Gene", values_to = "Allele") %>%
+  group_by(Gene, Fixed) %>% 
+  do({
+      # Fit linear model
+      model <- lm(pheno ~ Allele, data = .)
+      
+      # Extract R-squared directly from summary(model)
+      r_squared <- summary(model)$r.squared
+      
+      # Create a data frame to return
+      data.frame(r_squared = r_squared)
+    }) -> VarExplained
+
+VarExplained %>% mutate(Gene = as.numeric(gsub("X", "", Gene))) %>% 
+  arrange(Gene) %>% cbind(Pheno = rep(phenos, each = 2)) %>% 
+  ggplot(aes(x = Pheno, y = r_squared, color = factor(Fixed))) + geom_point()
+```
+
+```{r}
+dfdata <- rbind(data.frame(pheno = pop_0, Fixed = 0, genos_fixed0) %>% 
+                  arrange(pheno) %>%
+                  mutate(rank = row_number() > length(pop_0)*0.9),
+                data.frame(pheno = pop_1, Fixed = 1, genos_fixed1) %>% 
+                  arrange(pheno) %>%
+                  mutate(rank = row_number() > length(pop_0)*0.9))
+  
+dfdata %>% ggplot(aes(x = pheno, y = rank)) + geom_point(alpha = 0.01)
+table(dfdata$rank)
+
+#Effects
+dfdata %>% pivot_longer(-c(pheno, Fixed, rank), names_to = "Gene", values_to = "Allele") %>%
+  select(-pheno) %>%
+  group_by(Gene, Fixed) %>% summarize(slope = lm(rank ~ Allele)$coefficient[2]) -> df_effects_bin
+
+df_effects_bin %>% mutate(Gene = as.numeric(gsub("X", "", Gene))) %>% 
+  arrange(Gene) %>% cbind(Pheno = rep(phenos, each = 2)) %>% 
+  ggplot(aes(x = slope, y = Pheno, color = factor(Fixed))) + geom_point()
+
+#Variance Explained
+dfdata %>% pivot_longer(-c(pheno, Fixed, rank), names_to = "Gene", values_to = "Allele") %>%
+  group_by(Gene, Fixed) %>% 
+  do({
+      # Fit linear model
+      model <- lm(rank ~ Allele, data = .)
+      
+      # Extract R-squared directly from summary(model)
+      r_squared <- summary(model)$r.squared
+      
+      # Create a data frame to return
+      data.frame(r_squared = r_squared)
+    }) -> VarExplained
+
+VarExplained %>% mutate(Gene = as.numeric(gsub("X", "", Gene))) %>% 
+  arrange(Gene) %>% cbind(Pheno = rep(phenos, each = 2)) %>% 
+  ggplot(aes(x = Pheno, y = r_squared, color = factor(Fixed))) + geom_point()
+```
+
+Comparing binary vs phenotype
+
+```{r}
+plot(df_effects_bin$slope, df_effects_pheno$slope)
+```
+
+### Now compare this to the logistic regression?
+
+```{r}
+#Phenotypes
+
+df_effects_pheno %>% mutate(Index = as.numeric(gsub("X", "", Gene))) %>% left_join(logregresult) %>% 
+  filter(labels != "cept", type == "Z") %>%
+  filter(Index %in% c(1,2)) -> EpistaticIndices
+
+df_effects_pheno %>% mutate(Index = as.numeric(gsub("X", "", Gene))) %>% left_join(logregresult) %>% 
+  filter(labels != "cept", type == "Z") %>%
+  ggplot(aes(x = slope, y = abs(effect), color = labels)) + geom_point(alpha = 0.3, size = 2) +
+    geom_point(data = EpistaticIndices, size = 4) +
+  facet_grid(Effect~Fixed) + ggtitle("Phenotype slope vs Z Score")
+
+#Binaries
+
+df_effects_bin %>% mutate(Index = as.numeric(gsub("X", "", Gene))) %>% left_join(logregresult) %>% 
+  filter(labels != "cept", type == "Z") %>%
+  filter(Index %in% c(1,2)) -> EpistaticIndices
+
+df_effects_bin %>% mutate(Index = as.numeric(gsub("X", "", Gene))) %>% left_join(logregresult) %>% 
+  filter(labels != "cept", type == "Z") %>%
+  ggplot(aes(x = slope, y = abs(effect), color = labels)) + geom_point(alpha = 0.3, size = 2) +
+  geom_point(data = EpistaticIndices, size = 4) +
+  facet_grid(Effect~Fixed) + ggtitle("Survival slope vs Z Score")
+
+
+
+```
+

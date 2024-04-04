@@ -1,0 +1,958 @@
+---
+title: "Comparing Selection and all CuSO4 Experiments"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+library(fuzzyjoin)
+
+require(BiocManager)
+require(IRanges)
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("IRanges")
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+
+
+## Functions for GLM all and Permutation all
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+
+################################################################################
+# No replicates, fix Parent
+cybrPermute_cb2_all <- function(dataset, 
+                                R = 0, perp = 1, outlength = 4, 
+                                glmform = "Allele ~ Bulk * Parent", 
+                                inputlabels = c("Intercept", "Bulk", "Parent", "Interaction")){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled aD")
+  print(paste("Your labels are:", inputlabels))
+
+    if(R > 0){ #INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Rep, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == 1) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+    }else{ #DO NOT INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == perp) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    }
+  
+    #PERMUTE TWICE
+  if(R > 0){
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Rep, 
+             Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep, 
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, 
+             Rep, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep,
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }else{
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #RUN THE GLM
+    if(R > 0) {
+      shuffletoglm2 %>% na.omit() %>%
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }else{
+      shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }
+    
+    
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+
+```
+
+# Load in pre-glm data
+
+```{r, eval = FALSE}
+HTG3TDMXY_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  mutate(DoseCol = Bulk) %>%
+  select(-Bulk) %>% 
+  select(DoseCol = DoseCol, Bulk = B, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+unique(HTG3TDMXY_prep$Bulk)
+unique(HTG3TDMXY_prep$DoseCol)
+
+HTG3TDMXY_prep %>% mutate(Dose = gsub("51", "", DoseCol),
+                          Dose = gsub("52", "", Dose),
+                          Dose = paste(Parent, Dose)) -> temp
+
+temp$Dose[temp$Dose == "O8 3"] <- "Low"
+temp$Dose[temp$Dose == "W8 3"] <- "High"
+temp$Dose[temp$Dose == "O8 4"] <- "High"
+temp$Dose[temp$Dose == "W8 2"] <- "Low"
+
+temp %>% filter(Dose != "Low") -> HTG3TDMXY_prep_highdose
+temp %>% filter(Dose != "High") -> HTG3TDMXY_prep_lowdose
+
+```
+
+## Do the glm on these like normal
+
+```{r, eval = FALSE}
+inputlabels <- c("cept", "Bulk", "Parent", "Interaction")
+HTG3TDMXY_prep_highdose %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent,#Rep = Rep,
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HTG3TDMXY_glm_highdose
+
+saveRDS(HTG3TDMXY_glm_highdose, file = "HTG3TDMXY_glm_highdose.rds")
+
+HTG3TDMXY_prep_lowdose %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent,#Rep = Rep,
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HTG3TDMXY_glm_lowdose
+
+saveRDS(HTG3TDMXY_glm_lowdose, file = "HTG3TDMXY_glm_lowdose.rds")
+```
+
+## Permutations
+
+```{r, eval = FALSE}
+
+HTG3TDMXY_permutation <- cybrPermute_cb2_all(HTG3TDMXY_prep)
+
+
+HTG3TDMXY_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_permutation_Qs
+
+
+saveRDS(HTG3TDMXY_permutation_Qs, file = "HTG3TDMXY_permutation_Qs.rds")
+```
+
+## Do the GLMs and Permutations for EACH EXPERIMENT
+
+```{r, eval = FALSE}
+HVYTYDRX2_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds") 
+
+HVYTYDRX2_prep %>% unite(c(Parent, Dose), col = "PD") %>% filter(PD != "O8_5") %>% separate(PD, into = c("Parent", "Dose"), sep = "_") %>%
+  mutate(DoseCol = 0) %>%
+  select(DoseCol = DoseCol, Bulk = Bulk, Allele = Allele, POS = POS, Parent = Parent, 
+         SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% 
+  filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor) -> test
+
+test -> HVYTYDRX2_prep
+
+table(test$Bulk, test$Parent)
+
+inputlabels <- c("cept", "Bulk", "Parent", "Interaction")
+HVYTYDRX2_prep %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent, 
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HVYTYDRX2_glm
+
+saveRDS(HVYTYDRX2_glm, file = "HVYTYDRX2_glm_March24.rds")
+
+HVYTYDRX2_glm %>% na.omit()
+
+################################################################################
+HVYTYDRX2_permutation <- cybrPermute_cb2_all(HVYTYDRX2_prep, perp = 2)
+
+
+HVYTYDRX2_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_permutation_Qs
+
+
+saveRDS(HVYTYDRX2_permutation_Qs, file = "HVYTYDRX2_permutation_Qs_M24.rds")
+```
+
+```{r, eval = FALSE}
+HKTFTDRX2_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds") %>% 
+  mutate(DoseCol = 0) %>%
+  select(DoseCol = DoseCol, Bulk = Bulk, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "I", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+inputlabels <- c("cept", "Bulk", "Parent", "Interaction")
+HKTFTDRX2_prep %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent, 
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HKTFTDRX2_glm
+
+saveRDS(HKTFTDRX2_glm, file = "HKTFTDRX2_glm_March24.rds")
+
+################################################################################
+HKTFTDRX2_permutation <- cybrPermute_cb2_all(HKTFTDRX2_prep)
+
+
+HKTFTDRX2_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTFTDRX2_permutation_Qs
+
+
+saveRDS(HKTFTDRX2_permutation_Qs, file = "HKTFTDRX2_permutation_Qs_M24.rds")
+```
+
+```{r, eval = FALSE}
+HNGLVDRXY_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(DoseCol = 0) %>%
+  select(DoseCol = DoseCol, Bulk = Bulk, Allele = Allele, POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = 0 , Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "I", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+inputlabels <- c("cept", "Bulk", "Parent", "Interaction")
+HNGLVDRXY_prep %>% na.omit() %>% 
+      group_by(Pool, CHROM, POS) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(
+                                    Allele = Allele, Bulk = Bulk, Parent = Parent, 
+                                    W = SmoothCount,
+                                    formula = "Allele ~ Bulk * Parent",
+                                    outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> HNGLVDRXY_glm
+
+saveRDS(HNGLVDRXY_glm, file = "HNGLVDRXY_glm_March24.rds")
+
+################################################################################
+HNGLVDRXY_prep %>% mutate(Bulk = gsub("Unselected", "aD", Bulk)) -> HNGLVDRXY_prep_new
+
+HNGLVDRXY_permutation <- cybrPermute_cb2_all(HNGLVDRXY_prep_new)
+
+HNGLVDRXY_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HNGLVDRXY_permutation_Qs
+
+
+saveRDS(HNGLVDRXY_permutation_Qs, file = "HNGLVDRXY_permutation_Qs_M24.rds")
+```
+
+
+# Load in pre-run data
+```{r}
+HTG3TDMXY_permutation_Qs <- readRDS("HTG3TDMXY_permutation_Qs.rds")
+
+HNGLVDRXY_permutation_Qs <- readRDS("HNGLVDRXY_permutation_Qs_M24.rds")
+HKTFTDRX2_permutation_Qs <- readRDS("HKTFTDRX2_permutation_Qs_M24.rds")
+HVYTYDRX2_permutation_Qs <- readRDS("HVYTYDRX2_permutation_Qs_M24.rds")
+
+```
+
+```{r}
+
+HTG3TDMXY_glm_lowdose <- readRDS("HTG3TDMXY_glm_lowdose.rds")
+HTG3TDMXY_glm_highdose <- readRDS("HTG3TDMXY_glm_highdose.rds")
+
+HNGLVDRXY_glm <- readRDS("HNGLVDRXY_glm_March24.rds") 
+HKTFTDRX2_glm <- readRDS("HKTFTDRX2_glm_March24.rds")
+HVYTYDRX2_glm <- readRDS("HVYTYDRX2_glm_March24.rds")
+
+HNGLVDRXY_glm %>% filter(d == "Z", Factor != "cept") %>% mutate(Pool = "HNGLVDRXY") %>% merge(HNGLVDRXY_permutation_Qs) -> HNGLVDRXY
+HKTFTDRX2_glm %>% filter(d == "Z", Factor != "cept") %>% mutate(Pool = "HKTFTDRX2") %>% merge(HKTFTDRX2_permutation_Qs) -> HKTFTDRX2
+HVYTYDRX2_glm %>% filter(d == "Z", Factor != "cept") %>% mutate(Pool = "HVYTYDRX2") %>% merge(HVYTYDRX2_permutation_Qs) -> HVYTYDRX2
+
+rbind(HVYTYDRX2,
+        HKTFTDRX2,
+        HNGLVDRXY) %>%
+  ungroup() %>% 
+  group_by(Pool, CHROM, Factor, d) %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+summarize(POS = POS, Summary = frollapply(x = Summary, n = 100, FUN = mean, align = "left"),
+          quant095 = quant095,
+          quant099 = quant099,
+          quant0995 = quant0995) %>% na.omit() %>%
+   mutate(Dose = 0) %>%
+  select(Factor,CHROM,Dose,d,POS,Summary,Pool,quant095,quant099,quant0995) -> Cu_Smoothed
+  
+```
+
+
+### Dose Comparison Separation
+
+```{r}
+HTG3TDMXY_glm_lowdose %>% filter(d == "Z", Factor != "cept") %>% mutate(Dose = "Low") -> lowtemp
+HTG3TDMXY_glm_highdose %>% filter(d == "Z", Factor != "cept") %>% mutate(Dose = "High") %>% rbind(lowtemp) -> DoseComparison
+
+#smooth this to get rid of the weird ones?
+DoseComparison %>% 
+  ungroup() %>% 
+  group_by(CHROM, Factor, Dose, d) %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+summarize(POS = POS, Summary = frollapply(x = Summary, n = 100, FUN = mean, align = "left")) %>% na.omit() %>% arrange(POS) -> DoseComp
+
+DoseComp %>% mutate(Pool = "HTG3TDMXY") %>% merge(HTG3TDMXY_permutation_Qs) %>% 
+   rbind(Cu_Smoothed) -> CuSO4_All
+
+```
+
+# Calling Peaks
+
+
+```{r}
+CuSO4_All %>% group_by(Pool, Dose, Factor, CHROM) %>% arrange(POS) %>%
+  na.omit() %>%
+  mutate(is_above_threshold = abs(Summary) > quant095) %>%
+  
+  mutate(segment_change = is_above_threshold != lag(is_above_threshold, default = FALSE)) %>%
+  mutate(segment_id = cumsum(segment_change)) %>%
+  # Group by chromosome and segment_id to count the points in each segment
+  group_by(Pool, Dose, Factor, CHROM, segment_id) %>%
+  mutate(points_in_segment = n()) %>%
+  # Now filter to keep only those segments that are above the threshold and have 5 or more points
+  filter(is_above_threshold, points_in_segment >= 100) %>%
+ # mutate(change = is_above_threshold != lag(is_above_threshold, default = first(is_above_threshold))) %>%
+  #mutate(group_id = cumsum(change)) %>%
+  #group_by(Pool, Factor, CHROM, d, group_id) %>%
+ # filter(is_above_threshold) %>%
+  summarize(max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) %>%
+  ungroup() -> maybepeaks
+
+maybepeaks %>% filter(CHROM == "VIII") %>% mutate(Dist = 212535 - ppeakPOS) %>% ungroup() %>% summarize(max = max(Dist),
+                                                                                                        mean = mean(Dist),
+                                                                                                        sd = sd(Dist)) -> CUP1distance
+#19kb distance from nearest CUP1 start
+#5kb sd in this distance
+```
+
+
+## Bulk Peaks
+
+This plot shows the peaks that are between 50000bp from each other within both high and low doses, and can be called overlapping peaks that way. These are also based on peaks called by the entire region above the cutoff, which in particular affects Chr XII since there are two areas where peaks seem to occur. The peaks on Chr XIII don't seem to be called at all, probably because they're too far from one another.
+
+
+```{r, fig.height=4, fig.width=10}
+maybepeaks %>% filter(Factor == "Bulk") %>% select(-segment_id) %>% pivot_wider(names_from = c(Pool, Dose), values_from = max_value) -> bulkpeaks
+
+for(i in unique(bulkpeaks$CHROM)){
+  bulkpeaks %>% filter(CHROM == i) -> tempdata
+  tempdist <- as.matrix(dist(tempdata$ppeakPOS, upper = FALSE, diag = FALSE))
+  successes <- as.data.frame(which(tempdist < 19317, arr.ind = TRUE)) %>% filter(row != col)
+  
+  for(k in 1:(nrow(successes)/2)){
+    if(k == 1){
+      all <- c(tempdata$ppeakPOS[successes$row[k]], tempdata$ppeakPOS[successes$col[k]])
+    }else{
+      pairs <- c(tempdata$ppeakPOS[successes$row[k]], tempdata$ppeakPOS[successes$col[k]])
+      all <- rbind(all, pairs)
+    }
+    
+  }
+}
+#find the common rounding, or maybe just find if there are any within 19kb?
+
+for(i in unique(bulkpeaks$CHROM)){
+  bulkpeaks %>% filter(CHROM == i) -> tempdata
+  tempdist <- (dist(tempdata$ppeakPOS, upper = FALSE, diag = FALSE))
+  hc <- hclust(tempdist)
+  groups <- cutree(hc, h = 19317)
+  tempdata$groups <- groups
+  if(i == unique(bulkpeaks$CHROM)[1]){
+    groupbulks <- tempdata
+  }else{
+    groupbulks <- rbind(groupbulks, tempdata)
+  }
+}
+
+groupbulks %>% ungroup() %>% group_by(CHROM, groups) %>% summarize(num = length(ppeakPOS),
+                                                                   avgPOS = mean(ppeakPOS)) %>% merge(groupbulks) -> groupbulks
+
+groupbulks %>% 
+  pivot_longer(-c(CHROM, groups, num, avgPOS, Factor, ppeakPOS), names_to = c("Pool", "Dose"), names_sep = "_") %>% 
+  na.omit() %>% ungroup() %>% group_by(CHROM) -> gb
+
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gb, aes(xintercept = avgPOS, color = paste(num, groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gb, aes(x = avgPOS, color = paste(num, groups), shape = as.factor(num), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Comparison of Doses") +
+  theme(legend.position = "none")
+
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gb[gb$num > 1,], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gb[gb$num > 1,], aes(x = avgPOS, color = as.factor(groups), shape = as.factor(num), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Comparison of Doses; Overlapping Peaks") +
+  theme(legend.position = "none")
+
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gb[gb$num == 1,], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gb[gb$num == 1,], aes(x = avgPOS, color = as.factor(groups), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Comparison of Doses; Non-Overlapping Peaks") +
+  theme(legend.position = "none")
+
+```
+
+```{r, fig.height=4, fig.width=10}
+CuSO4_All %>% filter(Pool == "HTG3TDMXY") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gb[gb$Pool == "HTG3TDMXY",], aes(xintercept = avgPOS, color = as.factor(num)), alpha = 0.5, size = 1) +
+  #geom_point(data = ba, aes(x = ppeakPOS, y = value, color = Dose), alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("Bulk Comparison of Doses") +
+  scale_color_manual(values = c("gray", "lightblue", "violet", "red"))
+```
+
+```{r, fig.height=4, fig.width=10}
+
+maybepeaks %>% filter(Factor == "Bulk") %>% 
+  select(-segment_id, -max_value) %>% mutate(peakish = 50000*round(ppeakPOS/50000, 0)) %>% 
+  pivot_wider(names_from = c(Pool, Dose), values_from = ppeakPOS) -> bulkpeaksa
+
+bulkpeaks %>% pivot_longer(-c(Factor, CHROM, ppeakPOS)) %>% na.omit() %>% separate(name, into = c("Pool", "Dose"), sep = "_") -> ba
+
+bulkpeaksa %>% group_by(Factor, CHROM, peakish) %>% 
+  mutate(avg = mean(c(HKTFTDRX2_0,
+                      HNGLVDRXY_0,
+                      HTG3TDMXY_High,
+                      HTG3TDMXY_Low,
+                      HVYTYDRX2_0), na.rm = TRUE)) %>% na.omit() -> bulkpeaksavg
+
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = bulkpeaksavg, aes(xintercept = avg), color = "red3", alpha = 0.2, size = 2) +
+  geom_point(data = ba, aes(x = ppeakPOS, y = value, color = Dose), alpha = 0.4, size = 4) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Comparison of Doses") 
+
+```
+
+## Interaction Peaks
+
+This plot shows the peaks that are between 50000bp from each other within both high and low doses, and can be called overlapping peaks that way. These are also based on peaks called by the entire region above the cutoff, which in particular affects Chr XII since there are two areas where peaks seem to occur. The peaks on Chr XIII don't seem to be called at all, probably because they're too far from one another.
+
+
+```{r, fig.height=4, fig.width=10}
+maybepeaks %>% filter(Factor == "Interaction") %>% select(-segment_id) %>% pivot_wider(names_from = c(Pool, Dose), values_from = max_value) -> Interactionpeaks
+
+#find the common rounding, or maybe just find if there are any within 19kb?
+
+for(i in unique(Interactionpeaks$CHROM[Interactionpeaks$CHROM %in% c("VIII", "II") == FALSE])){
+  Interactionpeaks %>% filter(CHROM == i) -> tempdata
+  tempdist <- (dist(tempdata$ppeakPOS, upper = FALSE, diag = FALSE))
+  hc <- hclust(tempdist)
+  groups <- cutree(hc, h = 19317)
+  tempdata$groups <- groups
+  if(i == unique(Interactionpeaks$CHROM[Interactionpeaks$CHROM %in% c("VIII", "II") == FALSE])[1]){
+    groupInteractions <- tempdata
+  }else{
+    groupInteractions <- rbind(groupInteractions, tempdata)
+  }
+}
+
+groupInteractions %>% ungroup() %>% group_by(CHROM, groups) %>% summarize(num = length(ppeakPOS),
+                                                                   avgPOS = mean(ppeakPOS)) %>% merge(groupInteractions) -> groupInteractions
+
+groupInteractions %>% 
+  pivot_longer(-c(CHROM, groups, num, avgPOS, Factor, ppeakPOS), names_to = c("Pool", "Dose"), names_sep = "_") %>% 
+  na.omit() %>% ungroup() %>% group_by(CHROM) -> gI
+
+CuSO4_All %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gI, aes(xintercept = avgPOS, color = paste(num, groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gI, aes(x = avgPOS, color = paste(num, groups), shape = as.factor(num), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Interaction Comparison of Doses") +
+  theme(legend.position = "none")
+
+CuSO4_All %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gI[gI$num > 1,], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gI[gI$num > 1,], aes(x = avgPOS, color = as.factor(groups), shape = as.factor(num), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Interaction Comparison of Doses; Overlapping Peaks") +
+  theme(legend.position = "none")
+
+CuSO4_All %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) + 
+  geom_vline(data = gI[gI$num == 1,], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gI[gI$num == 1,], aes(x = avgPOS, color = as.factor(groups), y = value)) +
+  geom_line(aes(linetype = Dose), alpha = 0.8, color = "black") +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Interaction Comparison of Doses; Non-Overlapping Peaks") +
+  theme(legend.position = "none")
+
+```
+
+# Combining peaks to call at once
+
+```{r}
+maybepeaks %>% select(-segment_id) %>% pivot_wider(names_from = c(Pool, Dose), values_from = max_value) -> allpeaks
+
+#find the common rounding, or maybe just find if there are any within 19kb?
+
+for(i in unique(allpeaks$CHROM)){
+  allpeaks %>% filter(CHROM == i) -> tempdata
+  tempdist <- (dist(tempdata$ppeakPOS, upper = FALSE, diag = FALSE))
+  hc <- hclust(tempdist)
+  groups <- cutree(hc, h = 24818)
+  tempdata$groups <- groups
+  if(i == unique(allpeaks$CHROM)[1]){
+    groupInteractions <- tempdata
+  }else{
+    groupInteractions <- rbind(groupInteractions, tempdata)
+  }
+}
+
+groupInteractions %>% ungroup() %>% group_by(CHROM, groups) %>% summarize(num = length(ppeakPOS),
+                                                                   avgPOS = mean(ppeakPOS)) %>% merge(groupInteractions) -> groupPeaks
+
+groupPeaks %>% 
+  pivot_longer(-c(CHROM, groups, num, avgPOS, Factor, ppeakPOS), names_to = c("Pool", "Dose"), names_sep = "_") %>% 
+  na.omit() %>% ungroup() %>% group_by(CHROM) -> gP
+```
+
+```{r, fig.width = 12, fig.height = 5}
+ggplot2::theme_set(theme_light() + theme(axis.text.x = element_blank(), legend.position = "bottom") + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "gray70"),
+        panel.border = element_rect(colour = "gray70", fill=NA, linewidth=0.4))+
+    theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+    theme(text = element_text(size = 10)))
+
+# length(unique(gP$groups))
+
+CuSO4_All %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  #geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  #single peaks
+  geom_vline(data = gP[gP$num == 1,], aes(xintercept = avgPOS), color = "gray", alpha = 0.2, size = 1) +
+  geom_point(data = gP[gP$num == 1,], aes(x = ppeakPOS, y = value), alpha = 0.4, color = "gray", shape = 17) +
+  #shared peaks
+  geom_vline(data = gP[gP$num > 1,], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gP[gP$num > 1,], aes(x = ppeakPOS, color = as.factor(groups), y = value), size = 2, alpha = 0.8) +
+  
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("Peaks within 24kb")+ 
+  theme(legend.position = "none")
+```
+
+```{r, fig.width = 12, fig.height = 5}
+
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  #single peaks
+  geom_vline(data = gP[gP$num == 1 & gP$Factor == "Bulk",], aes(xintercept = avgPOS), color = "gray", alpha = 0.2, size = 1) +
+  geom_point(data = gP[gP$num == 1 & gP$Factor == "Bulk",], aes(x = ppeakPOS, y = value), alpha = 0.4, color = "gray", shape = 17) +
+  #shared peaks
+  geom_vline(data = gP[gP$num > 1  & gP$Factor == "Bulk",], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gP[gP$num > 1 & gP$Factor == "Bulk",], aes(x = ppeakPOS, color = as.factor(groups), y = value), size = 2, alpha = 0.8) +
+  
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Peaks within 24kb")+ 
+  theme(legend.position = "none")
+
+CuSO4_All %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  #single peaks
+  geom_vline(data = gP[gP$num == 1 & gP$Factor == "Interaction",], aes(xintercept = avgPOS), color = "gray", alpha = 0.2, size = 1) +
+  geom_point(data = gP[gP$num == 1 & gP$Factor == "Interaction",], aes(x = ppeakPOS, y = value), alpha = 0.4, color = "gray", shape = 17) +
+  #shared peaks
+  geom_vline(data = gP[gP$num > 1  & gP$Factor == "Interaction",], aes(xintercept = avgPOS, color = as.factor(groups)), alpha = 0.4, size = 1) +
+  geom_point(data = gP[gP$num > 1 & gP$Factor == "Interaction",], aes(x = ppeakPOS, color = as.factor(groups), y = value), size = 2, alpha = 0.8) +
+  
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Interaction Peaks within 24kb")+ 
+  theme(legend.position = "none")
+```
+
+# Finding the genes in those regions
+
+```{r, fig.width = 12, fig.height = 5}
+#genes <- c("CUP1-1", "CUP1-2", "FRE1")
+
+sgd_orfs <- read.csv("SGD_ORFs.csv") %>% 
+  transmute(Gene = Gene.symbol,
+            CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier),
+            POS.Start = Gene.chromosomeLocation.start,
+            POS.End = Gene.chromosomeLocation.end)
+
+gP %>% mutate(avgPOS.Start = avgPOS - 24000,
+              avgPOS.End = avgPOS + 24000) -> gpmerge
+
+sgd_orfs %>% group_by(Gene, CHROM, POS.Start, POS.End) %>% summarize(Start = min(POS.Start, POS.End),
+                                                                     End = max(POS.Start, POS.End)) -> sgd_orfs
+
+genes_in_peaks <- interval_join(gpmerge, sgd_orfs, by = c("avgPOS.Start" = "Start", "avgPOS.End" = "End")) %>% filter(CHROM.x == CHROM.y) %>% select(-CHROM.y, -avgPOS.Start, -avgPOS.End)
+
+genes_in_peaks %>% select(CHROM = CHROM.x, Factor, POS.Start, POS.End, Gene) %>% distinct() -> toplot
+
+toplot$label_y <- rank(toplot$Gene)
+
+CuSO4_All %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_point(data = gP, aes(x = ppeakPOS, y = value), size = 2, alpha = 0.8) +
+  geom_vline(data = toplot, aes(xintercept = POS.Start, color = Gene), alpha = 0.3) +
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  
+  facet_grid(Factor~CHROM, space = "free", scales = "free") + ggtitle("Peaks within 24kb")+ 
+  theme(legend.position = "none") 
+
+
+```
+
+# Comparing which peaks actually overlap
+
+```{r, fig.width= 12, fig.height = 4}
+
+gP %>% filter(num > 1) %>% group_by(Pool, Factor, Dose) %>% arrange(avgPOS) %>% summarize(CHROM = CHROM,
+                                                                                    avgPOS = avgPOS,
+                                                                                    
+                                                                                    rank = dense_rank(value),
+                                                                                    max = max(dense_rank(value))) -> ranks_gP
+
+ranks_gP %>% merge(gP) %>% filter(Factor == "Bulk") %>% ggplot(aes(x = avgPOS, y = -(rank/max), color = paste(Pool, Dose), size = num)) + 
+  geom_point(alpha = 0.5) + 
+  facet_grid(Factor~CHROM, scales = "free", space = "free")
+
+gP %>% group_by(Pool, Factor, Dose) %>% arrange(avgPOS) %>% summarize(CHROM = CHROM,
+                                                                                    avgPOS = avgPOS,
+                                                                                    
+                                                                                    rank = dense_rank(value),
+                                                                                    max = max(dense_rank(value))) -> ranks_gP
+
+ranks_gP %>% merge(gP) %>% ggplot(aes(x = avgPOS, y = -(rank/max), color = paste(Pool, Dose), size = num)) + 
+  geom_point(alpha = 0.5) + 
+  facet_grid(Factor~CHROM, scales = "free", space = "free")
+
+ranks_gP %>% merge(gP) -> addtoplot
+```
+
+```{r, fig.width= 12, fig.height = 4}
+CuSO4_All %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  
+  #shared peaks
+  geom_vline(data = addtoplot[addtoplot$num > 1  & addtoplot$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  geom_point(data = addtoplot[addtoplot$num > 1 & addtoplot$Factor == "Bulk",], 
+             aes(x = ppeakPOS, color = as.factor(groups), y = value, size = (rank/max), shape = rank == max), 
+             alpha = 0.4) +
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(Pool~CHROM, space = "free", scales = "free") + ggtitle("Bulk Peaks by rank")+ 
+  theme(legend.position = "none") 
+
+```
+
+```{r, fig.width= 12, fig.height = 4}
+Selection <- data.frame(Pool = c("HTG3TDMXY", "HKTFTDRX2", "HNGLVDRXY", "HVYTYDRX2"),
+                        Dose2 = c("Multi", "Low", "High", "Low"),
+                        CSS = c("VIII", "I", "I", "VIII"))
+
+addtoplot %>% merge(Selection) -> addtoplot2
+#unique(CuSO4_All_doses$Dose2)
+
+CuSO4_All %>% merge(Selection) -> CuSO4_All_doses
+
+CuSO4_All_doses$Dose2[CuSO4_All_doses$Dose2 == "Multi"] <- CuSO4_All_doses$Dose[CuSO4_All_doses$Dose2 == "Multi"]
+addtoplot2$Dose2[addtoplot2$Dose2 == "Multi"] <- addtoplot2$Dose[addtoplot2$Dose2 == "Multi"]
+
+#table(CuSO4_All_doses$Dose, CuSO4_All_doses$Dose2)
+
+CuSO4_All_doses %>%
+  filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  
+  #shared peaks
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  geom_point(data = addtoplot2[addtoplot2$num > 1 & addtoplot2$Factor == "Bulk",], 
+             aes(x = ppeakPOS, color = as.factor(groups), y = value, size = (rank/max), shape = rank == max), 
+             alpha = 0.4) +
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(CSS~CHROM, space = "free", scales = "free") + ggtitle("CSS Comparison | Bulk Peaks by rank")+ 
+  theme(legend.position = "none") 
+
+CuSO4_All_doses %>%
+  filter(Factor == "Bulk", CHROM != "VIII", CHROM != "I") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  
+  #shared peaks
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  geom_point(data = addtoplot2[addtoplot2$num > 1 & addtoplot2$Factor == "Bulk",], 
+             aes(x = ppeakPOS, color = as.factor(groups), y = value, size = (rank/max), shape = rank == max), 
+             alpha = 0.4) +
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(Dose2~CHROM, space = "free", scales = "free") + ggtitle("Dose Comparison | Bulk Peaks by rank")+ 
+  theme(legend.position = "none") 
+
+```
+
+```{r, fig.width=12, fig.height=5}
+#addtoplot2 %>% mutate(FacetCol = paste(CSS, Dose2)) -> addtoplot2
+CuSO4_All_doses %>%
+  filter(Factor == "Bulk") %>%
+  mutate(FacetCol = paste(CSS, Dose2)) %>% 
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095, linetype = paste(Pool, Dose))) + 
+  
+  #shared peaks
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  geom_point(data = addtoplot2[addtoplot2$num > 1 & addtoplot2$Factor == "Bulk",], 
+             aes(x = ppeakPOS, color = as.factor(groups), y = value, size = (rank/max), shape = rank == max), 
+             alpha = 0.4) +
+  geom_line(aes(linetype = paste(Pool, Dose)), alpha = 0.8, color = "black", show.legend=FALSE) +
+  facet_grid(FacetCol~CHROM, space = "free", scales = "free") + ggtitle("Bulk Peaks by rank")+ 
+  theme(legend.position = "none") 
+
+
+```
+
+### Rescaling to the highest peak or cutoff
+
+```{r, fig.width=12, fig.height=4}
+CuSO4_All_doses %>% filter() %>% group_by(Pool, Factor, Dose) %>% summarize(CHROM = CHROM, POS = POS, CSS = CSS, Dose2 = Dose2,
+                                                               maxpeak = max(abs(Summary)),
+                                                              prop = abs(Summary)/maxpeak) -> CuSO4_All_proportions
+
+CuSO4_All_proportions %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = prop, linetype = paste(Pool,Dose2))) + geom_line() + 
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "none") 
+```
+```{r, fig.width=12, fig.height=4}
+CuSO4_All_doses %>% mutate(Prop95 = log(abs(Summary)/quant095)) %>%
+
+  filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = Prop95, linetype = Dose)) + geom_line() + 
+  geom_vline(data = addtoplot2[addtoplot2$num == 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS), color = "gray", 
+             alpha = 0.4, size = 1) +
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  ylim(0, 4) +
+  facet_grid(paste(CSS,Dose2)~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "none") + ggtitle("Proportion of 95% Cutoff | Bulk")
+
+CuSO4_All_doses %>% mutate(Prop95 = log(abs(Summary)/quant095)) %>%
+
+  filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = Prop95, linetype = Dose)) + geom_line() + 
+  geom_vline(data = addtoplot2[addtoplot2$num < 2  & addtoplot2$Factor == "Interaction",], 
+             aes(xintercept = avgPOS), color = "gray", 
+             alpha = 0.4, size = 1) +
+  geom_vline(data = addtoplot2[addtoplot2$num > 2  & addtoplot2$Factor == "Interaction",], 
+             aes(xintercept = avgPOS, color = as.factor(groups)), 
+             alpha = 0.4, size = 1) +
+  ylim(0,2) +
+  facet_grid(paste(CSS,Dose2)~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "none") + ggtitle("Proportion of 95% Cutoff | Interaction")
+```

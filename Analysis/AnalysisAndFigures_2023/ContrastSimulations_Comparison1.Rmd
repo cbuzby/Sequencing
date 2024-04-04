@@ -1,0 +1,971 @@
+---
+title: "Contrast Simulations"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+# ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+#                      theme(#axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()))
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+```
+
+
+## Testing amounts of epistasis
+
+```{r, eval = FALSE}
+#Range of phenotypes
+hist(phenos)
+hist(phenos_fixedhigh_p0)
+hist(phenos_fixedhigh_p1)
+
+#ORIGINAL
+#epistasis_plus <- 2*max(phenos)
+#epistasis_minus <- 0.5*max(phenos)
+
+epistasis_plus
+epistasis_minus
+
+#NEW
+epistasis_plus <- 2*max(phenos)
+epistasis_minus <- 1*max(phenos)
+
+epistasis_plus
+epistasis_minus
+```
+
+```{r}
+
+checkepistasis <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
+                           phenos, genos, epistasis_plus, epistasis_minus){
+  
+    phenos_fixedhigh <- phenos
+    phenos_fixedhigh[1] <- max(phenos)
+    
+    phenos_fixedhigh_p0 <- phenos_fixedhigh
+    phenos_fixedhigh_p1 <- phenos_fixedhigh
+    
+    #genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+    
+    ################################################################################
+    
+    genos_fixed1 <- genos
+    genos_fixed1[,1] <- 1
+    
+    genos_fixed0 <- genos
+    genos_fixed0[,1] <- 0
+    
+    phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+    phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+    
+    genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+    genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+    
+    ################################################################################
+    #Extracting allele counts in BULKS
+    s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    #Doing logistic regression on these
+    data.frame(phenos_fixedhigh, s0, s1, u0, u1) %>% 
+      mutate(Index = row_number()) %>%
+      tail(-1) %>% 
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      mutate(logAllele = log(Freq/(1-Freq))) %>% mutate(Effect = "High") -> HighEffectFixation
+    
+    HighEffectFixation %>% separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*100, B = (1-Freq)*100) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor)-> logregdata
+    
+    logregdata %>% select(Index, Effect, Bulk, Parent, Allele, Reads) %>% group_by(Index, Effect) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                    W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                               labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                               type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+    
+    logregresult %>% filter(type == "Z", labels != "cept") %>% left_join(logregdata) %>%
+      ggplot(aes(y = abs(effect), x = phenos_fixedhigh, color = Index == 2, shape = Effect)) + geom_point(size = 3, alpha = 0.1) +
+      geom_smooth(method = "lm", alpha = 0.1) + facet_wrap(facets = "labels")
+    
+    
+    
+    #These might be this?
+    #BINARY SELECTION
+    dfdata_binary <- rbind(data.frame(pheno = pop_0, Fixed = 0, genos_fixed0) %>% 
+                      arrange(pheno) %>%
+                      mutate(rank = row_number() > length(pop_0)*(1-selection)),
+                    data.frame(pheno = pop_1, Fixed = 1, genos_fixed1) %>% 
+                      arrange(pheno) %>%
+                      mutate(rank = row_number() > length(pop_0)*(1-selection)))
+    
+    dfdata_binary %>% pivot_longer(-c(pheno, Fixed, rank), names_to = "Gene", values_to = "Allele") %>%
+      select(-pheno) %>%
+      group_by(Gene, Fixed) %>% summarize(bin_slope = lm(rank ~ Allele)$coefficient[2]) -> df_effects_bin
+    
+    #PHENOTYPE SELECTION
+    dfdata_phenotype <- rbind(data.frame(pheno = pop_0, Fixed = 0, genos_fixed0),
+                    data.frame(pheno = pop_1, Fixed = 1, genos_fixed1))
+    
+    dfdata_phenotype %>% pivot_longer(-c(pheno, Fixed), names_to = "Gene", values_to = "Allele") %>%
+      #select(-pheno) %>%
+      group_by(Gene, Fixed) %>% summarize(pheno_slope = lm(pheno ~ Allele)$coefficient[2]) -> df_effects_pheno
+    
+    merge(df_effects_bin, df_effects_pheno) %>% mutate(Index = as.numeric(gsub("X", "", Gene))) %>% left_join(logregresult) -> compdata
+    
+    return(compdata)
+}
+
+```
+
+```{r}
+Epistasis_2_1 <- checkepistasis(phenos = phenos, 
+               genos = genos, 
+               epistasis_plus = 2, 
+               epistasis_minus = 1)
+
+Epistasis_1_0 <- checkepistasis(phenos = phenos, 
+               genos = genos, 
+               epistasis_plus = 1, 
+               epistasis_minus = 0)
+
+Epistasis_1_1 <- checkepistasis(phenos = phenos, 
+               genos = genos, 
+               epistasis_plus = 1, 
+               epistasis_minus = 1)
+
+Epistasis_equal <- checkepistasis(phenos = phenos, 
+               genos = genos, 
+               epistasis_plus = 1, 
+               epistasis_minus = -1)
+
+Epistasis_05_05 <- checkepistasis(phenos = phenos, 
+               genos = genos, 
+               epistasis_plus = 0.5, 
+               epistasis_minus = 0.5)
+```
+
+```{r}
+
+Epistasis_2_1 %>% filter(type == "Z", labels != "cept") %>%
+  ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
+  ggtitle("+2/-1 Phenotype")
+
+Epistasis_1_0 %>% filter(type == "Z", labels != "cept") %>%
+  ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
+  ggtitle("+1/-0 Phenotype")
+
+Epistasis_1_1 %>% filter(type == "Z", labels != "cept") %>%
+  ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
+  ggtitle("+1/-1 Phenotype")
+
+Epistasis_equal %>% filter(type == "Z", labels != "cept") %>%
+  ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
+  ggtitle("+1/+1 Phenotype")
+
+Epistasis_05_05 %>% filter(type == "Z", labels != "cept") %>%
+  ggplot(aes(y = abs(effect), x = Index, color = factor(labels), shape = Gene == "X2")) + geom_point(size = 3, alpha = 0.4) +
+  ggtitle("+0.5/-0.5 Phenotype")
+```
+## Now to compare things in functions only
+
+```{r}
+all_comparisons <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
+                           phenos, genos, epistasis_plus, epistasis_minus,
+                           s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
+                           fixed_chr_effect = max(phenos)){
+  
+    #phenos <- c(ngenes:0)/ngenes
+  
+    phenos_fixedhigh <- phenos
+    phenos_fixedhigh[1] <- fixed_chr_effect #CHANGED
+    
+    phenos_fixedhigh_p0 <- phenos_fixedhigh
+    phenos_fixedhigh_p1 <- phenos_fixedhigh
+    
+    #genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+    
+    ################################################################################
+    
+    genos_fixed1 <- genos
+    genos_fixed1[,1] <- 1
+    
+    genos_fixed0 <- genos
+    genos_fixed0[,1] <- 0
+    
+    phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+    phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+    
+    genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+    genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+    
+    ################################################################################
+    #Extracting allele counts in BULKS
+    s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    #DOING THE RAW COUNTS EACH
+    data.frame(phenos_fixedhigh, s0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s0_size, B = (1-Freq)*s0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s0_lrd
+    
+    data.frame(phenos_fixedhigh, s1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s1_size, B = (1-Freq)*s1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s1_lrd
+    
+    data.frame(phenos_fixedhigh, u0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u0_size, B = (1-Freq)*u0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u0_lrd
+    
+    data.frame(phenos_fixedhigh, u1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u1_size, B = (1-Freq)*u1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u1_lrd
+    
+    rbind(s0_lrd, s1_lrd, u0_lrd, u1_lrd) %>% 
+      select(Index, Bulk, Parent, Allele, Reads) %>% 
+      #look at only the epistatic gene here
+      filter(Index == 2) %>% 
+      group_by(Index) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                    W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                               labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                               type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+    
+    
+    return(logregresult)
+}
+```
+
+```{r}
+
+Test1 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, minus = NA)
+for(i in seq(-2,2, length.out = 10)){
+  temp <- all_comparisons(phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = i)
+  temp$minus <- i
+  
+  Test1 <- rbind(Test1, temp)
+}
+
+Test1 %>% filter(type == "Z") %>% ggplot(aes(x = factor(round(-minus, 3)), y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in Epistasis Ratio")
+
+```
+```{r}
+Test2 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA)
+
+for(i in 1:100){
+  temp <- all_comparisons(phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = 1,
+                          s0_size = 100, s1_size = 100*i)
+  temp$var <- i
+  
+  Test2 <- rbind(Test2, temp)
+}
+
+Test2 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in S1 Size Multiplier")
+```
+```{r}
+Test3 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in 1:10){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons(phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = k,
+                          s0_size = 100, s1_size = 100*i)
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test3 <- rbind(Test3, temp)
+  }
+  
+}
+
+Test3 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in S1 Size Multiplier, facet by Epistasis") + facet_grid(~var2) + xlab("Size")
+```
+
+```{r, fig.height=4, fig.width=12}
+Test4 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in 1:10){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons(selection = i/100,
+                            phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = k)
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test4 <- rbind(Test4, temp)
+  }
+  
+}
+
+Test4 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  ggtitle("Change in Selection, facet by Epistasis Difference") + facet_grid(~round(1+var2,2)) + xlab("Survival Percentage") 
+
+Test4 %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in Epistasis, facet by Selection") + facet_grid(~var) + xlab("Epistasis")
+
+
+```
+
+#### Bulk effect vs epistatic effect? Survival can just be 1%
+
+```{r}
+Test5 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in c(1:10)){
+  for(k in seq(-1,1,length.out = 10)){
+    temp <- all_comparisons(phenos = phenos, genos = genos, 
+                            epistasis_plus = 1/i, #Effect of interaction is +1/i, so the larger i is, the larger the effect relative to bulk
+                            epistasis_minus = k/i) #Effect of opposite is k/i, so as k approaches 1, effects will be the same MAGNITUDE
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test5 <- rbind(Test5, temp)
+  }
+  
+}
+
+Test5$eplus <- 1/Test5$var
+Test5$eminus <- Test5$var2/Test5$var
+Test5$diff = (1+Test5$eplus) - (1 - Test5$eminus)
+Test5$ratio = Test5$eplus/Test5$eminus
+
+Test5 %>% ggplot(aes(x = log(1/var), y = log(diff), color = var2)) + geom_point(alpha = 0.2, size = 2) + ylab("log(diff)") + xlab("i = Effect | Bulk") + ggtitle("Change in Selection")
+
+```
+
+```{r, fig.height=4, fig.width=8}
+################################################################################
+
+Test5 %>% filter(type == "Z", var2 > -1) %>% ggplot(aes(x = var, y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
+  geom_line() +
+  #geom_smooth(method = "lm") +
+  ggtitle("Change in Bulk Effect, facet by Epistasis Difference") + 
+  facet_grid(~round(1+var2,2)) + xlab("Division of Effect Size") 
+
+################################################################################
+Test5 %>% filter(type == "Z", 
+                 labels %in% (c("Bulk", "Interaction"))) %>% 
+  ggplot(aes(x = log(1/var), y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
+  geom_line() +
+  #geom_smooth(method = "lm") +
+  ggtitle("Change in Bulk Effect, facet by Epistasis Difference") + 
+  facet_grid(~round(1+var2,2)) + xlab("log(1/i)") 
+
+
+```
+```{r}
+Test5 %>% 
+  ggplot(aes(x = log(1/var), y = var)) + geom_point(size = 3) + ggtitle("var = i | Division of Effect")
+
+Test5 %>% 
+  ggplot(aes(x = log(1/var), y = eplus)) + geom_point(size = 3) + ggtitle("var = i | Epistatic vs total Effect")
+
+Test5 %>% 
+  ggplot(aes(x = log(var/var2), y = var)) + geom_point(size = 3) + ggtitle("var2 = k | Epistasis") + ylab("i") + xlab("log(i/k)")
+
+Test5 %>% filter(#eplus < 10, 
+                 labels == "Interaction", type == "Z") %>%
+  ggplot(aes(x = eplus, y = eminus, color = eminus/eplus)) + geom_point(size = 3) 
+
+Test5 %>% filter(#eplus < 10, 
+                 type == "Z",
+                 labels %in% c("Interaction")) %>%
+  ggplot(aes(y = abs(effect), x = eminus/eplus, shape = factor(var), color = (var2))) + 
+  geom_point(size = 3, alpha = 0.3) + 
+  geom_line(aes(), alpha = 0.2) #+ facet_grid(rows = "labels")
+
+Test5 %>% filter(#eplus < 10, 
+                 type == "Z",
+                 labels %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(y = abs(effect), x = eminus/eplus, shape = factor(var), color = (labels))) + 
+  geom_point(size = 3, alpha = 0.3) + 
+  geom_line(aes(), alpha = 0.2) #+ facet_grid(rows = "labels")
+```
+
+### Changing total amount of epistasis
+
+```{r}
+Test6 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in seq(-2,2,length.out = 10)){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons(phenos = ((1:ngenes)-1)/ngenes, genos = genos, 
+                            epistasis_plus = i, #0.1 + i
+                            epistasis_minus = k) #0.1 - k
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test6 <- rbind(Test6, temp)
+  }
+  
+}
+
+```
+
+```{r, fig.width=10, fig.height=3}
+Test6 %>% filter(type == "Z") %>%
+  ggplot(aes(x = (var+var2), y = abs(effect), color = factor(var))) + geom_point() + geom_line() +
+  facet_grid(~labels) + theme(legend.position = "none")
+
+# Test6 %>% filter(type == "Z") %>% pivot_wider(names_from = labels, values_from = effect) %>%
+#   ungroup() %>%
+#   mutate(BIRatio = Bulk/Interaction) %>%
+#   ggplot(aes(x = var+var2, y = Interaction)) + geom_jitter(alpha = 0.3, width = 0.2)
+# 
+# Test6 %>% filter(type == "Z") %>% 
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ungroup() %>%
+#   ggplot(aes(x = var+var2, y = Interaction, color = factor(var))) + 
+#   geom_line(alpha = 0.3, size = 1) +
+#   geom_line(aes(y = Bulk), alpha = 0.3, size = 1)
+# 
+# Test6 %>% filter(type == "Z") %>% 
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ungroup() %>%
+#   ggplot(aes(x = var2, y = abs(Interaction), color = factor(var))) + 
+#   geom_line(alpha = 0.3, size = 2) +
+#   geom_line(aes(y = abs(Bulk)), linetype = 2, alpha = 0.3, size = 2)
+```
+
+Seeing if magnitude vs sign matters
+
+```{r}
+# Test6 %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   geom_point(size = 3) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#   geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+# 
+# Test6 %>% na.omit()%>% 
+#   mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+#           PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+#   pivot_wider(names_from = labels, values_from = effect) %>%
+#   ggplot(aes(x = Interaction, 
+#              y = Bulk, 
+#              shape = factor(round(abs(var2),2)), 
+#              color = paste(PerfectOpp, Sign))) + 
+#   geom_point(size = 3) +
+#   geom_abline(slope = -1, linetype = "dashed") +
+#     geom_abline(slope = -0.5, linetype = "dashed") +
+#   scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+
+Test6 %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var2),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  #geom_point(size = 3) +
+  geom_line(aes(linetype = factor(var2)), size = 1) +
+  geom_abline(slope = -1, linetype = "dashed") +
+    geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
+
+
+Test6 %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var2),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  #geom_point(size = 3) +
+  geom_line(aes(linetype = factor(var)), size = 1) +
+  geom_abline(slope = -1, linetype = "dashed") +
+    geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var")
+
+Test6 %>% na.omit() %>% filter(labels != "cept") %>%
+  ggplot() + geom_tile(aes(x = var, y = var2, fill = effect)) +
+  facet_grid(~labels) +
+  scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  ggtitle("Default Contrasts (0 and 1)")
+
+Test6 %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  #Plot
+  ggplot(aes(x = var, y = var2, 
+             fill = log(abs(Bulk/Interaction)),
+             color = PerfectOpp,
+             linetype = PerfectOpp)) + 
+  geom_tile(size = 1, width = 0.2, height = 0.2)+
+    scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  scale_color_manual(values = c("white", "black")) +
+  scale_linetype_manual(values = c(0, 1))
+```
+
+### Changing Contrasts
+
+```{r}
+all_comparisons_c05 <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
+                           phenos, genos, epistasis_plus, epistasis_minus,
+                           s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
+                           fixed_chr_effect = max(phenos)){
+  
+    #phenos <- c(ngenes:0)/ngenes
+  
+    phenos_fixedhigh <- phenos
+    phenos_fixedhigh[1] <- fixed_chr_effect #CHANGED
+    
+    phenos_fixedhigh_p0 <- phenos_fixedhigh
+    phenos_fixedhigh_p1 <- phenos_fixedhigh
+    
+    #genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+    
+    ################################################################################
+    
+    genos_fixed1 <- genos
+    genos_fixed1[,1] <- 1
+    
+    genos_fixed0 <- genos
+    genos_fixed0[,1] <- 0
+    
+    phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+    phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+    
+    genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+    genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+    
+    ################################################################################
+    #Extracting allele counts in BULKS
+    s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    #DOING THE RAW COUNTS EACH
+    data.frame(phenos_fixedhigh, s0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s0_size, B = (1-Freq)*s0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s0_lrd
+    
+    data.frame(phenos_fixedhigh, s1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s1_size, B = (1-Freq)*s1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s1_lrd
+    
+    data.frame(phenos_fixedhigh, u0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u0_size, B = (1-Freq)*u0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u0_lrd
+    
+    data.frame(phenos_fixedhigh, u1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u1_size, B = (1-Freq)*u1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u1_lrd
+    
+    rbind(s0_lrd, s1_lrd, u0_lrd, u1_lrd) %>% 
+      select(Index, Bulk, Parent, Allele, Reads) -> saveforc
+    
+    #CHANGE CONTRASTS
+    contrasts(saveforc$Bulk) <- matrix(c(-0.5,0.5),ncol = 1)
+    contrasts(saveforc$Parent) <- matrix(c(-0.5,0.5),ncol = 1)
+
+    #CONTINUE
+    saveforc %>%
+      #look at only the epistatic gene here
+      filter(Index == 2) %>% 
+      group_by(Index) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                    W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                               labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                               type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+    
+    
+    return(logregresult)
+}
+```
+
+```{r}
+Test_contrasts <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in seq(-2,2,length.out = 10)){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons_c05(phenos = ((1:ngenes)-1)/ngenes, genos = genos, 
+                            epistasis_plus = i, #0.1 + i
+                            epistasis_minus = k) #0.1 - k
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test_contrasts <- rbind(Test_contrasts, temp)
+  }
+  
+}
+```
+
+```{r}
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  geom_point(size = 3) +
+  geom_abline(slope = -1, linetype = "dashed") +
+  geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var2),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  geom_point(size = 3) +
+  geom_abline(slope = -1, linetype = "dashed") +
+    geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange"))
+
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var2),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  #geom_point(size = 3) +
+  geom_line(aes(linetype = factor(var2)), size = 1) +
+  geom_abline(slope = -1, linetype = "dashed") +
+    geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var2")
+
+
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  ggplot(aes(x = Interaction, 
+             y = Bulk, 
+             shape = factor(round(abs(var2),2)), 
+             color = paste(PerfectOpp, Sign))) + 
+  #geom_point(size = 3) +
+  geom_line(aes(linetype = factor(var)), size = 1) +
+  geom_abline(slope = -1, linetype = "dashed") +
+    geom_abline(slope = -0.5, linetype = "dashed") +
+  scale_color_manual(values = c("gray", "lightblue", "gray", "orange")) + theme(legend.position = "none") + ggtitle("Lines by var")
+
+Test_contrasts %>% na.omit() %>% filter(labels != "cept") %>%
+  ggplot() + geom_tile(aes(x = var, y = var2, fill = effect)) +
+  facet_grid(~labels) +
+  scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  ggtitle("Changed Contrasts (0.5/-0.5)")
+
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  #Plot
+  ggplot(aes(x = var, y = var2, 
+             fill = log(abs(Bulk/Interaction)),
+             color = PerfectOpp,
+             linetype = PerfectOpp)) + 
+  geom_tile(size = 1, width = 0.2, height = 0.2)+
+    scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  scale_color_manual(values = c("white", "black")) +
+  scale_linetype_manual(values = c(0, 3))
+```
+```{r, eval = FALSE}
+Test_contrasts %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  mutate(Div = Bulk/Interaction,
+         logDiv = log(abs(Bulk/Interaction))) %>%
+  ggplot(aes(x = Div, y = logDiv, 
+             color = PerfectOpp == TRUE,
+             size = PerfectOpp == TRUE,
+             alpha = PerfectOpp == TRUE)) + 
+  geom_point() +
+  scale_color_manual(values = c("gray", "darkorange")) +
+  scale_alpha_discrete(range = c(0.1, 0.4)) +
+  scale_size_manual(values = c(2, 3))
+```
+
+### Changing contrasts for the original test4
+
+```{r, fig.height=4, fig.width=12}
+Test4_contrasts <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in 1:10){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons_c05(selection = i/100,
+                            phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = k)
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test4_contrasts <- rbind(Test4_contrasts, temp)
+  }
+  
+}
+
+Test4_contrasts %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  ggtitle("Change in Selection, facet by Epistasis Difference") + facet_grid(~round(1+var2,2)) + xlab("Survival Percentage") 
+
+Test4_contrasts %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in Epistasis, facet by Selection") + facet_grid(~var) + xlab("Epistasis")
+
+
+```
+
+### Contrasts to 0/1 for Background but with unselected as 0
+
+```{r}
+all_comparisons_cbulk01 <- function(nindividuals = 10000, ngenes = 100, selection = 0.1,
+                           phenos, genos, epistasis_plus, epistasis_minus,
+                           s0_size = 100, s1_size = s0_size, u0_size = s0_size, u1_size = s0_size,
+                           fixed_chr_effect = max(phenos)){
+  
+    #phenos <- c(ngenes:0)/ngenes
+  
+    phenos_fixedhigh <- phenos
+    phenos_fixedhigh[1] <- fixed_chr_effect #CHANGED
+    
+    phenos_fixedhigh_p0 <- phenos_fixedhigh
+    phenos_fixedhigh_p1 <- phenos_fixedhigh
+    
+    #genos <- matrix(sample(c(0,1), replace = TRUE, size = nindividuals*ngenes), ncol = ngenes)
+    
+    ################################################################################
+    
+    genos_fixed1 <- genos
+    genos_fixed1[,1] <- 1
+    
+    genos_fixed0 <- genos
+    genos_fixed0[,1] <- 0
+    
+    phenos_fixedhigh_p0[2] <- phenos_fixedhigh[2] + epistasis_plus
+    phenos_fixedhigh_p1[2] <- phenos_fixedhigh[2] - epistasis_minus
+    
+    genos_fixed0 %*% phenos_fixedhigh_p0 -> pop_0
+    genos_fixed1 %*% phenos_fixedhigh_p1 -> pop_1
+    
+    ################################################################################
+    #Extracting allele counts in BULKS
+    s0 <- colSums(head(genos_fixed0[which(pop_0 %in% head(sort(pop_0, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    s1 <- colSums(head(genos_fixed0[which(pop_1 %in% head(sort(pop_1, decreasing = TRUE), nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    u0 <- colSums(head(genos_fixed0[which(pop_0 %in% sample(pop_0, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    u1 <- colSums(head(genos_fixed0[which(pop_1 %in% sample(pop_1, nindividuals*selection)),], (nindividuals*selection)))/(nindividuals*selection)
+    
+    #DOING THE RAW COUNTS EACH
+    data.frame(phenos_fixedhigh, s0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s0_size, B = (1-Freq)*s0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s0_lrd
+    
+    data.frame(phenos_fixedhigh, s1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*s1_size, B = (1-Freq)*s1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> s1_lrd
+    
+    data.frame(phenos_fixedhigh, u0) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u0_size, B = (1-Freq)*u0_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u0_lrd
+    
+    data.frame(phenos_fixedhigh, u1) %>% mutate(Index = row_number()) %>%
+      tail(-1) %>%
+      pivot_longer(-c(phenos_fixedhigh, Index), names_to = "Bulk", values_to = "Freq") %>%
+      separate(Bulk, into = c("Bulk", "Parent"), sep = 1) %>% mutate(A = Freq*u1_size, B = (1-Freq)*u1_size) %>% 
+      pivot_longer(c(A,B), names_to = "Allele", values_to = "Reads") %>%
+      mutate_if(is.character, as.factor) -> u1_lrd
+    
+    rbind(s0_lrd, s1_lrd, u0_lrd, u1_lrd) %>% 
+      select(Index, Bulk, Parent, Allele, Reads) -> saveforc
+    
+    #CHANGE CONTRASTS
+    contrasts(saveforc$Bulk) <- matrix(c(1,0),ncol = 1)
+    contrasts(saveforc$Parent) <- matrix(c(-0.5,0.5),ncol = 1)
+
+    #CONTINUE
+    saveforc %>%
+      #look at only the epistatic gene here
+      filter(Index == 2) %>% 
+      group_by(Index) %>% summarize(effect = glm_cb2_all(Bulk = Bulk, Parent = Parent, Allele = Allele,
+                                                                    W = Reads, formula = "Allele ~ Bulk*Parent"),
+                                               labels = rep(c("cept","Bulk", "Parent", "Interaction"),2),
+                                               type = c("E","E","E","E","Z","Z","Z","Z")) -> logregresult
+    
+    
+    return(logregresult)
+}
+```
+
+
+```{r, fig.height=4, fig.width=12}
+Test4_contrasts01 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in 1:10){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons_cbulk01(selection = i/100,
+                            phenos = phenos, genos = genos, epistasis_plus = 1, epistasis_minus = k)
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test4_contrasts01 <- rbind(Test4_contrasts01, temp)
+  }
+  
+}
+
+Test4_contrasts01 %>% filter(type == "Z") %>% ggplot(aes(x = var, y = abs(effect), color = labels, fill= labels)) + geom_point(size = 3, alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  ggtitle("Change in Selection, facet by Epistasis Difference") + facet_grid(~round(1+var2,2)) + xlab("Survival Percentage") 
+
+Test4_contrasts01 %>% filter(type == "Z") %>% ggplot(aes(x = var2, y = abs(effect), color = labels)) + geom_point(size = 3, alpha = 0.5) +
+  ggtitle("Change in Epistasis, facet by Selection") + facet_grid(~var) + xlab("Epistasis")
+
+
+```
+
+```{r}
+Test_contrasts01 <- data.frame(Index = NA, effect = NA, labels = NA, type = NA, var = NA, var2 = NA)
+
+for(i in seq(-2,2,length.out = 10)){
+  for(k in seq(-2,2,length.out = 10)){
+    temp <- all_comparisons_cbulk01(phenos = ((1:ngenes)-1)/ngenes, genos = genos, 
+                            epistasis_plus = i, #0.1 + i
+                            epistasis_minus = k) #0.1 - k
+    temp$var <- i
+    temp$var2 <- k
+    
+    Test_contrasts01 <- rbind(Test_contrasts01, temp)
+  }
+  
+}
+
+Test_contrasts01 %>% na.omit() %>% filter(labels != "cept") %>%
+  ggplot() + geom_tile(aes(x = var, y = var2, fill = effect)) +
+  facet_grid(~labels) +
+  scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  ggtitle("Changed Contrasts, Bulk Reversed (B: 1/0, P: 0.5/-0.5)")
+
+Test_contrasts01 %>% na.omit()%>% 
+  mutate(Sign = (var > 0) == (var2 > 0), #Different signs mean going the same way, TRUE = magnitude
+          PerfectOpp = (abs(round(var,2)) == abs(round(var2,2)))) %>% #Same magnitude, so "perfect" of either way
+  pivot_wider(names_from = labels, values_from = effect) %>%
+  #Plot
+  ggplot(aes(x = var, y = var2, 
+             fill = log(abs(Bulk/Interaction)),
+             color = PerfectOpp,
+             linetype = PerfectOpp)) + 
+  geom_tile(size = 1, width = 0.2, height = 0.2)+
+    scale_fill_gradient2(high = "darkorange2", low = "steelblue3", mid = "white") +
+  scale_color_manual(values = c("white", "black")) +
+  scale_linetype_manual(values = c(0, 3))
+```

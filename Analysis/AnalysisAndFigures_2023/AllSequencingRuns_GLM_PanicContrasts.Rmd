@@ -422,4 +422,3 @@ testdata_c1 %>% group_by(Index) %>%
 
 testglm_c1 %>% ggplot(aes(x = Index, y = abs(effect), color = label, size = Index == 1)) + geom_jitter(alpha = 0.4) 
 ```
-

@@ -1,0 +1,192 @@
+---
+title: "Comparing Contrasts Calmly"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+#ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+## Load in both datasets
+
+### 0/1 Contrasts
+```{r}
+HNGLVDRXY_allpQs_01 <- readRDS("StandardGLM/Ec01_HNGLVDRXY_allpQs.rds") 
+HTG3TDMXY_allpQs_01 <- readRDS("StandardGLM/Ec01_HTG3TDMXY_allpQs.rds")
+HKTFTDRX2_allpQs_01 <- readRDS("StandardGLM/Ec01_HKTFTDRX2_allpQs.rds")
+HVYTYDRX2_allpQs_01 <- readRDS("StandardGLM/Ec01_HVYTYDRX2_allpQs.rds")
+HTG3TDMXY_allpQs_rep_01 <- readRDS("StandardGLM/Ec01_HTG3TDMXY_allpQs_rep.rds") 
+
+HVYTYDRX2_glm_Ec_01 <- readRDS("HVYTYDRX2_glm_Ec01.rds") %>% mutate(Contrasts = 1, rglm = FALSE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HVYTYDRX2_allpQs_01)
+HNGLVDRXY_glm_Ec_01 <- readRDS("HNGLVDRXY_glm_Ec01.rds") %>% mutate(Contrasts = 1, rglm = FALSE) %>% filter(CHROM != "I", d == "Z") %>% merge(HNGLVDRXY_allpQs_01)
+HKTFTDRX2_glm_Ec_01 <- readRDS("HKTFTDRX2_glm_Ec01.rds") %>% mutate(Contrasts = 1, rglm = FALSE) %>% filter(CHROM != "I", d == "Z") %>% merge(HKTFTDRX2_allpQs_01)
+HTG3TDMXY_glm_Ec_01 <- readRDS("HTG3TDMXY_glm_Ec01.rds") %>% mutate(Contrasts = 1, rglm = FALSE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HTG3TDMXY_allpQs_01)
+HTG3TDMXY_glm_Ec_rep_01 <- readRDS("HTG3TDMXY_glm_Ec01_rep.rds") %>% mutate(Contrasts = 1, rglm = TRUE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HTG3TDMXY_allpQs_rep_01)
+
+```
+
+
+### -0.5/0.5 Contrasts
+
+```{r}
+HNGLVDRXY_allpQs_05 <- readRDS("StandardGLM/Ec_HNGLVDRXY_allpQs.rds") 
+HTG3TDMXY_allpQs_05 <- readRDS("StandardGLM/Ec_HTG3TDMXY_allpQs.rds")
+HKTFTDRX2_allpQs_05 <- readRDS("StandardGLM/Ec_HKTFTDRX2_allpQs.rds")
+HVYTYDRX2_allpQs_05 <- readRDS("StandardGLM/Ec_HVYTYDRX2_allpQs.rds")
+HTG3TDMXY_allpQs_rep_05 <- readRDS("StandardGLM/Ec_HTG3TDMXY_allpQs_rep.rds") 
+
+HVYTYDRX2_glm_Ec_05 <- readRDS("HVYTYDRX2_glm_Ec.rds") %>% mutate(Contrasts = 5, rglm = FALSE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HVYTYDRX2_allpQs_05)
+HNGLVDRXY_glm_Ec_05 <- readRDS("HNGLVDRXY_glm_Ec.rds") %>% mutate(Contrasts = 5, rglm = FALSE) %>% filter(CHROM != "I", d == "Z") %>% merge(HNGLVDRXY_allpQs_05)
+HKTFTDRX2_glm_Ec_05 <- readRDS("HKTFTDRX2_glm_Ec.rds") %>% mutate(Contrasts = 5, rglm = FALSE) %>% filter(CHROM != "I", d == "Z") %>% merge(HKTFTDRX2_allpQs_05)
+HTG3TDMXY_glm_Ec_05 <- readRDS("HTG3TDMXY_glm_Ec.rds") %>% mutate(Contrasts = 5, rglm = FALSE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HTG3TDMXY_allpQs_05)
+HTG3TDMXY_glm_Ec_rep_05 <- readRDS("HTG3TDMXY_glm_Ec_rep.rds") %>% mutate(Contrasts = 5, rglm = TRUE) %>% filter(CHROM != "VIII", d == "Z") %>% merge(HTG3TDMXY_allpQs_rep_05)
+
+```
+
+# Merge for plotting
+
+```{r}
+
+rbind(HVYTYDRX2_glm_Ec_05,
+      HNGLVDRXY_glm_Ec_05,
+      HKTFTDRX2_glm_Ec_05,
+      HTG3TDMXY_glm_Ec_05,
+      HTG3TDMXY_glm_Ec_rep_05,
+      HVYTYDRX2_glm_Ec_01,
+      HNGLVDRXY_glm_Ec_01,
+      HKTFTDRX2_glm_Ec_01,
+      HTG3TDMXY_glm_Ec_01,
+      HTG3TDMXY_glm_Ec_rep_01) -> AllContrasts_comp 
+
+```
+
+## Plot Parent Effects based on Contrasts
+
+```{r, fig.width=12, fig.height=6}
+AllContrasts_comp %>% filter(Factor == "Parent") %>% 
+  mutate(Pool = paste(Pool, rglm)) %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = as.factor(Contrasts))) + 
+  geom_point(size = 0.2, alpha = 0.4) +
+  facet_grid(Pool~CHROM, scales = "free", space = "free") +
+  ggtitle("Parent Effects by Contrast")
+```
+
+```{r, fig.width=12, fig.height=6}
+AllContrasts_comp %>% filter(Factor %in% c("Parent", "Bulk")) %>% #filter(CHROM == "II") %>%
+  mutate(Pool = paste(Pool, rglm)) %>% 
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(Contrasts, Factor))) + 
+  geom_line(size = 0.2) +
+  facet_grid(Pool~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "red3", "gray30", "skyblue2"))
+```
+
+## Seeing how significance changes for each
+
+```{r, fig.height=10, fig.width=12}
+AllContrasts_comp %>% filter(Factor == "Bulk") %>% #filter(CHROM == "II") %>%
+  mutate(Pool1 = paste(Pool, rglm, Contrasts)) %>% 
+  mutate(Peak = POS * as.numeric(abs(Summary) > quant095)) %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(Contrasts, Factor))) + 
+  geom_vline(aes(xintercept = Peak, color = Pool), alpha = 0.01) + 
+  geom_hline(aes(yintercept = quant095, color = paste(Contrasts, Factor))) +
+  geom_line(size = 0.2) +
+  facet_grid(Pool1~CHROM, scales = "free", space = "free") + ggtitle("Bulk Comparison")
+
+AllContrasts_comp %>% filter(Factor == "Interaction") %>% #filter(CHROM == "II") %>%
+  mutate(Pool1 = paste(Pool, rglm, Contrasts)) %>% 
+  mutate(Peak = POS * as.numeric(abs(Summary) > quant095)) %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(Contrasts, Factor))) + 
+  geom_vline(aes(xintercept = Peak, color = Pool), alpha = 0.01) + 
+  geom_hline(aes(yintercept = quant095, color = paste(Contrasts, Factor))) +
+  geom_line(size = 0.2) +
+  facet_grid(Pool1~CHROM, scales = "free", space = "free") + ggtitle("Intercept Comparison")
+
+AllContrasts_comp %>% filter(Factor == "Parent") %>% #filter(CHROM == "II") %>%
+  mutate(Pool1 = paste(Pool, rglm, Contrasts)) %>% 
+  mutate(Peak = POS * as.numeric(abs(Summary) > quant095)) %>%
+  ggplot(aes(x = POS, y = abs(Summary), color = paste(Contrasts, Factor))) + 
+  geom_vline(aes(xintercept = Peak, color = Pool), alpha = 0.01) + 
+  geom_hline(aes(yintercept = quant095, color = paste(Contrasts, Factor))) +
+  geom_line(size = 0.2) +
+  facet_grid(Pool1~CHROM, scales = "free", space = "free") + ggtitle("Parent Comparison")
+```
+
+### Comparison of how Bulk - Parent Effects Look
+
+```{r}
+AllContrasts_comp %>% group_by(CHROM, POS, Pool, Contrasts, rglm) %>% select(-quant099, -quant0995, -quant095) %>%
+  mutate(Pool = paste(Pool, rglm)) %>%
+  pivot_wider(names_from = Factor, values_from = Summary) %>%
+  mutate(BdivP = abs(Bulk)-abs(Parent),
+         BdivI = abs(Bulk)-abs(Interaction),
+         PdivI = abs(Parent)-abs(Interaction)) -> AllContrasts_div
+```
+
+```{r, fig.height=6, fig.width=12}
+AllContrasts_div %>% ggplot(aes(x = POS, y = BdivP, color = paste(Contrasts))) + 
+  geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free") + ggtitle("Bulk Minus Parent")
+AllContrasts_div %>% ggplot(aes(x = POS, y = BdivI, color = paste(Contrasts))) + 
+  geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")+ ggtitle("Bulk Minus Interaction")
+AllContrasts_div %>% ggplot(aes(x = POS, y = PdivI, color = paste(Contrasts))) + 
+  geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")+ ggtitle("Parent Minus Interaction")
+
+```
+

@@ -714,39 +714,39 @@ CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor != "Pare
 
 ```{r, fig.width = 12, fig.height = 5}
 
-CuSO4_contrastglm_cutoffs %>% group_by(CSS, CHROM, POS) %>% 
-  mutate(peak = as.numeric(abs(Summary) > quant095)) %>%
-  summarize(doublepeak = sum(peak) > 1) %>%
-  filter(doublepeak == TRUE) -> doublepeaks
-  
- CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-   geom_vline(data = doublepeaks, aes(xintercept = POS, color = CSS), alpha = 0.01) +
-  geom_point(size = 0.2, alpha = 0.1) + 
-  facet_grid(CSS~ CHROM, space = "free", scales = "free") +
-  ggtitle("Z scores, 0.5/-0.5, Bulk Peaks") +
-  scale_color_manual(values = c("navy", "navy", "darkorange", "darkorange", "navy", "orange"))
+# CuSO4_contrastglm_cutoffs %>% group_by(CSS, CHROM, POS) %>% 
+#   mutate(peak = as.numeric(abs(Summary) > quant095)) %>%
+#   summarize(doublepeak = sum(peak) > 1) %>%
+#   filter(doublepeak == TRUE) -> doublepeaks
+#   
+#  CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk") %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#    geom_vline(data = doublepeaks, aes(xintercept = POS, color = CSS), alpha = 0.01) +
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   facet_grid(CSS~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Z scores, 0.5/-0.5, Bulk Peaks") +
+#   scale_color_manual(values = c("navy", "navy", "darkorange", "darkorange", "navy", "orange"))
 
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 A", "CSS8 B")) %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-  #geom_line() + 
-  geom_point(size = 0.2, alpha = 0.1) + 
-  facet_grid(~ CHROM, space = "free", scales = "free") +
-  ggtitle("High Selection") +
-  scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
-
-CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 B", "CSS8 A")) %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
-  #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
-  geom_hline(aes(yintercept = quant095, color = Label)) +
-  #geom_line() + 
-  geom_point(size = 0.2, alpha = 0.1) + 
-  facet_grid(~ CHROM, space = "free", scales = "free") +
-  ggtitle("Low Selection") +
-  scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 A", "CSS8 B")) %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#   #geom_line() + 
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   #facet_grid(~CHROM, space = "free", scales = "free") +
+#   ggtitle("High Selection") +
+#   scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
+# 
+# CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor == "Bulk", Label %in% c("CSS1 B", "CSS8 A")) %>% 
+#   ggplot(aes(x = POS, y = abs(Summary), color = Label)) + 
+#   #geom_vline(data = maybepeaks[maybepeaks$Factor == "Bulk" & maybepeaks$d == "Z",], aes(xintercept = ppeakPOS), linewidth = 2, alpha = 0.3) +
+#   geom_hline(aes(yintercept = quant095, color = Label)) +
+#   #geom_line() + 
+#   geom_point(size = 0.2, alpha = 0.1) + 
+#   facet_grid(~ CHROM, space = "free", scales = "free") +
+#   ggtitle("Low Selection") +
+#   scale_color_manual(values = c("navy",  "darkorange", "darkorange"))
 
 #All Additive Effects AND Agreement Peaks
 
@@ -904,8 +904,8 @@ CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor == "Inte
 
 #INT ONLY
 CuSO4_contrastglm_cutoffs %>% filter(d == "Z", Factor != "cept", Factor == "Interaction") %>% 
-  ggplot(aes(x = POS, y = abs(Summary), color = Factor)) + 
-  geom_hline(aes(yintercept = quant095, color = Factor)) +
+  ggplot(aes(x = POS, y = abs(Summary))) + 
+  geom_hline(aes(yintercept = quant095)) +
   # geom_vline(data = maybepeaks[maybepeaks$Factor == "Interaction" & maybepeaks$d == "Z",], 
   #            aes(xintercept = ppeakPOS, color = CSS), linewidth = 2, alpha = 0.3) +
   geom_vline(data = peaks[peaks$d == "Z" & peaks$Factor == "Interaction",], aes(xintercept = ppeakPOS, color = CSS), size = 2, alpha = 0.4) +
