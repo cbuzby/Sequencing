@@ -1,0 +1,419 @@
+---
+title: "2024 GLM Effects for All Experiments"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+  html_notebook:
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE, comment=FALSE, fig.width=18, fig.height=5}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+require(ggplot2)
+
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+
+require(cybrBSA)
+require(lme4)
+
+#TESTING
+#glm_formula <- "Allele ~ Bulk * Parent + Rep"
+
+ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+```
+
+## Functions
+
+```{r}
+glm_cb2_short <- function(..., W, formula, numgroups = FALSE, outputlength = 4, return = c("Z")) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return specific ones like z-score only
+  if(return %in% "Z"){
+    output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0.5)+1):((length(summary(glm_fit)$coefficients)*0.75))]
+  }
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+glm_cb2_effect <- function(..., W, formula, numgroups = FALSE, outputlength = 4) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  #MAYBEWORKS
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  #Return effects only
+
+  output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients)*0)+1):((length(summary(glm_fit)$coefficients)*0.25))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+}
+
+cybrPermute_cb2_effect <- function(dataset, 
+                                R = 0, perp = 1, outlength = 4, 
+                                glmform = "Allele ~ Bulk * Parent", 
+                                inputlabels = c("Intercept", "Bulk", "Parent", "Interaction")){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled aD")
+  print(paste("Your labels are:", inputlabels))
+
+    if(R > 0){ #INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Rep, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == 1) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+    }else{ #DO NOT INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == perp) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    }
+  
+    #PERMUTE TWICE
+  if(R > 0){
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Rep, 
+             Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep, 
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, 
+             Rep, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep,
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }else{
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #RUN THE GLM
+    if(R > 0) {
+      shuffletoglm2 %>% na.omit() %>%
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_effect(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }else{
+      shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_effect(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }
+    
+    
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+
+
+```
+
+
+## Load In GLM Prep Data
+
+```{r}
+#CuSO4 CSS1
+HNGLVDRXY_CSS1_glm_prep <- readRDS("StandardGLM/HNGLVDRXY_CSS1_glm_prep.rds") %>% 
+  mutate(Bulk = gsub("aUnselected", "aD", Bulk)) %>% mutate_if(is.character,as.factor)
+
+HKTFTDRX2_CSS1_glm_prep <- readRDS("StandardGLM/HKTFTDRX2_CSS1_glm_prep.rds")%>% mutate_if(is.character,as.factor)
+
+#CuSO4 CSS8
+HVYTYDRX2_CuSO4_CSS8_glm_prep <- readRDS("StandardGLM/HVYTYDRX2_CuSO4_CSS8_glm_prep.rds")%>% mutate_if(is.character,as.factor)
+
+HTG3TDMXY_CSS8_glm_prep <- readRDS("StandardGLM/HTG3TDMXY_CSS8_glm_prep.rds") %>% 
+  mutate(DoseCol = Bulk) %>%
+  #select(-Bulk) %>% 
+  select(DoseCol = DoseCol, Bulk = B, Allele = Allele, Selection = Selection,  POS = POS, Parent = Parent, SmoothCount = SmoothCount, CHROM = CHROM, Rep = Rep, Pool = Pool) %>% na.omit() %>% 
+  filter(CHROM != "VIII", CHROM != "M") %>% mutate_if(is.character,as.factor)
+
+# HTG3TDMXY_CSS8_glm_prep %>% 
+#   mutate(DoseCol = gsub("5", "5_", DoseCol)) %>% 
+#   mutate(DoseCol = gsub("D", "D_", DoseCol)) %>%
+#   separate(DoseCol, into = c("Dose", "DoseRep"), sep = "_") %>% 
+#   mutate(Dose = paste(Parent,Dose, sep = "_")) %>%
+#   mutate(Dose = gsub("O8_35", "1", Dose)) %>%
+#   mutate(Dose = gsub("O8_45", "2", Dose)) %>%
+#   mutate(Dose = gsub("W8_35", "2", Dose)) %>%
+#   mutate(Dose = gsub("W8_25", "1", Dose)) %>%
+#   mutate(Dose = gsub(".*D", "0", Dose)) -> HTG3TDMXY_CSS8_glm_prep_selection
+
+
+```
+
+### Define contrasts for each
+
+```{r}
+#contrasts(HNGLVDRXY_CSS1_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HNGLVDRXY_CSS1_glm_prep$Bulk) <- matrix(c(1, 0), ncol = 1)
+contrasts(HNGLVDRXY_CSS1_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+#contrasts(HKTFTDRX2_CSS1_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HKTFTDRX2_CSS1_glm_prep$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(HKTFTDRX2_CSS1_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+#contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(HVYTYDRX2_CuSO4_CSS8_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+#contrasts(HTG3TDMXY_CSS8_glm_prep$Allele) <- matrix(c(1/2, -1/2), ncol = 1)
+contrasts(HTG3TDMXY_CSS8_glm_prep$Bulk) <- matrix(c(0, 1), ncol = 1)
+contrasts(HTG3TDMXY_CSS8_glm_prep$Parent) <- matrix(c(1/2, -1/2), ncol = 1)
+
+```
+
+
+## Run the effects glm for each with the new contrasts
+
+CuSO4 1A
+
+```{r}
+HNGLVDRXY_CSS1_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HNGLVDRXY_CSS1_APRIL
+
+saveRDS(HNGLVDRXY_CSS1_APRIL, file = "HNGLVDRXY_CSS1_APRIL.rds")
+```
+
+CuSO4 1B
+
+```{r}
+HKTFTDRX2_CSS1_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HKTFTDRX2_CSS1_APRIL
+
+saveRDS(HKTFTDRX2_CSS1_APRIL, file = "HKTFTDRX2_CSS1_APRIL.rds")
+```
+
+CuSO4 8A
+
+```{r}
+HVYTYDRX2_CuSO4_CSS8_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  select(-Dose) %>% na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HVYTYDRX2_CuSO4_CSS8_APRIL
+
+saveRDS(HVYTYDRX2_CuSO4_CSS8_APRIL, file= "HVYTYDRX2_CuSO4_CSS8_APRIL.rds")
+```
+
+CuSO4 8B
+
+```{r}
+HTG3TDMXY_CSS8_glm_prep %>% group_by(Pool, CHROM, POS) %>% 
+  na.omit() %>%
+  summarize(Effect = glm_cb2_effect(Allele = Allele, Bulk = Bulk, 
+                                      Parent = Parent,
+                                      W = SmoothCount,
+                                      formula = "Allele ~ Bulk*Parent",
+                                      outputlength = 4),
+            labels = c("Intercept", "Bulk", "Parent", "Interaction")) -> HTG3TDMXY_CSS8_APRIL
+
+saveRDS(HTG3TDMXY_CSS8_APRIL, file = "HTG3TDMXY_CSS8_APRIL.rds")
+```
+
+## Plot here
+
+```{r, fig.width=12, fig.height=5}
+rbind(HTG3TDMXY_CSS8_APRIL[HTG3TDMXY_CSS8_APRIL$CHROM != "VIII",],
+      HVYTYDRX2_CuSO4_CSS8_APRIL[HVYTYDRX2_CuSO4_CSS8_APRIL$CHROM != "VIII",],
+      HKTFTDRX2_CSS1_APRIL[HKTFTDRX2_CSS1_APRIL$CHROM != "I",],
+      HNGLVDRXY_CSS1_APRIL[HNGLVDRXY_CSS1_APRIL$CHROM != "I",]) -> CuSO4_withcontrasts
+
+CuSO4_withcontrasts %>% filter(labels != "Intercept") %>% ggplot(aes(x = POS, y = abs(Effect), color = labels)) + geom_line() + facet_grid(Pool~CHROM, scales = "free", space = "free")
+```
+
+### Run permutations on these
+
+```{r}
+
+HNGLVDRXY_permutation <- cybrPermute_cb2_all(HNGLVDRXY_CSS1_glm_prep)
+HKTFTDRX2_permutation <- cybrPermute_cb2_all(HKTFTDRX2_CSS1_glm_prep)
+HVYTYDRX2_permutation <- cybrPermute_cb2_all(HVYTYDRX2_CuSO4_CSS8_glm_prep)
+HTG3TDMXY_permutation <- cybrPermute_cb2_all(HTG3TDMXY_CSS8_glm_prep)
+
+
+HNGLVDRXY_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HNGLVDRXY_permutation_Qs
+
+HKTFTDRX2_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HKTFTDRX2_permutation_Qs
+
+HVYTYDRX2_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HVYTYDRX2_permutation_Qs
+
+HTG3TDMXY_permutation %>% group_by(Factor) %>%
+  summarize(quant095 = quantile(abs(Summary), 0.95, na.rm = TRUE),
+             quant099 = quantile(abs(Summary), 0.99, na.rm = TRUE),
+             quant0995 = quantile(abs(Summary), 0.995, na.rm = TRUE)) -> HTG3TDMXY_permutation_Qs
+
+```
+
+
