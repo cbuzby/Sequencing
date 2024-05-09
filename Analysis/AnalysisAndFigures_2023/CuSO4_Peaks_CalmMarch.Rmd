@@ -38,7 +38,12 @@ require(IRanges)
 
 # BiocManager::install("IRanges")
 
-ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+# ggplot2::theme_set(theme_light() + theme(text = element_text(size = 10)) +
+#                      theme(#axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank()))
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
                      theme(#axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()))
@@ -956,3 +961,807 @@ CuSO4_All_doses %>% mutate(Prop95 = log(abs(Summary)/quant095)) %>%
   facet_grid(paste(CSS,Dose2)~CHROM, space = "free", scales = "free") +
   theme(legend.position = "none") + ggtitle("Proportion of 95% Cutoff | Interaction")
 ```
+
+## Figures for (maybe) the paper
+
+### FIGURE 2 (start of the actual data)
+```{r, fig.width=9, fig.height=4}
+CuSO4_All_doses %>% filter() %>% group_by(Pool, Factor, Dose) %>% summarize(CHROM = CHROM, POS = POS, CSS = CSS, Dose2 = Dose2,
+                                                               maxpeak = max(abs(Summary)),
+                                                              prop = abs(Summary)/maxpeak, 
+                                                              quant095 = quant095,
+                                                              prop095 = quant095/maxpeak) -> CuSO4_All_proportions_c
+
+CuSO4_All_proportions_c %>% ungroup() %>% 
+  mutate(peak = as.numeric(prop > prop095)) %>%
+  group_by(Factor, CSS, POS) %>% summarize(allpeak = mean(peak)) %>%
+  merge(CuSO4_All_proportions_c) -> CuSO4_All_proportions_cP
+
+CuSO4_All_proportions_c$CHROM <- factor(CuSO4_All_proportions_c$CHROM, levels = as.character(as.roman(1:16)))
+CuSO4_All_proportions$CHROM <- factor(CuSO4_All_proportions$CHROM, levels = as.character(as.roman(1:16)))
+CuSO4_All_proportions_cP$CHROM <- factor(CuSO4_All_proportions_cP$CHROM, levels = as.character(as.roman(1:16)))
+
+################################################################################
+#BULK EFFECTS
+CuSO4_All_proportions_cP %>% filter(Factor == "Bulk") %>% ggplot(aes(x = POS, y = prop, 
+                                                                    linetype = paste(Pool, Dose2),
+                                                                    color = Dose2)) + 
+  #peaks
+  geom_vline(data = CuSO4_All_proportions_cP[CuSO4_All_proportions_cP$allpeak == 1 & CuSO4_All_proportions_cP$Factor == "Bulk",], 
+             aes(xintercept = POS),
+             color = "#ADD8E610") +
+  
+  #data
+  geom_line() +
+  geom_hline(aes(yintercept = prop095, 
+                 linetype = paste(Pool, Dose2),
+                 color = Dose2)) +
+  
+  #aesthetics of the rest
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylab("Proportion of Max Selection Peak") + xlab("Genomic Position") +
+  theme(legend.position = "left") +
+  scale_color_manual(values = c("black", "gray30"))
+
+#INTERACTION EFFECTS
+CuSO4_All %>% filter(Factor == "Interaction") %>% ggplot(aes(x = POS, y = abs(Summary), 
+                                                                    linetype = paste(Pool, Dose))) + 
+  #peaks
+  geom_vline(data = CuSO4_All_proportions_cP[CuSO4_All_proportions_cP$allpeak == 1 & CuSO4_All_proportions_cP$Factor == "Bulk",], 
+             aes(xintercept = POS),
+             color = "#ADD8E610") +
+  geom_vline(data =  CuSO4_All_proportions_cP[CuSO4_All_proportions_cP$allpeak == 1 & CuSO4_All_proportions_cP$Factor == "Interaction",],
+             aes(xintercept = POS),
+             color = "red") +
+  
+  #data
+  geom_line() +
+  geom_hline(aes(yintercept = quant095, 
+                 linetype = paste(Pool, Dose))) +
+ 
+  
+  #aesthetics of the rest
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylab("abs(Z-score)") + xlab("Genomic Position") +
+  theme(legend.position = "left") +
+  scale_color_manual(values = c("black", "gray30"))
+
+CuSO4_All_proportions_cP %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = prop, color = paste(Pool,Dose2))) + geom_line() + 
+  
+  #Peaks
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk" ,], 
+             aes(xintercept = ppeakPOS, #avgPOS, #ppeakPOS, 
+                 #color = as.factor(groups), 
+                 color = paste(Pool,Dose2)), 
+             #linetype = "dashed",
+             alpha = 0.4, size = 1) +
+  
+  #Cutoffs
+  geom_hline(aes(yintercept = prop095, 
+                 color = paste(Pool, Dose2)),
+                 linetype = "dashed") +
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "none")  +
+  scale_color_manual(values = c("black", "lightblue", "darkorange", "darkred", "black"))
+
+```
+
+```{r, fig.height=4, fig.width=9}
+genes <- c("CUP1-1", 
+           #"CUP1-2", 
+           "FRE1")
+
+sgd_cup1 <- read.csv("SGD_ORFs.csv") %>% 
+  transmute(Gene = Gene.symbol,
+            CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier),
+            POS.Start = Gene.chromosomeLocation.start,
+            POS.End = Gene.chromosomeLocation.end) %>%
+  filter(Gene %in% genes)
+################################################################################
+
+CuSO4_All_doses %>% filter(Factor %in% c("Bulk", "Interaction")) %>% group_by(Pool, Dose) %>% summarize(Factor = Factor, CHROM = CHROM, POS = POS, CSS = CSS, Dose2 = Dose2,
+                                                               maxpeak = max(abs(Summary)),
+                                                              prop = abs(Summary)/maxpeak, 
+                                                              quant095 = quant095,
+                                                              prop095 = quant095/maxpeak) -> CuSO4_All_proportions_f
+
+
+################################################################################
+CuSO4_All_proportions_f %>% filter(Factor == "Bulk") %>%
+  #mutate(cutoff = prop > prop095) %>% mutate(cutoff = gsub(FALSE, NA, cutoff)) %>%
+ 
+  ggplot(aes(x = POS, y = prop, color = paste(Pool,Dose2),
+             linetype = prop < prop095)) + 
+  geom_vline(data = sgd_cup1, aes(xintercept = POS.Start), color = "red", size = 2, alpha = 0.4) +
+  geom_line() + 
+  geom_hline(aes(yintercept = prop095), color = "gray") +
+  #Peaks
+  # geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Bulk" ,], 
+  #            aes(xintercept = ppeakPOS, #avgPOS, #ppeakPOS, 
+  #                color = paste(Pool,Dose2)), 
+  #            #linetype = "dashed",
+  #            alpha = 0.4, size = 1) +
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+theme(legend.position = "none",
+        strip.text = element_text(colour = 'black'),
+    panel.background = element_rect(fill = "white", color = "gray95"),
+      panel.border = element_blank(), 
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "gray95", colour = "gray95", 
+                linewidth = rel(1)), complete = TRUE) +
+  scale_color_manual(values = rep("black", 12)) +
+  ggtitle("Selection Effects Normalized to Highest Peak")
+
+################################################################################
+
+CuSO4_All_proportions_f %>% #filter(Factor == "Interaction") %>%
+  #mutate(cutoff = prop > prop095) %>% mutate(cutoff = gsub(FALSE, NA, cutoff)) %>%
+ 
+  ggplot(aes(x = POS, y = prop, size = paste(Pool,Dose2),
+             color = paste(Factor, CSS),
+             linetype = prop < prop095)) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = prop095, color = paste(Factor, CSS))) +
+  # Peaks
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Interaction" ,],
+             aes(xintercept = ppeakPOS, #avgPOS, #ppeakPOS,
+                 size = paste(Pool,Dose2),
+                 color = CSS),
+             alpha = 0.2, size = 2) +
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "none",
+        strip.text = element_text(colour = 'black'),
+      panel.background = element_rect(fill = "white", color = "gray95"),
+        panel.border = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "gray95", colour = "gray95", 
+                  linewidth = rel(1)), complete = TRUE) +
+  scale_color_manual(values = c("gray90", #bulk I
+                                "gray90", #bulk VIII
+                                "#43ACC7", #CSS I
+                                "#43ACC7", #Interaction I
+                                "darkorange", #Interaction VIII
+                                "darkorange")) + #CSS VIII
+  scale_size_manual(values = rep(0.5, 20)) +
+  ggtitle("Interaction Effects Normalized to Highest Additive Peak")
+  
+
+```
+
+Organizing rankings
+
+```{r, fig.width=2, fig.height=4}
+CuSO4_All_doses %>% filter(Factor == "Bulk", d == "Z") %>%
+  group_by(Pool, CHROM) %>% 
+  summarize(quant095 = quant095,
+            CSS = CSS,
+            max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) %>%
+  ungroup() %>%
+  distinct() %>%
+  filter(max_value > quant095) %>%
+  arrange(desc(max_value)) %>% mutate(rank = row_number()) %>%
+  ggplot(aes(x = Pool,
+             y = -rank,
+             color = CHROM)) +
+  geom_text(aes(label = CHROM)) +
+  facet_grid(~CSS, scales = "free", space = "free") +
+  theme_classic() +
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "white", color = "black"),
+        panel.border = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "gray95", colour = "black", 
+                  linewidth = rel(1)), complete = TRUE) 
+
+################################################################################
+CuSO4_All_doses %>% filter(Factor == "Bulk", d == "Z") %>%
+  group_by(Pool, CHROM) %>% 
+  summarize(quant095 = quant095,
+            CSS = CSS,
+            max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) %>%
+  ungroup() %>%
+  distinct() %>%
+  filter(max_value > quant095) %>%
+  select(Pool, CHROM, CSS, max_value) %>%
+  arrange(desc(max_value)) %>%
+  pivot_wider(names_from = Pool, values_from = max_value) -> intermediate
+
+intermediate %>% select(CHROM, CSS, Val = HTG3TDMXY) %>% na.omit() %>% arrange(desc(Val)) %>% mutate(rank = row_number()) %>%  mutate(Pool = "HT") -> HTG3TDMXY_rank
+intermediate %>% select(CHROM, CSS, Val = HKTFTDRX2) %>% na.omit() %>% arrange(desc(Val)) %>% mutate(rank = row_number()) %>%  mutate(Pool = "HK")  -> HKTFTDRX2_rank
+intermediate %>% select(CHROM, CSS, Val = HNGLVDRXY) %>% na.omit() %>% arrange(desc(Val)) %>% mutate(rank = row_number()) %>%  mutate(Pool = "HN") -> HNGLVDRXY_rank
+intermediate %>% select(CHROM, CSS, Val = HVYTYDRX2) %>% na.omit() %>% arrange(desc(Val)) %>% mutate(rank = row_number()) %>%  mutate(Pool = "HV") -> HVYTYDRX2_rank
+  
+rbind(HTG3TDMXY_rank, HKTFTDRX2_rank, HNGLVDRXY_rank, HVYTYDRX2_rank) %>%
+  ggplot(aes(x = Pool, y = -rank, color = CHROM)) +
+  geom_text(aes(label = CHROM)) +
+  facet_grid(~CSS, scales = "free", space = "free") +
+  theme_classic() +
+  #ylim(-8,-1) +
+  theme(legend.position = "none",
+      strip.text = element_text(colour = 'black'),
+        panel.background = element_rect(fill = "white", color = "black"),
+        panel.border = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "gray95", colour = "black", 
+                  linewidth = rel(1)), complete = TRUE) +
+  scale_color_manual(values = c("gray","gray","gray","gray",
+                                "gray", #9
+                                "red","gray","darkorange","darkturquoise",
+                                #skip to ten
+                                "gray","lightblue","black",
+                                "gray","darkred","orchid","gray"))
+
+```
+
+```{r, fig.width=9, fig.height=4}
+CuSO4_All_doses %>% filter(Factor == "Bulk", d == "Z") %>%
+  group_by(Pool, CHROM) %>% 
+  summarize(quant095 = quant095,
+            CSS = CSS,
+            max_value = max(abs(Summary), na.rm = TRUE),
+            ppeakPOS = POS[which.max(abs(Summary))]) %>%
+  ungroup() %>%
+  distinct() %>%
+  filter(max_value > quant095) %>%
+  filter(CHROM %in% c("VIII", "V", "XII", "XV","VII", "XI", "XIV")) -> newpeaks
+
+CuSO4_All_proportions_f %>% filter(Dose != "Low") %>% ungroup() %>% select(CHROM, CSS, Pool, maxpeak) %>% distinct() %>% merge(newpeaks) %>% mutate(prop = max_value/maxpeak) -> npm
+
+################################################################################
+CuSO4_All_proportions_f %>% filter(Factor == "Bulk") %>%
+  #mutate(cutoff = prop > prop095) %>% mutate(cutoff = gsub(FALSE, NA, cutoff)) %>%
+ 
+  ggplot() + 
+  geom_vline(data = sgd_cup1, aes(xintercept = POS.Start), color = "red", size = 2, alpha = 0.2) +
+  geom_line(aes(x = POS, y = prop, size = paste(Pool,Dose2),
+             linetype = prop < prop095)) + 
+  geom_hline(aes(yintercept = prop095), color = "gray") +
+  #Peaks
+  geom_point(data = npm, aes(x = ppeakPOS, y = prop, color = CHROM), size = 3, alpha = 0.5) + 
+  #the rest
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+theme(legend.position = "none",
+       strip.text = element_text(colour = 'black'),
+     panel.background = element_rect(fill = "white", color = "gray95"),
+      panel.border = element_blank(), 
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "gray95", colour = "gray95", 
+                linewidth = rel(1)), complete = TRUE) +
+  #scale_color_manual(values = rep("black", 12)) +
+  scale_size_manual(values = rep(0.5, 12)) +
+  ggtitle("Selection Effects Normalized to Highest Peak") +
+  scale_color_manual(values = c("red","darkorange","darkturquoise","lightblue", "black","darkred", "orchid","gray"))
+```
+
+Let's try the circle plots again...?
+
+
+```{r}
+cybr_circos_new <- function(d1 = "markers", d8 = "markers", peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, color1 = "#24588A", color8 = "#ED7B01", opacity = "50"){
+  
+  markers <- rbind(data.frame(CHROM = as.character(as.roman(1:16)),
+                        POS = 1,
+                        summary = 0,
+                        label = "Interaction"),
+                   data.frame(CHROM = as.character(as.roman(1:16)),
+                        POS = (c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000),
+                        summary = 0,
+                        label = "Interaction")
+  )
+  
+  color1fade_50 <- paste(color1, "50", sep = "")
+  color8fade_50 <- paste(color8, "50", sep = "")
+  
+  color1fade <- paste(color1, opacity, sep = "")
+  color8fade <- paste(color8, opacity, sep = "")
+
+  if(is.vector(d8)){
+    d8 <- markers
+    include8 <- FALSE
+  }else{
+    d8 <- rbind(d8, markers)
+    include8 <- TRUE
+  }
+  
+  if(is.vector(d1)){
+    d1 <- markers
+    include1 <- FALSE
+  }else{
+    d1 <- rbind(d1, markers)
+    include1 <- TRUE
+  }
+    #SET UP DATA
+  df8 <- data.frame(sectors = as.character(d8$CHROM),
+                 x = d8$POS,
+                 y = abs(d8$summary),
+                  label = d8$label)
+
+  df1 <- data.frame(sectors = as.character(d1$CHROM),
+                 x = d1$POS,
+                 y = abs(d1$summary),
+                  label = d1$label)
+
+  #Take just the interactions of each
+  df8int <- df8 %>% filter(label == "Interaction")
+  df1int <- df1 %>% filter(label == "Interaction")
+
+    #REORDER THE CHROMOSOMES
+  df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+  df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+  
+  ##############################################################################
+  dfall <- rbind(df1int, df8int) %>% na.omit()
+  circos.par("track.height" = 0.3, start.degree = 90, cell.padding = c(0,0))
+  circos.initialize(sectors = dfall$sectors, x = dfall$x)
+
+  if(is.null(maxy)){
+    #I think this makes the sizes?
+    circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, y = dfall$y, 
+        panel.fun = function(x, y) {
+            circos.text(CELL_META$xcenter, 
+                0 - mm_y(5), 
+                CELL_META$sector.index,
+                niceFacing = FALSE)
+            circos.axis(labels.cex = 0.1)
+    })
+  }else{
+    circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+      panel.fun = function(x, y) {
+          circos.text(CELL_META$xcenter, 
+              0 - mm_y(5), 
+              CELL_META$sector.index,
+              niceFacing = FALSE)
+          circos.axis(labels.cex = 0.1)
+      })
+  }
+  #Makes the chromosome overlap parts
+  #CHROMOSOME I
+  
+  if(include1 == TRUE){
+    #CHROMOSOME I
+    draw.sector(83.5, #RIGHT
+              90, #LEFT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color1fade_50, border = FALSE)
+  }
+  
+  if(include8 == TRUE){
+    #CHROMOSOME VIII
+    draw.sector(289.5, #LEFT
+              305.4, #RIGHT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color8fade_50, border = FALSE)
+  }
+  
+  
+  #Makes the lines
+  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
+  circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
+  
+  if(is.null(peaklist8) == FALSE){
+    if(length(peaklist8$POS) >= 1){
+      for(i in 1:length(peaklist8$POS)){
+      circos.link(peaklist8$CHROM[i], 
+                  peaklist8$POS[i], 
+                  #Add 8 after
+                  "VIII", c(0, max(dfall$x[dfall$sectors == "VIII"])),  
+                  
+                  col = color8fade, 
+                  h.ratio = 0.3, 
+                  border = color8fade, 
+                  lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 8")
+    }
+    
+  }
+
+  if(is.null(peaklist1) == FALSE){
+    if(length(peaklist1$POS) >= 1){
+      for(i in 1:length(peaklist1$POS)){
+        circos.link("I",c(0, max(dfall$x[dfall$sectors == "I"])),  
+                    #add 1 first
+                    peaklist1$CHROM[i], 
+                    peaklist1$POS[i], 
+                    col = color1fade, 
+                    h.ratio = 0.3, 
+                    border = color1fade, 
+                    lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 1")
+    }
+  }  
+  
+  circos.clear()
+}
+```
+
+```{r}
+for(i in unique(CuSO4_All_doses$Pool)){
+  CuSO4_All_doses %>% filter(Pool == i) -> templines
+  
+  if(length(unique(templines$Dose)) > 1){
+    templines %>% filter(Dose == "High") -> templines
+    addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Interaction" ,] %>% filter(Dose == "High") -> gpt
+  }else{
+    gpt <- addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Interaction" ,]
+  }
+  print(i)
+  if(unique(templines$CSS) == "I"){
+    int1 <- gpt %>% filter(Pool == i, Factor == "Interaction") %>% transmute(CHROM = CHROM, POS = ppeakPOS)
+    templines %>% transmute(CHROM = CHROM, POS = POS, summary = abs(Summary), label = Factor) -> d1cuso4
+
+    cybr_circos_new(peaklist1 = int1,
+            #peaklist8 = int8,
+            d1 = d1cuso4,
+            d8 = "m",
+            color1 = "#43ACC7")
+  }else{
+    int8 <- gpt %>% filter(Pool == i, Factor == "Interaction") %>% transmute(CHROM = CHROM, POS = ppeakPOS)
+    templines %>% transmute(CHROM = CHROM, POS = POS, summary = abs(Summary), label = Factor) -> d8cuso4
+
+    cybr_circos_new(#peaklist1 = int1,
+            peaklist8 = int8,
+            #d1 = d1cuso4,
+            d8 = d8cuso4,
+            color1 = "#43ACC7")
+  }
+}
+```
+
+
+Maybe also showing where the peaks line up?
+
+```{r, fig.height=4, fig.width=9}
+CuSO4_All_proportions_f %>% filter(Factor == "Bulk") %>%
+  #mutate(cutoff = prop > prop095) %>% mutate(cutoff = gsub(FALSE, NA, cutoff)) %>%
+ 
+  ggplot() + 
+  #change to interaction ones
+  geom_vline(data = addtoplot2[addtoplot2$num > 1  & addtoplot2$Factor == "Interaction" ,] , aes(xintercept = ppeakPOS, color = CSS), size = 2, alpha = 0.2) +
+  geom_line(aes(x = POS, y = prop, size = paste(Pool,Dose2),
+             linetype = prop < prop095)) + 
+  geom_hline(aes(yintercept = prop095), color = "gray") +
+  #the rest
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
+theme(legend.position = "none",
+      strip.text = element_text(colour = 'black'),
+      panel.background = element_rect(fill = "white", color = "gray95"),
+      panel.border = element_blank(), 
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "gray95", colour = "gray95", 
+                linewidth = rel(1)), complete = TRUE) +
+  #scale_color_manual(values = rep("black", 12)) +
+  scale_size_manual(values = rep(0.5, 12)) +
+  ggtitle("Normalized Selection Effects Compared to Interaction Peaks") +
+  scale_color_manual(values = c("#43ACC7", "darkorange"))
+
+```
+
+Stats for is the highest point of the interactions within the window of the additive?
+
+```{r}
+maybepeaks %>% pivot_wider(names_from = Factor, values_from = ppeakPOS) %>% select(Pool, Dose, CHROM, Bulk, Interaction) %>%
+  group_by(Pool, Dose, CHROM) -> AttemptAll
+
+mylist <- list()
+for(i in unique(AttemptAll$CHROM)){
+  Attempt <- AttemptAll %>% filter(CHROM == i)
+  mylist[[i]] <- dist(c(Attempt$Bulk[is.na(Attempt$Bulk) == FALSE], 
+     Attempt$Interaction[is.na(Attempt$Interaction) == FALSE]
+    ))
+}
+
+result <- data.frame(Diff = NA, Int = NA, CHROM = NA)
+for(c in unique(AttemptAll$CHROM)){
+    Attempt <- AttemptAll %>% filter(CHROM == c) 
+    Bulk <- Attempt$Bulk[is.na(Attempt$Bulk) == FALSE]
+    Int <- Attempt$Interaction[is.na(Attempt$Interaction) == FALSE]
+
+    if(length(Int) > 0){
+      for(k in 1:length(Int)){
+      res <- data.frame(Diff = Int[k] - Bulk,
+                        Int = Int[k],
+                        CHROM = c)
+      
+      result <- rbind(result, res)
+    }
+    }
+    
+}
+
+
+mindist <- 24000
+result %>% na.omit() %>% group_by(CHROM, Int) %>% summarize(ClosestPeak = min(abs(Diff))) %>% mutate(NumClose = ClosestPeak < mindist) -> ThesePeaks
+
+sum(ThesePeaks$NumClose)/length(ThesePeaks$NumClose)
+maybepeaks %>% filter(Factor == "Bulk") %>% group_by(Pool, CHROM) %>% count() -> BulkNums
+maybepeaks %>% filter(Factor == "Interaction") %>% group_by(Pool, CHROM) %>% count() %>% mutate(Ints = n) %>% select(-n) %>% merge(BulkNums)
+
+CuSO4_All %>% select(POS) -> Positions
+
+simproportions <- vector()
+for(k in 1:100){
+  Bs <- sample(Positions$POS, size = 112)
+  Is <- sample(Positions$POS, size = 46)
+  
+  for(i in 1:46){
+    if(i == 1){
+      simresults <- min(abs(Is[i] - Bs))
+    }else{
+      simresults <- c(simresults, min(abs(Is[i] - Bs)))
+    }
+  }
+  
+  simproportions[k] <- sum(simresults < mindist)/46
+  
+}
+
+plot(c(simproportions,sum(ThesePeaks$NumClose)/length(ThesePeaks$NumClose)))
+```
+
+Things that vary:
+
+1. Number of QTL per chromosome per pool
+2. Number of interactions per chromosome per pool
+3. Where those interactions actually are
+
+Should we just randomize all of the peaks and interactions? Or within chromosomes? Or within Pools?
+
+```{r}
+maybepeaks %>% filter(Factor == "Bulk") %>% group_by(Pool, CHROM, Dose) %>% count() %>% mutate(QTL = n) %>% select(-n) -> BulkNums
+maybepeaks %>% filter(Factor == "Interaction") %>% group_by(Pool, CHROM, Dose) %>% count() %>% mutate(Ints = n) %>% select(-n) %>% merge(BulkNums) -> SimStats
+
+SimStats
+
+sample_IntPOS <- function(CHROM, Ints, n, sims = 100, dist = 24000){
+  #all available positions
+  Positions <- CuSO4_All$POS[CuSO4_All$CHROM == CHROM]
+  numwithinrange <- vector()
+  #randomize where they are x times
+  for(i in 1:sims){
+    BulkPOS <- sample(Positions, size = n)
+    IntPOS <- sample(Positions, size = Ints)
+    
+    #what's the closest peak to each interaction peak?
+    if(k > 1){
+      for(k in 1:length(IntPOS)){
+      if(k == 1){
+        diff <- min(abs(IntPOS[] - BulkPOS))
+      }else{
+        
+      }
+      diff <- c(diff, min(abs(IntPOS[] - BulkPOS)))
+    }
+    }else{
+      diff <- min(abs(IntPOS[] - BulkPOS))
+
+    }
+    
+    #How many of these are within the range?
+    numwithinrange[i] <- sum(abs(diff) < dist)
+  }
+  
+  #total in each simulation that were within the range
+  return(numwithinrange)
+}
+
+sample_IntPOS(CHROM = "VIII", Ints = 1, n = 1, sims = 10)
+```
+
+
+```{r}
+SimStats %>% group_by(CHROM, Pool) %>%
+  summarize(Ints = Ints,
+            n = n,
+    Successes = sample_IntPOS(sims = 1000,
+                              CHROM = CHROM,
+                                      Ints = Ints,
+                                      n = n)) -> Sims
+
+Sims %>% ggplot(aes(x = CHROM, y = Successes/Ints, color = Pool)) + geom_jitter()
+Sims %>% group_by(Pool, CHROM) %>% summarize(Ints = Ints, n = n,
+                                             Sums = sum(Successes)) %>%
+  distinct() %>%
+  ggplot(aes(x = Ints, y = Sums/1000, size = n, color = CHROM)) + geom_point(alpha = 0.5)
+
+```
+
+Okay actual things that can change:
+
+1. Position distribution (size of chromosome, 16 options)
+2. Number of positions (coverage, sliding scale)
+3. Number of QTL (n, infinite but realistically <10)
+4. Number of interactions (Ints, infinite but realistically < n)
+
+```{r}
+SimDistribution <- function(ChrSize = 1000,
+                            NumPOS = ChrSize/10,
+                            n = 2,
+                            Int = 2,
+                            dist = 100,
+                            sims = 100){
+  if(n < 1){
+    return("No Bulk Effects, automatic p = 0")
+  }
+  
+  if(Int < 1){
+    return("No Interactions to detect, automatic p = 0")
+  }
+  
+  successes <- vector()
+  #Simulate a genome
+  for(k in 1:sims){
+    POS <- sample(1:ChrSize, size = NumPOS)
+    Ints <- sample(POS, size = Int)
+    QTL <- sample(POS, size = n)
+    
+    #loop through interactions sampled
+    if(length(Ints) > 1){
+      for(i in 1:length(Ints)){
+        if(i == 1){
+          diff <- min(abs(Ints[i] - QTL))
+        }else{
+          diff <- c(diff, min(abs(Ints[i] - QTL)))
+        }
+      }
+    }else{
+      diff <- min(abs(Ints - QTL))
+    }
+    
+    #Sum the differences above distance
+    successes[k] <- sum(diff < dist)
+  }
+  
+  return(successes)
+  
+}
+
+as.data.frame(table(SimDistribution(n = 10, Int = 1, ChrSize =  100000, NumPOS = 100, sims = 10000))/10000)
+```
+```{r}
+CuSO4_All %>% filter(Factor == "Bulk") %>%  
+  group_by(CHROM, Pool, Dose) %>% summarize(POS = POS, max = max(POS)) %>% 
+  group_by(CHROM, Pool, Dose,max) %>% count() -> ParamsToSim
+
+merge(ParamsToSim, SimStats) %>%
+  group_by(CHROM, Pool, Dose) %>%
+  summarize(as.data.frame(table(SimDistribution(n = QTL,
+                            Int = Ints,
+                            ChrSize = max,
+                            NumPOS = n,
+                            dist = 24000, 
+                            sims = 1000))/1000)) -> pvaltable
+
+
+pvaltable %>% pivot_wider(names_from = Var1, values_from = Freq, names_prefix = "P_")
+
+maybepeaks %>% select(Pool, Dose, Factor, CHROM, ppeakPOS) %>% filter(Factor == "Bulk") -> BulkPOS_CuSO4
+maybepeaks %>% select(Pool, Dose, Factor, CHROM, ppeakPOS) %>% filter(Factor == "Interaction") -> IntPOS_CuSO4
+
+results <- data.frame(Pool = NA, Dose = NA, Factor = NA, CHROM = NA, ppeakPOS = NA, nearest = NA)
+for(i in 1:nrow(IntPOS_CuSO4)){
+  myint <- IntPOS_CuSO4[i,]
+  
+  BulkPOS_CuSO4 %>% filter(CHROM == myint$CHROM, Pool == myint$Pool, Dose == myint$Dose) %>% 
+    mutate(dist = abs(ppeakPOS - myint$ppeakPOS)) %>%
+    summarize(nearest = min(dist)) -> nearestpeak
+  
+  results[i,] <- cbind(myint, nearestpeak)
+}
+
+results %>% group_by(Pool, Dose, CHROM) %>% summarize(Var1 = factor(sum(nearest < 24000), levels = c(0,1,2,3,4))) -> QTLpeakresults
+
+pvaltable %>% merge(QTLpeakresults) %>% ggplot(aes(x = Var1, y = Freq, color = CHROM)) + geom_point() + geom_hline(yintercept = 0.05, linetype = "dashed")
+
+```
+ I think the fact that I'm separating by chromosome is perhaps not right... it's actually the overall genome and which are there
+ 
+```{r}
+SimGenomeDistribution <- function(dataset = NULL,
+                                  n = 2,
+                            Int = 2,
+                            dist = 100,
+                            sims = 100){
+  
+  #INSTRUCTIONS
+  if(is.null(dataset)){return("Please include the Pool ID")}
+  if(n < 1){return("No Bulk Effects, automatic p = 0")}
+  if(Int < 1){return("No Interactions to detect, automatic p = 0")}
+  
+  #SETUP
+  POS <- CuSO4_All %>% filter(Pool == dataset) %>% transmute(P = paste(CHROM, POS, sep = "_")) #HTG3TDMXY
+  successes <- vector()
+  
+  #SIMULATE DISTRIBUTION OF INTERACTIONS
+  for(k in 1:sims){
+    
+    #Sample and make vectors
+    Ints <- sample(POS$P, size = Int)
+    QTL <- sample(POS$P, size = n)
+    data.frame(Ints) %>% separate(col = Ints, into =c("CHROM", "POS"), sep = "_") %>% mutate(POS = as.numeric(POS)) -> Is
+    data.frame(QTL) %>% separate(col = QTL, into =c("CHROM", "POS"), sep = "_") %>% mutate(POS = as.numeric(POS))-> Qs
+
+    ############################################################################
+    
+    if(sum(Qs$CHROM %in% unique(Is$CHROM)) == 0){
+      #print("There are no successes this round")
+      diff[1:Int] <- dist+1
+    }else{
+      #Check if there's more than 1 Interaction
+      if(length(Is$POS) == 1){
+        QTL <- Qs %>% filter(CHROM %in% Is$CHROM) %>% select(POS)
+        diff <- abs(Is$POS - QTL$POS)
+      }else{
+        #LOOP THROUGH QTLS
+        for(p in 1:length(Is$POS)){
+          QTL <- Qs %>% filter(CHROM %in% Is[k,]$CHROM) %>% select(POS)
+          if(as.vector(QTL %>% count()) == 0){diff[p] <- dist + 1}else{
+            diff[p] <- abs(Is$POS - QTL$POS)
+          }
+        }
+      }
+    }
+    
+    
+    #Sum the differences above distance
+    successes[k] <- sum(diff < dist)
+  }
+  return(successes)
+}
+
+```
+ 
+```{r}
+CuSO4_All %>% filter(Factor == "Bulk") %>%  ungroup() %>%
+  group_by(Pool, Dose) %>% count() -> ParamsToSim
+
+SimStats %>% ungroup() %>% group_by(Pool, Dose) %>%
+  summarize(Ints = sum(Ints), QTL = sum(QTL)) %>%
+  merge(ParamsToSim) %>%
+  #TROUBLESHOOT
+  filter(Pool == "HKTFTDRX2", Dose == 0) %>%
+  #BACK TO NORMAL
+  group_by(Pool, Dose) %>%
+  summarize(as.data.frame(table(SimGenomeDistribution(dataset = Pool,
+                                                      n = QTL,
+                                                      Int = Ints,
+                                                      dist = 24000, 
+                                                      sims = 10000))/10000)) -> pvaltable
+
+pvaltable %>% ggplot(aes(x = Var1, y = Freq, color = Pool)) + geom_point()
+
+
+```
+
+```{r}
+maybepeaks %>% select(Pool, Dose, Factor, ppeakPOS) %>% filter(Factor == "Bulk") -> BulkPOS_CuSO4
+maybepeaks %>% select(Pool, Dose, Factor, ppeakPOS) %>% filter(Factor == "Interaction") -> IntPOS_CuSO4
+
+results <- data.frame(Pool = NA, Dose = NA, Factor = NA, ppeakPOS = NA, nearest = NA)
+for(i in 1:nrow(IntPOS_CuSO4)){
+  myint <- IntPOS_CuSO4[i,]
+  
+  BulkPOS_CuSO4 %>% filter(Pool == myint$Pool, Dose == myint$Dose) %>% 
+    mutate(dist = abs(ppeakPOS - myint$ppeakPOS)) %>%
+    summarize(nearest = min(dist)) -> nearestpeak
+  
+  results[i,] <- cbind(myint, nearestpeak)
+}
+results %>% group_by(Pool, Dose) %>% summarize(Var1 = sum(nearest < 24000)) 
+results %>% group_by(Pool, Dose) %>% summarize(Var1 = factor(sum(nearest < 24000), 
+                                                             levels = c(0:30))) -> QTLpeakresults
+
+
+pvaltable %>% merge(QTLpeakresults) %>% ggplot(aes(x = Var1, y = Freq)) + geom_point() + geom_hline(yintercept = 0.05, linetype = "dashed")
+```
+

@@ -349,6 +349,10 @@ saveRDS(alldata, file = "allseqruns_feb24.rds")
 #alldata <- readRDS("allseqruns_nov23.rds")
 
 #unique(alldata$Pool)
+
+unique(MQCRuns$Pool)
+unique(MQCRuns$ShortName)
+
 ```
 
 ### Checking how coverage is affected by fragment length
