@@ -305,6 +305,156 @@ cybrPermute_byParent_Rep <- function(dataset){
   
 ```
 
+See what this is actually doing
+
+```{r}
+#rawData <- RawFiles$VCF_Table[1]
+
+cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
+
+  require(dplyr)
+  require(doParallel)
+  require(foreach)
+
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  #Identify the unique values besides AD/DP/GQ/PL
+  gsub(".AD", "",
+       gsub(".GQ", "",
+            gsub(".DP","",
+                 gsub(".PL","",
+                      colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+  #i <- Samples[1]
+
+  resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+    mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+    AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD"))
+    GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ"))
+    DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP"))
+    PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL"))
+    cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+    colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+
+    mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='drop') %>%
+      separate(PL, c('PL.REF','PL.ALT'), extra='drop') %>%
+      #Added 10/18/23:
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> mycdf
+
+    mycdf %>% filter(grepl(",", ALT)) %>% 
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> doublecdf
+    
+    doublecdf %>% filter(grepl(",", ALT)) %>%
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> triplecdf
+    
+    rbind(mycdf, doublecdf, triplecdf) -> newcdf
+    
+    newcdf
+  }
+
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+    resultscdf %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> results
+  }else{
+    results <- resultscdf
+  }
+  return(results)
+
+}
+
+# ################################################################################
+# 
+# HNGLCDRXY <- read.table(rawData, header = TRUE)
+# 
+#   #Identify the unique values besides AD/DP/GQ/PL
+#   gsub(".AD", "",
+#        gsub(".GQ", "",
+#             gsub(".DP","",
+#                  gsub(".PL","",
+#                       colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+#   i <- Samples[1]
+# 
+#   resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+#     mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+#     AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD"))
+#     GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ"))
+#     DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP"))
+#     PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL"))
+#     cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+#     colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+# 
+#     mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='merge') %>%
+#       separate(PL, c('PL.REF','PL.ALT'), extra='merge') %>%
+#       #Added 10/18/23:
+#       select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> mycdf
+# 
+#     mycdf
+#     
+#     mycdf %>% filter(grepl(",", ALT)) %>% 
+#       separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+#       separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+#       separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+#       
+#       pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+#       pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+#       pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+#       mutate(NumAlt = gsub("A", "", NumAlt),
+#              NumADAlt = gsub("AD", "", NumADAlt),
+#              NumPL = gsub("P", "", NumPL)) %>%
+#       filter(NumAlt == NumPL,
+#              NumPL == NumADAlt) %>%
+#       select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> doublecdf
+#     
+#     doublecdf %>% filter(grepl(",", ALT)) %>%
+#       separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+#       separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+#       separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+#       
+#       pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+#       pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+#       pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+#       mutate(NumAlt = gsub("A", "", NumAlt),
+#              NumADAlt = gsub("AD", "", NumADAlt),
+#              NumPL = gsub("P", "", NumPL)) %>%
+#       filter(NumAlt == NumPL,
+#              NumPL == NumADAlt) %>%
+#       select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> triplecdf
+#     
+#     triplecdf
+#   }
+
+```
+
+
 Note: if looking for smoothed vs unsmoothed data, the `Figures_2023_BiologyofGenomes.rmd` file has these at the beginning.
 
 # Loading In Data
@@ -315,8 +465,59 @@ GQ Cutoff is 98 for all samples, so find out how many of these are under 98 and 
 setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 
 parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
-parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) %>% filter(Unique == 1) -> pSNPs
-pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+
+pSNPs %>% filter(Unique == 1) 
+
+pSNPs %>% ungroup() %>% count(Type)
+# pSNPs$CHROM <- factor(pSNPs$CHROM, levels = as.character(as.roman(1:17)))
+```
+
+```{r, eval = FALSE, fig.width=12, fig.height=5}
+#Checking what these actually look like for CUP1
+parentSNPids %>% filter(CHROM == "VIII")
+
+################################################################################
+setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+
+ParentFiles <- c("Wine_VCF.txt", "Oak_VCF.txt")
+temparent <- list()
+Parents = gsub("_VCF.txt","", ParentFiles)
+  mergeparents <- foreach(i=1:length(ParentFiles), .combine=rbind) %dopar% {
+    read.table(ParentFiles[i], header = TRUE) %>% mutate(parent = Parents[i])
+  }
+
+  
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                           "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                           CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                     "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                     "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                     "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+    rbind(mergeparents) %>% arrange(CHROM, POS) %>%
+      select(CHROM, POS, REF, ALT, parent) %>%
+      merge(ChromKey) %>% select(-CHROM) %>%
+      mutate(CHROM = chromosomes) %>% select(-chromosomes) -> ParentalVCF
+
+  #ParentalVCF %>% pivot_wider(names_from = parent, values_from = ALT) -> SNPids
+    
+    #212535..212720
+    
+    ParentalVCF %>% filter(CHROM == "VIII") %>% filter(POS > (212535 - 10000), POS < (214720 + 10000)) %>%
+      ggplot(aes(x = POS, y = ALT, color = parent)) + geom_jitter(alpha = 0.5, height = 0.1) +
+      geom_vline(xintercept = c(212535,212720, 214533, 214720 )) +
+      facet_grid(rows = "REF") +
+      scale_color_manual(values = c("lightblue", "firebrick"))
+    
+    ParentalVCF %>% filter(CHROM == "VIII") %>% filter(POS > (212535 - 1000), POS < (214720 + 1000)) %>%
+      ggplot(aes(x = POS, y = parent, 
+                 color = ALT, shape = parent #, size = ALT %in% c("GAA", "TA", "CT")
+                 )) + 
+      geom_point(alpha = 0.5, size = 3) +
+      geom_vline(xintercept = c(212535,212720, #CUP1-1
+                                214533,214720 )) + #CUP1-2
+      facet_grid(rows = "REF") 
 ```
 
 ## Table Processing
@@ -328,8 +529,8 @@ MQCRuns %>% select(Pool, ShortName, VCF_Table) %>% distinct() -> RawFiles
 #alldata <- readRDS("allseqruns_feb24.rds")
 
 #for(i in 1:length(RawFiles$VCF_Table)){
-for(i in 8){
-  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+for(i in 1:8){
+  cybrInputGATKTable2(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
 
   if(i > 1){
@@ -344,7 +545,7 @@ alldata %>% distinct() %>%
   mutate(Dataset = gsub(".*_n01_", "", Dataset)) %>%
   mutate(Dataset = gsub("\\.fastq$", "", Dataset)) -> alldata
 
-saveRDS(alldata, file = "allseqruns_feb24.rds")
+saveRDS(alldata, file = "allseqruns_may24.rds")
 
 #alldata <- readRDS("allseqruns_nov23.rds")
 
@@ -357,7 +558,7 @@ unique(MQCRuns$ShortName)
 
 ### Checking how coverage is affected by fragment length
 
-```{r}
+```{r, eval = FALSE}
 
 KeyForWhatWorked <- data.frame(ShortName = c("C1A", "C1Ar", "C1B", "C8", "F1", "HZ18", "Z1"),
                                Worked = c(T, NA, F, T, T, F, F))
@@ -402,7 +603,7 @@ var <- 8 #CHANGE THIS FOR THE INDEX OF RawFiles YOU'RE ANALYZING
 RawFiles$Pool[var] #CHECK THAT IT'S RIGHT
 
 for(i in var){
-  cybrInputGATKTable(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  cybrInputGATKTable2(RawFiles$VCF_Table[i]) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
   select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) %>% mutate(Pool = RawFiles$Pool[i])-> rawdata
 
 }
@@ -428,7 +629,7 @@ rawdata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
 # COMBINE WITH ALLDATA FILES
 ################################################################################
 # #LOAD IN ORIGINAL
-alldata <- readRDS("allseqruns_jan24.rds")
+alldata <- readRDS("allseqruns_may24.rds")
 alldata <- rbind(alldata, rawdata)
 # 
 alldata_called <- readRDS(file = "alldata_called.rds")
@@ -450,10 +651,45 @@ saveRDS(alldata_called, file = "alldata_called.rds")
 
 ```
 
+
 This seems out of order when you add more datasets:
 
-```{r}
+```{r, eval = FALSE}
 alldata %>% #head(3000) %>%
+  left_join(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Pool, Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> alldata_called
+
+#6k to 4k when NAs are removed
+#alldata_called %>% na.omit()
+
+alldata_called %>% group_by(Pool, Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 200, FUN = median, align = "center"))) -> alldata_smoothed #%>% na.omit()
+
+ChromeScale_exact <- data.frame(CHROM = as.character(as.roman(as.numeric(c(1:16)))),
+                                End = c(230218,  813184,   316620, 1531933,
+                                        576874,  270161,  1090940, 562643,
+                                        439888,745751,666816,1078177,
+                                        924431,784333,1091291,948066))
+alldata_smoothed %>%
+  filter(POS > 30000) %>% 
+  merge(ChromeScale_exact) %>%
+  # merge(ChromosomeScale[,c("CHROM", "End")]) %>% 
+  # filter(End > 0) %>% 
+  group_by(CHROM) %>% 
+  filter(POS < (End - 30000)) -> alldata_smoothed_e
+
+saveRDS(alldata_smoothed_e, file = "alldata_smoothed_e_may24.rds")
+
+```
+
+```{r}
+# parentSNPids %>% count(Type)
+
+alldata %>% head(3000) %>%
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
   group_by(Dataset, CHROM, POS) %>%
   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
