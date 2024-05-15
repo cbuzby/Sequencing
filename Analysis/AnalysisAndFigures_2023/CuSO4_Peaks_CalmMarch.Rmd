@@ -1765,3 +1765,31 @@ results %>% group_by(Pool, Dose) %>% summarize(Var1 = factor(sum(nearest < 24000
 pvaltable %>% merge(QTLpeakresults) %>% ggplot(aes(x = Var1, y = Freq)) + geom_point() + geom_hline(yintercept = 0.05, linetype = "dashed")
 ```
 
+# Correlating Peaks
+
+```{r}
+
+maybepeaks %>% select(-ppeakPOS) %>% pivot_wider(names_from = Pool, values_from = max_value) %>%
+  ggplot(aes(x = HKTFTDRX2, y = HNGLVDRXY, label = CHROM)) + geom_label(aes(), alpha = 0.5) +
+  geom_label(aes(y = HVYTYDRX2), color = "red") +
+  geom_label(aes(y = HTG3TDMXY), color = "lightblue")
+  
+
+
+```
+
+```{r}
+CuSO4_All %>% filter(abs(Summary) > quant095) %>%
+  pivot_wider(names_from = c(Pool, Dose), values_from = Summary) %>%
+  ggplot(aes(x = HTG3TDMXY_High, y = HTG3TDMXY_Low)) + geom_point(alpha = 0.3)
+
+CuSO4_All %>% filter(abs(Summary) > quant095) %>%
+  filter(Dose == 0) %>%
+  mutate(POS = round(POS/1000, 0)*1000) %>%
+  select(-c(starts_with("q"))) %>%
+  pivot_wider(names_from = c(Pool, Dose), values_from = Summary) %>%
+  unnest()
+  
+
+```
+
