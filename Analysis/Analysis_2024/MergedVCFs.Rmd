@@ -437,6 +437,9 @@ glmer_cb2_short <- function (..., W, formula, numgroups = FALSE, outputlength = 
 ```
 
 ```{r}
+contrasts(rd_factor$Background)
+contrasts(rd_factor$Bulk)
+
 rd_factor %>% filter(CHROM == "VIII") %>%
   group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
                                                             Background = Background,
@@ -449,8 +452,8 @@ rd_factor %>% filter(CHROM == "VIII") %>%
 CuSO4_8_glmer %>% ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() + facet_grid(label~CHROM, space = "free", scales = "free") 
 ```
 
-```{r}
-rd_factor %>% 
+```{r, warning=FALSE, message=FALSE}
+rd_factor %>% filter(CHROM != "M") %>%
   group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
                                                             Background = Background,
                                                             Pool = Pool,
@@ -460,5 +463,46 @@ rd_factor %>%
                                                                   label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_all_glmer_1bypool
 
 saveRDS(CuSO4_all_glmer_1bypool, file = "CuSO4_all_glmer_1bypool.rds")
+```
+
+### Redoing this because I'm an idiot who forgot you have to mix fixed chromosomes
+
+```{r}
+rd_factor %>% filter(CHROM != "M") %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Pool = Pool,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background + (1 | Pool)"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_1bypool
+
+saveRDS(CuSO4_CSS1_glmer_1bypool, file = "CuSO4_CSS1_glmer_1bypool.rds")
+
+################################################################################
+rd_factor %>% filter(CHROM != "M") %>% filter(Pool %in% c("HVYTYDRX2","HTG3TDMXY")) %>%
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Pool = Pool,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background + (1 | Pool)"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1bypool
+
+saveRDS(CuSO4_CSS8_glmer_1bypool, file = "CuSO4_CSS8_glmer_1bypool.rds")
+```
+
+
+```{r}
+#Checking what went wrong to produce "Response is constant"
+
+rd_factor %>% filter(CHROM == "M", POS == 22837) %>% group_by(Allele, Background, Bulk) %>% summarize(unique = unique(SmoothCount))
+
+rd_factor %>% filter(CHROM == "M", POS == 22837) %>% filter(Allele == "Wine")
+
+```
+
+```{r}
+CuSO4_all_glmer_1bypool %>% filter(CHROM != "I") %>% ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() + facet_grid(label~CHROM, space = "free", scales = "free")
 ```
 
