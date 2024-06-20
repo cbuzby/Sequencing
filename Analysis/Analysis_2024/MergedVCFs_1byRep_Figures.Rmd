@@ -1,0 +1,1098 @@
+---
+title: "MergedVCFs_CuSO4_May24"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+
+
+## Functions for GLM all and Permutation all
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+
+################################################################################
+# No replicates, fix Parent
+cybrPermute_cb2_all <- function(dataset, 
+                                R = 0, perp = 1, outlength = 4, 
+                                glmform = "Allele ~ Bulk * Parent", 
+                                inputlabels = c("Intercept", "Bulk", "Parent", "Interaction")){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled aD")
+  print(paste("Your labels are:", inputlabels))
+
+    if(R > 0){ #INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Rep, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == 1) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+    }else{ #DO NOT INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == perp) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    }
+  
+    #PERMUTE TWICE
+  if(R > 0){
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Rep, 
+             Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep, 
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, 
+             Rep, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep,
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }else{
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #RUN THE GLM
+    if(R > 0) {
+      shuffletoglm2 %>% na.omit() %>%
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }else{
+      shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }
+    
+    
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
+
+  require(dplyr)
+  require(doParallel)
+  require(foreach)
+
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  #Identify the unique values besides AD/DP/GQ/PL
+  gsub(".AD", "",
+       gsub(".GQ", "",
+            gsub(".DP","",
+                 gsub(".PL","",
+                      colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+  #i <- Samples[1]
+
+  resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+    mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+    AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD"))
+    GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ"))
+    DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP"))
+    PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL"))
+    cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+    colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+
+    mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='drop') %>%
+      separate(PL, c('PL.REF','PL.ALT'), extra='drop') %>%
+      #Added 10/18/23:
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> mycdf
+
+    mycdf %>% filter(grepl(",", ALT)) %>% 
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> doublecdf
+    
+    doublecdf %>% filter(grepl(",", ALT)) %>%
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> triplecdf
+    
+    rbind(mycdf, doublecdf, triplecdf) -> newcdf
+    
+    newcdf
+  }
+
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+    resultscdf %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> results
+  }else{
+    results <- resultscdf
+  }
+  return(results)
+
+}
+
+theme_classic
+```
+
+
+```{r}
+rd_factor <- readRDS("rd_factor.rds")
+```
+
+
+
+```{r}
+CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRep.rds")
+CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRep.rds")
+```
+
+Merging all datasets instead
+
+```{r}
+CuSO4_CSS1_glmer_1byRep %>% filter(CHROM != "I") %>% mutate(CSS = "I") -> temp1
+CuSO4_CSS8_glmer_1byRep %>% mutate(CSS = "VIII") %>%
+  rbind(temp1) -> AllCuSO4_glmer_1byRep
+
+rm(temp1)
+```
+
+What genes are nearby?
+
+```{r}
+sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
+
+genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+genes_eh <- c("VMA4", "MTL1", "PTR2", "LEU9", "IRC15")
+sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper_eh
+```
+
+
+
+## Permutations for significance
+
+```{r, eval = FALSE}
+# Shuffle the entire genome WITHIN replicates, of DILUTE bulks
+
+rd_factor %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Background) %>%
+  separate(NewPOS, into = c("CHROM", "POS", sep = "_"))-> rd_shuffled
+
+rd_shuffled %>% ggplot(aes(x = POS, y = log(Oak/Wine), color = Dataset)) + geom_point(alpha = 0.1) + facet_grid(Pool ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+rd_shuffled %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") 
+```
+
+Actually running a permutation on this
+
+```{r, eval = FALSE}
+rd_factor %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Background) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected
+
+rd_factor %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Background) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected) -> Perm1
+
+Perm1 %>% ungroup() %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) -> Perm1contrasts
+
+contrasts(Perm1contrasts$Background) <- matrix(c(-0.5, 0.5))
+contrasts(Perm1contrasts$Bulk)
+
+```
+
+```{r, eval = FALSE}
+
+Perm1contrasts %>%  filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% distinct() %>% 
+  
+  group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Rep = Dataset,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background +  (1 | Rep)"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_1byRep_PERM
+
+saveRDS(CuSO4_CSS1_glmer_1byRep_PERM, "CuSO4_CSS1_glmer_1byRep_PERM.rds")
+
+Perm1contrasts %>%
+  filter(Pool %in% c("HVYTYDRX2","HTG3TDMXY")) %>% distinct() %>% 
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) %>%
+  group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Rep = Dataset,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background + (1 | Rep)"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1byRep_PERM
+
+saveRDS(CuSO4_CSS8_glmer_1byRep_PERM, "CuSO4_CSS8_glmer_1byRep_PERM.rds")
+```
+
+Cutoffs for this
+
+```{r}
+
+CuSO4_CSS8_glmer_1byRep_PERM <- readRDS("CuSO4_CSS8_glmer_1byRep_PERM.rds")
+CuSO4_CSS1_glmer_1byRep_PERM <- readRDS("CuSO4_CSS1_glmer_1byRep_PERM.rds")
+
+CuSO4_CSS8_glmer_1byRep_PERM %>%
+  group_by(label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95),
+            q1 = quantile(abs(zscore), 0.99)) %>%
+  mutate(CSS = "VIII") -> q5_CSS8
+
+CuSO4_CSS1_glmer_1byRep_PERM %>%
+  group_by(label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95),
+            q1 = quantile(abs(zscore), 0.99)) %>%
+  mutate(CSS = "I")  -> q5_CSS1
+
+rbind(q5_CSS1, q5_CSS8) -> q5_all
+
+q5_all
+
+```
+
+
+
+
+
+# Checking original log ratios
+
+```{r}
+rd_factor <- readRDS("rd_factor.rds")
+
+# rd_factor %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
+#   mutate(logRatio = log(Wine/Oak)) -> rd_logratios
+# 
+# rd_logratios %>% filter(CHROM == "I") %>% ggplot(aes(x = POS, y = logRatio, color = Bulk)) + geom_point(alpha = 0.2) +
+#   facet_grid(Background~Pool)
+# 
+# rd_logratios %>% filter(CHROM == "I", Pool == "HVYTYDRX2") %>% group_by(Dataset) %>% summarize(unique(Dataset))
+# 
+# rd_factor %>% filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
+#   mutate(logRatio = log(Wine/Oak)) -> rd_logratios
+# 
+# rd_logratios %>% filter(CHROM == "I") %>% ggplot(aes(x = POS, y = logRatio, color = Bulk)) + geom_point(alpha = 0.2) +
+#   facet_grid(Background~Pool)
+
+```
+
+
+
+
+
+
+
+# Final Plotting
+
+Ensure filters happen
+
+```{r, warning = FALSE}
+AllCuSO4_glmer_1byRep %>% group_by(CHROM, label, CSS) %>% arrange(POS) %>%
+  reframe(POS = POS, 
+          zscore = zscore,
+          SmoothZ = (frollapply(zscore, n = 100, FUN = median, align = "center", na.rm = TRUE))) -> zscores_smoothed
+
+#Make a cutoff for how different the smoothed size has to temp2
+zscores_smoothed %>% mutate(diff = abs(SmoothZ - zscore)) %>%
+  mutate(outlier = diff > 2) -> outliers
+
+#Use rd_logratios
+rd_factor <- readRDS("rd_factor.rds")
+rd_factor %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
+  mutate(logRatio = log(Wine/Oak)) -> rd_logratios
+
+rd_logratios %>% select(Dataset, CHROM, POS, logRatio) %>% pivot_wider(names_from = Dataset, values_from = logRatio) %>% unnest() -> temp2
+
+outliers %>% select(CHROM, POS, outlier, label) %>% pivot_wider(names_from = label, values_from = outlier) %>% unnest() %>% left_join(temp2) -> temp3
+
+################################################################################
+temp3 %>% 
+  distinct() %>% count(POS) %>%
+  merge(temp3) %>%
+  filter(n > 1) %>% select(CHROM, POS) -> excl_duplicates
+```
+
+```{r}
+excl_duplicates %>% mutate(excl = paste(CHROM, POS)) -> tempexcl
+AllCuSO4_glmer_1byRep %>% mutate(excl = paste(CHROM, POS)) %>% filter(excl %in% tempexcl$excl == FALSE) -> AllCuSO4_glmer_1byRep_FILTERED
+
+AllCuSO4_glmer_1byRep_FILTERED$CHROM <- factor(AllCuSO4_glmer_1byRep_FILTERED$CHROM, levels=as.character(as.roman(c(1:16,1000))))
+sgd_copper$CHROM <- factor(sgd_copper$CHROM, levels=as.character(as.roman(c(1:16,1000))))
+sgd_copper_eh$CHROM <- factor(sgd_copper_eh$CHROM, levels=as.character(as.roman(c(1:16,1000))))
+
+AllCuSO4_glmer_1byRep_FILTERED %>% filter(label %in% c("Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_vline(data = sgd_copper, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  geom_vline(data = sgd_copper_eh,
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             linetype = "dashed", size = 1, alpha = 0.3) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") + ggtitle("Interaction points") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+AllCuSO4_glmer_1byRep_FILTERED %>% filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_vline(data = sgd_copper, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  geom_vline(data = sgd_copper_eh,
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             linetype = "dashed", size = 1, alpha = 0.3) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") + ggtitle("Bulk points") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+```
+```{r, fig.height=6, fig.width=12}
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_vline(data = sgd_copper, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+  
+```
+
+Looking at FRE1
+
+```{r, fig.height=4, fig.width=8}
+AllCuSO4_glmer_1byRep_FILTERED %>% filter(CHROM == "XII") %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_vline(aes(xintercept = 568567, color = "FRE1"),
+             size = 1, alpha = 0.3) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+AllCuSO4_glmer_1byRep_FILTERED %>% filter(CHROM == "VIII") %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_vline(aes(xintercept = 212535, color = "CUP1"),
+             size = 1, alpha = 0.3) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+```
+
+```{r}
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  ungroup() %>%
+  group_by(CHROM, CSS, label) %>%
+  arrange(desc(abs(zscore))) %>%
+  summarize(peakPOS = head(POS, 1),
+            zscore = max(abs(zscore))) %>%
+  merge(q5_all) %>%
+  filter(abs(zscore) > q5) -> peaks
+
+knowngenes <- data.frame(Gene = c("CUP1", "FRE1", "FRE1"),
+                         POS = c(212535, 568567, 570627),
+                         CHROM = c("VIII", "XII", "XII"))
+
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) +
+  #cutoffs and genes
+  geom_vline(data = knowngenes, aes(xintercept = POS), color = "red", size = 1) +
+  geom_vline(data = peaks[peaks$label %in% c("Bulk", "Interaction"),], 
+             aes(xintercept = peakPOS, color = CHROM, linetype = CSS),
+             size = 1, alpha = 0.8) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  #actual data
+  geom_line() +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = "CSS", alpha = NULL) +
+  theme(legend.position = "bottom") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+#peaks %>% filter(CHROM == "VIII")
+#rd_logratios %>% filter(POS == 141525) %>% distinct()
+
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  filter(CHROM == "XII") %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), shape = CSS)) +
+  #cutoffs and genes
+  geom_rect(aes(xmin = 568567, xmax = 570627, ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "lightblue") +
+  geom_vline(data = peaks[peaks$label %in% c("Bulk") & peaks$CHROM == "XII",], 
+             aes(xintercept = peakPOS, color = CHROM, linetype = CSS),
+             size = 1, alpha = 0.8) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  #actual data
+  geom_point(alpha = 0.4, size = 1) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = "CSS", alpha = NULL) +
+  theme(legend.position = "bottom") +
+  xlim(520000, 600000) +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))+
+  theme(axis.text.x=element_text())
+
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  filter(CHROM == "VIII") %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), shape = CSS)) +
+  #cutoffs and genes
+  geom_rect(aes(xmin = 212535, xmax = 212720, ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "lightblue") +
+  geom_rect(aes(xmin = 214533, xmax = 214718, ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "lightblue") +
+  geom_vline(data = peaks[peaks$label %in% c("Bulk") & peaks$CHROM == "VIII",], 
+             aes(xintercept = peakPOS, color = CHROM, linetype = CSS),
+             size = 1, alpha = 0.8) +
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  #actual data
+  geom_point(alpha = 0.4, size = 1) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = "CSS", alpha = NULL) +
+  theme(legend.position = "bottom") +
+  xlim(c(2e05, 2.25e05))+
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))+
+  theme(axis.text.x=element_text())
+
+```
+
+```{r}
+
+peaks %>% filter(CHROM == "XII") %>%
+  mutate(Dist = peakPOS - 570627) %>%
+  arrange(abs(Dist)) -> FRE1_dist
+
+FRE1_dist
+
+peaks %>% filter(CHROM == "VIII") %>%
+  mutate(Dist = peakPOS - 212535) %>%
+  arrange(abs(Dist)) -> CUP1_dist
+
+CUP1_dist
+
+
+```
+
+# Peak finder based on actual change in direction
+
+```{r}
+
+findchange <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  if(is.na(diff)){
+    return(NA)
+  }else if(diff == 0){
+    return(0)
+  }else{
+    return(diff > 0)  
+  }
+}
+
+findpeak <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  return(diff)
+}
+
+  
+```
+
+Applying this to everythingg
+
+```{r}
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  group_by(label, CSS, CHROM) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 600, FUN = mean, align = "center", na.rm = TRUE)) %>%
+  summarize(POS = POS,
+                    zscore = zscore,
+                    SmoothZ = SmoothZ,
+                    change = frollapply(abs(SmoothZ), n = 10, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    zscore = zscore,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 4, findpeak, align = "center")) %>%
+  filter(peak == -1) %>% merge(q5_all) %>% filter(abs(zscore) > q5) -> TruePeaks
+
+```
+
+```{r, fig.width=8, fig.height=4}
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction"),],
+             aes(xintercept = POS, color = CSS), alpha = 0.2, linetype = "dashed")+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("navyblue", "darkorange")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),],
+             aes(xintercept = POS, color = CSS), alpha = 0.2, linetype = "dashed")+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") + ylim(0,12) +
+  scale_color_manual(values = c("navyblue", "darkorange")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("Bulk Effect Peaks")
+
+```
+
+```{r, fig.width=8, fig.height=4}
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+  filter(label %in% c("Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV"))) + 
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Interaction"),], 
+             aes(xintercept = POS, color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV")), alpha = 0.2, linetype = "dashed")+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Interaction"),], aes(yintercept = q5)) +
+  labs(color = NULL)+
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") + ylim(0,12) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("Interaction Effect Peaks")
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV"))) + 
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),], 
+             aes(xintercept = POS, color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV")), alpha = 0.2, linetype = "dashed")+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  labs(color = NULL)+
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") + ylim(0,12) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("Bulk Effect Peaks")
+
+```
+
+## Overlaps with specific genes in all peaks
+
+```{r, fig.width=10, fig.height=4}
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction"),],
+             aes(xintercept = POS, color = CSS), alpha = 0.2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  geom_vline(data = sgd_copper, 
+             aes(xintercept = Gene.chromosomeLocation.start, linetype = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3)+ 
+  labs(linetype = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_linetype_manual(values = c("dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", 
+                                   "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted",
+                                   "dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", 
+                                   "dotted","dotted", "dotted","dotted", "dotted"))
+
+################################################################################
+#Separate by chromosomes
+################################################################################
+
+chromlist <- c(c("VII", "X", "XII", "XIV", "XV"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
+             aes(xintercept = POS, color = CSS), alpha = 0.2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(aes(yintercept = q5)) +
+  geom_vline(data = sgd_copper[sgd_copper$CHROM %in% chromlist,], 
+             aes(xintercept = Gene.chromosomeLocation.start, linetype = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3)+ 
+  labs(linetype = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_linetype_manual(values = c("dotted", "dotted","solid", "dotted","dotted", "dotted","dotted", "dotted","dotted", 
+                                   "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted",
+                                   "dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", "dotted","dotted", 
+                                   "dotted","dotted", "dotted","dotted", "dotted")) +
+  ggtitle("Chr Containing Interactions")
+
+################################################################################
+chromlist <- c(c("IV", "VII", "IX", "XI", "XII", "XIV", "XVI"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist,],
+             aes(xintercept = POS, color = CSS), alpha = 0.05, size = 2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements")
+
+chromlist <- c(c("IV", "VII", "IX", "XI", "XII", "XIV", "XVI"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist,],
+             aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements")
+
+chromlist <- c(c("IV", "VII", "IX", "XI", "XII", "XIV", "XVI"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
+             aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements")
+
+
+
+
+```
+
+
+# How close are the peaks?
+
+```{r, fig.width=10, fig.height=4}
+TruePeaks %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  select(label, CHROM, CSS, POS) %>%
+  pivot_wider(names_from = CSS, values_from = POS) -> TotalList
+
+TotalList %>% select(-VIII) %>% unnest() -> chr1
+TotalList %>% select(-I) %>% unnest() -> chr8
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 8000) %>%
+  ggplot() + geom_point(aes(y = diff, x = CHROM)) +
+  theme(axis.text.x=element_text())
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 8000) %>%
+  group_by(label, CHROM, diff) %>%
+  summarize(maxpoint = max(I, VIII),
+            minpoint = min(I, VIII)) %>%
+  ggplot(aes(color = CHROM)) + geom_linerange(aes(xmax = maxpoint, xmin = minpoint, y = diff)) +
+  facet_grid(rows = "CHROM") +
+  theme(axis.text.x=element_text())
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 1500) %>%
+  group_by(label, CHROM, diff) %>%
+  summarize(maxpoint = max(I, VIII),
+            minpoint = min(I, VIII)) %>%
+  ggplot(aes(color = CHROM)) + geom_point(aes(x = CHROM, y = diff), alpha = 0.4, size = 2) +
+  theme(axis.text.x=element_text())
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 1500) %>%
+  pivot_longer(c(I, VIII)) ->listofdiffs
+
+chromlist <- c(c("IX", "XII", "XIV", "XVI"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist & TruePeaks$POS %in% listofdiffs$value,],
+             aes(xintercept = POS, color = CSS), alpha = 0.2, size = 2)+
+  geom_line(alpha = 0.4, size = 1) +
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  #facet_grid(label~CHROM, scales = "free", space = "free") +
+  facet_wrap(facets = "CHROM", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("CSS I and VIII agreements")
+
+chromlist <- c(c("IV", "VII", "IX", "XI", "XII", "XIV", "XVI"))
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(CHROM %in% chromlist) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist & TruePeaks$POS %in% listofdiffs$value,],
+             aes(xintercept = POS, color = CSS), alpha = 0.2, size = 2, color = "black")+
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
+             aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
+  geom_line(alpha = 0.4, size = 1) +
+    
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements within 1.5 kb")
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist & TruePeaks$POS %in% listofdiffs$value,],
+             aes(xintercept = POS, color = CHROM), size = 1)+
+
+  geom_line(alpha = 0.4, size = 1) +
+    
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements within 1.5 kb")
+
+################################################################################
+#Change the distance
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 8000) %>%
+  pivot_longer(c(I, VIII)) ->listofdiffs5k
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$POS %in% listofdiffs5k$value,],
+             aes(xintercept = POS, color = CHROM), size = 1)+
+
+  geom_line(alpha = 0.4, size = 1) +
+    
+  geom_hline(aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements within 8 kb")
+```
+
+# Let's correlate them?
+
+## Bulk vs Interaction
+
+```{r}
+AllCuSO4_glmer_1byRep_FILTERED %>% pivot_wider(names_from = label, values_from = zscore) %>%
+  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
+  geom_smooth(method = "lm") +
+  facet_wrap(facets = "CHROM", scales = "free") +
+   theme(axis.text.x=element_text())
+
+chromlist <- c(c("VII", "X", "XII", "XIV", "XV"))
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+    filter(CHROM %in% chromlist) %>%
+  pivot_wider(names_from = label, values_from = zscore) %>%
+  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
+  geom_smooth(method = "lm") +
+  facet_wrap(facets = "CHROM", scales = "free") +
+  ggtitle("Interaction Peak Chromosomes") +
+   theme(axis.text.x=element_text())
+
+AllCuSO4_glmer_1byRep_FILTERED %>% 
+    filter(CHROM %in% chromlist == FALSE) %>%
+  pivot_wider(names_from = label, values_from = zscore) %>%
+  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
+  geom_smooth(method = "lm") +
+  facet_wrap(facets = "CHROM", scales = "free") +
+  ggtitle("Non Interaction Peak Chromosomes") +
+   theme(axis.text.x=element_text())
+```
+
+## Chr I vs VIII Fixed
+
+```{r}
+AllCuSO4_glmer_1byRep_FILTERED %>% pivot_wider(names_from = CSS, values_from = zscore) %>%
+  ggplot(aes(y = abs(I), x = abs(VIII), color = label)) + geom_point(alpha = 0.1, size = 0.1) +
+  geom_smooth(method = "lm", color = "black") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  facet_wrap(facets = "label", scales = "free") +
+  ggtitle("Correlations between Fixed Chr I and VIII in each parameter") +
+  theme(axis.text.x=element_text(),
+        legend.position = "none")
+```
+
+
+# The Classics
+
+```{r}
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = zscore, color = label)) + 
+  geom_hline(aes(yintercept = c(q5)), linetype = "dashed") +
+  geom_hline(aes(yintercept = c(-q5)), linetype = "dashed") +
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Bulk and Interaction Effects") +
+  scale_color_manual(values = c("black", "purple"))
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = zscore, color = label)) + 
+  geom_line() +
+  geom_rect(aes(ymin = -q5, ymax = q5, xmin = -Inf, xmax = Inf), color = "gray", alpha = 0.01) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Bulk and Interaction Effects") +
+  scale_color_manual(values = c("black", "purple"))
+
+AllCuSO4_glmer_1byRep_FILTERED %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+  geom_hline(aes(yintercept = c(q5)), linetype = "dashed") +
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Bulk and Interaction Effects") +
+  scale_color_manual(values = c("black", "purple"))
+```
+

@@ -1,0 +1,1348 @@
+---
+title: "AIG CFZs June 2024"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+
+ChromosomeScale <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(Summary = NA, Label = NA) %>% select(-delete)
+
+ChromosomeScale$Start <- 30000
+ChromosomeScale$End <- ChromosomeScale$POS - 30000
+
+ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(summary = 0, label = "Bulk") %>% select(-delete)
+
+# Loci to look at specifically
+
+myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
+                     POS = c(375215, 116167,389572, 198671, 46271, 203403, 260311),
+                     name = c("FLO8", "URA3", "FLO11", "MAT", "HO", "FLO1", "TUP1"),
+                     cat = c("Floc", "X", "Floc", "X", "X", "Floc", "Floc"))
+
+
+
+## Functions for GLM all and Permutation all
+
+glm_cb2_all <- function(..., W, formula, numgroups = FALSE, outputlength = 8) {
+  data <- list(...)
+  
+  #Ensure that there is a formula and W parameter
+  if (is.null(W) || is.null(formula)) {
+    stop("Weights (W) and formula must be provided")
+  }
+  #Set formula
+  glm_formula <- as.formula(formula)
+  #Ensure that formula works for the data provided
+  if (!all(names(data) %in% all.vars(glm_formula))) {
+    stop("One or more variables in the formula are not provided as arguments")
+  }
+  
+  #########################
+  for(i in all.vars(glm_formula)){
+    if(length(unique(as.data.frame(data)[,i])) < 2){
+      output <- rep(NA, outputlength)
+      #print("Not enough levels within groups")
+      
+      return(output)
+    }
+  }
+  
+  glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, family = binomial)
+  
+  output <- summary(glm_fit)$coefficients[c(((length(summary(glm_fit)$coefficients)*0)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.25)),
+                                            ((length(summary(glm_fit)$coefficients)*0.5)+1):
+                                            ((length(summary(glm_fit)$coefficients)*0.75)))]
+
+  
+  if(length(output) == outputlength){
+    return(output)
+  }else{
+    return(rep(NA, outputlength))
+  }
+  
+} 
+
+
+################################################################################
+# No replicates, fix Parent
+cybrPermute_cb2_all <- function(dataset, 
+                                R = 0, perp = 1, outlength = 4, 
+                                glmform = "Allele ~ Bulk * Parent", 
+                                inputlabels = c("Intercept", "Bulk", "Parent", "Interaction")){
+  start.time <- Sys.time()
+    
+  print("Make sure that dilute bulk is labeled aD")
+  print(paste("Your labels are:", inputlabels))
+
+    if(R > 0){ #INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Rep, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == 1) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest    
+    }else{ #DO NOT INCLUDE REPLICATES
+        dataset %>% 
+        distinct() %>% ungroup() %>%
+        group_by(CHROM, POS, Allele, Bulk, Parent) %>% 
+        summarize(culprits = length((SmoothCount))) %>% 
+        merge(dataset) %>% 
+        filter(culprits == perp) %>% 
+        ungroup() %>%
+        distinct() %>% #THIS IS IMPORTANT
+        pivot_wider(names_from = Allele, values_from = SmoothCount) -> newnewtest
+    }
+  
+    #PERMUTE TWICE
+  if(R > 0){
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Rep, 
+             Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep, 
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, 
+             Rep, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Rep = Rep,
+                Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }else{
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "A") -> shuffled_DiluteA2
+    
+    newnewtest %>% filter(Bulk == "aD",
+                          CHROM %in% c("I", "III", "V", "VIII", "M") == FALSE) %>% 
+      select(CHROM, POS, Parent, Oak, Wine) %>% 
+      group_by(Parent) %>% mutate(Loc = paste(CHROM, POS)) %>%
+      summarize(Parent = Parent, Oak = Oak, Wine = Wine, Loc = sample(Loc)) %>%
+      mutate(Bulk = "B") -> shuffled_DiluteB2
+    
+  }
+    
+    rbind(shuffled_DiluteA2, shuffled_DiluteB2) %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") -> shuffletoglm2
+    
+    #RUN THE GLM
+    if(R > 0) {
+      shuffletoglm2 %>% na.omit() %>%
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 Rep = Rep,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }else{
+      shuffletoglm2 %>% na.omit() %>%
+      #Original Script
+      group_by(Loc) %>%
+      mutate_if(is.character, as.factor) %>%
+        summarize(Summary = glm_cb2_all(Allele = Allele,
+                                 Bulk = Bulk,
+                                 Parent = Parent,
+                                 W = SmoothCount,
+                                 formula = glmform,
+                                outputlength = length(inputlabels)*2),
+                Factor = rep(inputlabels, 2),
+                d = c(rep("Effect", length(inputlabels)),
+                      rep("Z", length(inputlabels)))) -> glmresult
+    }
+    
+    
+    end.time = Sys.time()
+    print(end.time - start.time)
+    return(glmresult)
+}
+
+cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
+
+  require(dplyr)
+  require(doParallel)
+  require(foreach)
+
+  HNGLCDRXY <- read.table(rawData, header = TRUE)
+
+  #Identify the unique values besides AD/DP/GQ/PL
+  gsub(".AD", "",
+       gsub(".GQ", "",
+            gsub(".DP","",
+                 gsub(".PL","",
+                      colnames(select(HNGLCDRXY, -CHROM, -POS, -REF, -ALT)))))) %>% unique() -> Samples
+  #i <- Samples[1]
+
+  resultscdf <- foreach(i=Samples,.combine=rbind) %dopar% {
+    mydf <- HNGLCDRXY %>% select(CHROM, POS, REF, ALT) %>% mutate(Dataset = i)
+    AD <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("AD"))
+    GQ <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("GQ"))
+    DP <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("DP"))
+    PL <- select(HNGLCDRXY,matches(c(i), ignore.case = FALSE)) %>% select(., contains("PL"))
+    cbind(mydf, AD , GQ , DP, PL) -> mydftotal
+    colnames(mydftotal) <- c(colnames(mydf), "AD", "GQ", "DP", "PL")
+
+    mydftotal %>% separate(AD, c('AD.REF','AD.ALT'), extra='drop') %>%
+      separate(PL, c('PL.REF','PL.ALT'), extra='drop') %>%
+      #Added 10/18/23:
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> mycdf
+
+    mycdf %>% filter(grepl(",", ALT)) %>% 
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> doublecdf
+    
+    doublecdf %>% filter(grepl(",", ALT)) %>%
+      separate(ALT, c("A1", "A2"), extra = 'merge') %>%
+      separate(AD.ALT, c("AD1", "AD2"), extra = 'merge') %>%
+      separate(PL.ALT, c("P1", "P2"), extra = 'merge') %>%
+      
+      pivot_longer(c(A1, A2), names_to = "NumAlt", values_to = "ALT") %>%
+      pivot_longer(c(AD1, AD2), names_to = "NumADAlt", values_to = "AD.ALT") %>%
+      pivot_longer(c(P1, P2), names_to = "NumPL", values_to = "PL.ALT") %>%
+      mutate(NumAlt = gsub("A", "", NumAlt),
+             NumADAlt = gsub("AD", "", NumADAlt),
+             NumPL = gsub("P", "", NumPL)) %>%
+      filter(NumAlt == NumPL,
+             NumPL == NumADAlt) %>%
+      select(CHROM, POS,REF,ALT,Dataset,AD.REF,AD.ALT,GQ,DP,PL.REF,PL.ALT) -> triplecdf
+    
+    rbind(mycdf, doublecdf, triplecdf) -> newcdf
+    
+    newcdf
+  }
+
+  if(yeast == TRUE){
+    ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+    resultscdf %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> results
+  }else{
+    results <- resultscdf
+  }
+  return(results)
+
+}
+
+theme_classic
+```
+
+# Pre-processing
+
+## Load in table and match to oak or wine parents
+
+```{r}
+setwd("C:/Users/Cassandra/Documents/GitHub/Sequencing/Analysis/")
+
+parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+
+```
+
+```{r, message = FALSE, warning=FALSE}
+
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/AIG_J24.SortedCat.vcf.output.table"
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "AIG_CFZ_rawdata.rds")
+
+```
+
+## Actually determine which read is which
+
+### Get rid of multiallele things
+
+```{r}
+read.table(myfile, header = TRUE) -> testrawdata
+
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+  
+```
+
+```{r}
+
+#SMOOTHING ETC
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called
+# rawdata_called %>% filter(CHROM == "II") %>%
+#   ggplot(aes(x = POS, y = Dataset, color = Reads)) + geom_tile()
+```
+
+```{r, fig.width=10, fig.height=5}
+#Figure out what window size to use
+rawdata_called %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) %>%
+  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep")) %>%
+  filter(Bulk %in% c("C", "F", "Z", "U")) %>%
+  ###########
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(alpha = 0.3, size = 0.3) +
+  facet_grid(Rep~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+```
+
+```{r, fig.width=10, fig.height=5}
+################################################################################
+rawdata_called %>% group_by(Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center", na.rm = TRUE))) -> rawdata_smoothed 
+
+rawdata_smoothed %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) %>%
+  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep")) %>%
+  filter(Bulk %in% c("C", "F", "Z", "U")) %>%
+  ###########
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(alpha = 0.3, size = 0.3) +
+  facet_grid(Rep~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+rawdata_smoothed %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) %>%
+  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep")) %>%
+  filter(Bulk %in% c("C", "F", "Z", "U")) -> logOddsTest
+
+logOddsTest %>% filter(Bulk == "U") %>% na.omit() %>%  mutate(LOD_standard = logOdds) %>% select(-c(Bulk, Oak, Wine, logOdds)) -> Standard
+
+logOddsTest %>% merge(Standard) %>% mutate(diff = LOD_standard - logOdds) -> Normalized_AIGs
+
+Normalized_AIGs %>% 
+  ggplot(aes(x = POS, y = diff, color = Bulk)) + geom_point(alpha = 0.3, size = 0.3) +
+  facet_grid(Rep~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+
+Normalized_AIGs %>% filter(POS > 30000, CHROM != "M") %>%
+  ggplot(aes(x = POS, y = diff, color = Bulk, linetype = Rep)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+
+Normalized_AIGs %>% filter(POS > 30000, CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = diff, color = Bulk, linetype = Rep)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+
+Normalized_AIGs %>% filter(POS > 30000, CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = diff, color = Bulk, linetype = Rep)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+    geom_vline(xintercept = c(472855,474276, 690245,693097, 469092,472298)) +
+
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+
+################################################################################
+logOddsTest %>% filter(POS > 30000, CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) + geom_line() +
+  geom_vline(xintercept = c(4.2e5, 6e5), color = "gray") +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text())+
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+
+logOddsTest %>% filter(POS > 30000, CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) + geom_line() + geom_point(alpha = 0.2) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text()) +
+  geom_vline(xintercept = c(472855,474276, 690245,693097, 469092,472298)) +
+  xlim(4.2e5, 7e5) +
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet"))
+```
+
+
+
+## Separate into bulks, make ready for glms
+
+```{r}
+
+rawdata_smoothed %>% mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep"), sep = "_", extra = "merge") -> rd
+
+unique(rd$Bulk)
+unique(rd$Rep)
+
+```
+
+## Change into factors
+
+```{r,eval = FALSE}
+rd %>% filter(Bulk %in% c("U","C")) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) -> AIG_C_factor
+
+rd %>% filter(Bulk %in% c("U","F")) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) -> AIG_F_factor
+
+rd %>% filter(Bulk %in% c("U","Z")) %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) -> AIG_Z_factor
+
+
+contrasts(AIG_C_factor$Bulk) <- matrix(c(1, 0))
+contrasts(AIG_F_factor$Bulk) <- matrix(c(1, 0))
+contrasts(AIG_Z_factor$Bulk) <- matrix(c(0, 1))
+
+saveRDS(AIG_C_factor, "AIG_C_factor.rds")
+saveRDS(AIG_F_factor, "AIG_F_factor.rds")
+saveRDS(AIG_Z_factor, "AIG_Z_factor.rds")
+
+```
+
+################################################################################
+
+# Running GLMs
+
+```{r}
+AIG_C_factor <- readRDS("AIG_C_factor.rds")
+AIG_F_factor <- readRDS("AIG_F_factor.rds")
+AIG_Z_factor <- readRDS("AIG_Z_factor.rds")
+
+```
+
+```{r}
+#THIS IS USELESS BECAUSE IT DOESN'T SEPARATE THEM
+AIG_C_factor %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk"),
+                                                                  label = c("cept","Bulk"))  -> AIG_C_glm
+
+
+saveRDS(AIG_C_glm, file = "AIG_C_glm.rds")
+
+AIG_C_glm %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = abs(zscore))) + geom_point() + facet_grid(~CHROM, space = "free", scales = "free")
+```
+
+```{r}
+#THIS IS USELESS BECAUSE IT DOESN'T SEPARATE THEM
+AIG_F_factor %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk"),
+                                                                  label = c("cept","Bulk"))  -> AIG_F_glm
+
+
+saveRDS(AIG_F_glm, file = "AIG_F_glm.rds")
+
+#THIS IS USELESS BECAUSE IT DOESN'T SEPARATE THEM
+AIG_Z_factor %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk"),
+                                                                  label = c("cept","Bulk"))  -> AIG_Z_glm
+
+
+saveRDS(AIG_Z_glm, file = "AIG_Z_glm.rds")
+```
+
+
+
+## Make function to run glmer
+
+```{r}
+glmer_cb2_short <- function (..., W, formula, numgroups = FALSE, outputlength = 4, 
+    return = c("Z")) 
+{
+    data <- list(...)
+    
+    require(lme4)
+    if (is.null(W) || is.null(formula)) {
+        stop("Weights (W) and formula must be provided")
+    }
+    glm_formula <- as.formula(formula)
+    if (!all(names(data) %in% all.vars(glm_formula))) {
+        stop("One or more variables in the formula are not provided as arguments")
+    }
+    for (i in all.vars(glm_formula)) {
+        if (length(unique(as.data.frame(data)[, i])) < 2) {
+            output <- rep(NA, outputlength)
+            return(output)
+        }
+    }
+    glm_fit <- glmer(glm_formula, data = as.data.frame(data), weights = W, 
+        family = binomial)
+    if (return %in% "Z") {
+        output <- summary(glm_fit)$coefficients[((length(summary(glm_fit)$coefficients) * 
+            0.5) + 1):((length(summary(glm_fit)$coefficients) * 
+            0.75))]
+    }
+    if (length(output) == outputlength) {
+        return(output)
+    }
+    else {
+        return(rep(NA, outputlength))
+    }
+}
+```
+
+## Separate Chromosomes
+
+```{r}
+AIG_C_factor %>% #filter(CHROM == "I") %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Rep = Rep,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk + (1 | Rep)"),
+                                      label = c("cept","Bulk")) -> AIG_C_glmer_1byRep
+
+saveRDS(AIG_C_glmer_1byRep, file = "AIG_C_glmer_1byRep.rds")
+
+AIG_F_factor %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Rep = Rep,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk + (1 | Rep)"),
+                                      label = c("cept","Bulk")) -> AIG_F_glmer_1byRep
+
+saveRDS(AIG_F_glmer_1byRep, file = "AIG_F_glmer_1byRep.rds")
+
+AIG_Z_factor %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Rep = Rep,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk + (1 | Rep)"),
+                                      label = c("cept","Bulk")) -> AIG_Z_glmer_1byRep
+
+saveRDS(AIG_Z_glmer_1byRep, file = "AIG_Z_glmer_1byRep.rds")
+
+```
+
+
+```{r}
+AIG_C_glmer_1byRep <- readRDS("AIG_C_glmer_1byRep.rds")
+AIG_F_glmer_1byRep <- readRDS("AIG_F_glmer_1byRep.rds")
+AIG_Z_glmer_1byRep <- readRDS("AIG_Z_glmer_1byRep.rds")
+
+```
+
+
+What genes are nearby?
+
+```{r}
+sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
+
+genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+genes_eh <- c("VMA4", "MTL1", "PTR2", "LEU9", "IRC15")
+sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper_eh
+
+genes_fluc <- c("ERG11", "PDR5", "FLR1", "PDR1")
+sgd_orfs %>% filter(Gene.symbol %in% genes_fluc) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper_f
+
+#Interesting....
+sgd_orfs %>% filter(grepl("ERG", Gene.symbol) |
+                    grepl("PDR", Gene.symbol)) %>%
+  filter(Gene.chromosome.primaryIdentifier == "chrVII")
+
+#ERGs and PDRs
+sgd_orfs %>% filter(grepl("ERG", Gene.symbol) |
+                    grepl("PDR", Gene.symbol)) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> ERGsnPDRs
+
+sgd_orfs %>% filter(Gene.symbol == "IME1")
+################################################################################
+
+sgd_orfs %>% filter(Gene.chromosome.primaryIdentifier == "chrVII",
+                    Gene.chromosomeLocation.start > 400000,
+                    Gene.chromosomeLocation.start < 650000) %>% select(Gene.symbol) -> GenesOfInterest_Fluc
+
+paste0(GenesOfInterest_Fluc$Gene.symbol, collapse = " ")
+
+file.choose()
+read.csv("C:/Users/Cassandra/Downloads/yeastmine_results_2024-06-17T15-30-19.csv", header = TRUE) %>%
+  filter(Gene.symbol %in% GenesOfInterest_Fluc$Gene.symbol) %>%
+  select(Gene.symbol, Gene.description) -> tempfilter
+
+tempfilter %>% select(Gene.symbol) %>% distinct() %>% left_join(tempfilter) -> givingup
+
+write.csv(givingup, file = "givingup.csv")
+```
+
+## Permutations for significance
+
+```{r}
+# Shuffle the entire genome WITHIN replicates, of DILUTE bulks
+
+# AIG_C_factor %>% filter(Bulk == "U",
+#                      CHROM %in% c("M", "III", "V") == FALSE) %>% 
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+#   mutate(label = paste(CHROM, POS, sep = "_")) %>%
+#   summarize(NewPOS = sample(label),
+#             Oak = Oak,
+#             Wine = Wine) %>%
+#   separate(NewPOS, into = c("CHROM", "POS", sep = "_"))-> rd_shuffled
+
+```
+
+Actually running a permutation on this
+
+```{r}
+AIG_C_factor %>% filter(Bulk == "U",
+                     CHROM %in% c("M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Rep) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected
+
+AIG_C_factor %>% filter(Bulk == "U",
+                     CHROM %in% c("M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Rep) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected) -> Perm1
+
+Perm1 %>% ungroup() %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) -> Perm1contrasts
+
+contrasts(Perm1contrasts$Bulk)
+
+```
+
+```{r}
+
+Perm1contrasts %>% distinct() %>% 
+  
+  group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Rep = Rep,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 2,
+                                                            formula = "Allele ~ Bulk +  (1 | Rep)"),
+                                                                  label = c("cept","Bulk"))  -> AIG_CFZ_glmer_1byRep_PERM
+
+saveRDS(AIG_CFZ_glmer_1byRep_PERM, "AIG_CFZ_glmer_1byRep_PERM.rds")
+
+```
+
+Cutoffs for this
+
+```{r}
+
+AIG_CFZ_glmer_1byRep_PERM <- readRDS("AIG_CFZ_glmer_1byRep_PERM.rds")
+
+AIG_CFZ_glmer_1byRep_PERM %>%
+  group_by(label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95),
+            q1 = quantile(abs(zscore), 0.99)) %>%
+  mutate(CSS = "I")  -> q5_AIG_CFZ
+
+
+```
+
+### Filter out those with multiple alleles
+
+```{r}
+AIG_C_glmer_1byRep %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) -> AIG_C_glmer_1byRep
+AIG_Z_glmer_1byRep %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) -> AIG_Z_glmer_1byRep
+AIG_F_glmer_1byRep %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) -> AIG_F_glmer_1byRep
+
+rbind(data.frame(AIG_C_glmer_1byRep, Selection = "CuSO4"), 
+      data.frame(AIG_F_glmer_1byRep, Selection = "Fluc"), 
+      data.frame(AIG_Z_glmer_1byRep, Selection = "Zeocin")) -> AllAIGs
+
+AllAIGs$CHROM <- factor(AllAIGs$CHROM, levels = as.character(as.roman(c(1:16, 1000))))
+```
+
+## Plot
+
+Okay, so what's significant?
+
+```{r, fig.width=8, fig.height=4}
+AIG_C_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = zscore)) + 
+  geom_line() +
+  geom_hline(yintercept = 0, color = "gray")+
+  geom_vline(data = sgd_copper, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  geom_vline(data = sgd_copper_eh,
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             linetype = "dashed", size = 1, alpha = 0.3) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = -q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+
+AIG_F_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = zscore)) + 
+  geom_line() +
+  geom_hline(yintercept = 0, color = "gray")+
+  geom_vline(data = sgd_copper_f, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = -q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+
+AIG_Z_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = zscore)) + 
+  geom_line() +
+  geom_hline(yintercept = 0, color = "gray")+
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = -q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+AIG_C_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+  filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line() +
+  geom_vline(data = sgd_copper[sgd_copper$CHROM == "VIII",], 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+
+AIG_F_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+    filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line() +
+  geom_vline(data = sgd_copper_f, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
+             size = 1, alpha = 0.3) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+
+
+```
+
+
+```{r, fig.width=12, fig.height=5}
+sgd_copper %>% select(Gene = Gene.symbol, CHROM, Start = Gene.chromosomeLocation.start) %>% mutate(Selection = "CuSO4") -> CuSGD
+sgd_copper_f %>% select(Gene = Gene.symbol, CHROM, Start = Gene.chromosomeLocation.start) %>% mutate(Selection = "Fluc") %>% rbind(CuSGD) -> SGD_AIGs
+
+SGD_AIGs$CHROM <- factor(SGD_AIGs$CHROM, levels = as.character(as.roman(c(1:16, 1000))))
+
+AllAIGs %>% filter(label %in% c("Bulk"), CHROM != "M") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line() +
+  geom_vline(data = SGD_AIGs, 
+             aes(xintercept = Start, color = paste(CHROM,Gene)),
+             size = 1, alpha = 0.3) +
+  geom_hline(yintercept = 2, alpha = 0.4, linetype = "dashed") +
+  #geom_hline(data = q5_AIG_CFZ[q5_AIG_CFZ$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+findchange <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  if(is.na(diff)){
+    return(NA)
+  }else if(diff == 0){
+    return(0)
+  }else{
+    return(diff > 0)  
+  }
+}
+
+findpeak <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  return(diff)
+}
+
+  
+```
+
+Applying this to everythingg
+
+```{r, fig.width=12, fig.height=5}
+AllAIGs %>% filter(label == "Bulk") %>%
+  group_by(label, Selection, CHROM) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 300, FUN = mean, align = "center", na.rm = TRUE)) %>%
+  summarize(POS = POS,
+                    zscore = zscore,
+                    SmoothZ = SmoothZ,
+                    change = frollapply(abs(SmoothZ), n = 10, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    zscore = zscore,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 4, findpeak, align = "center")) %>%
+  filter(peak == -1) %>% filter(abs(SmoothZ) > 2) -> TruePeaks_AIG
+
+AllAIGs %>% filter(label %in% c("Bulk"), CHROM != "M") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line() +
+  geom_vline(data = TruePeaks_AIG, 
+             aes(xintercept = POS, color = Selection),
+             size = 1, alpha = 0.3) +
+  geom_hline(yintercept = 2, alpha = 0.4, linetype = "dashed") +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+
+
+AllAIGs %>% 
+  group_by(label, Selection, CHROM) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 300, FUN = mean, align = "center", na.rm = TRUE)) %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(SmoothZ))) + 
+  geom_line() +
+  geom_vline(data = TruePeaks_AIG,
+             aes(xintercept = POS, color = Selection),
+             size = 1, alpha = 0.3) +
+  geom_hline(yintercept = 2, alpha = 0.4, linetype = "dashed") +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+AllAIGs %>% filter(CHROM == "VII") %>%
+  group_by(label, Selection, CHROM) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 300, FUN = mean, align = "center", na.rm = TRUE)) %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(SmoothZ))) + 
+  geom_line() +
+  geom_vline(data = TruePeaks_AIG[TruePeaks_AIG$CHROM == "VII",],
+             aes(xintercept = POS, color = Selection),
+             size = 1, alpha = 0.3) +
+  geom_hline(yintercept = 2, alpha = 0.4, linetype = "dashed") +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+```
+
+
+## Comparing CuSO4 Data to AIG Peaks
+
+```{r}
+CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRep.rds")
+CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRep.rds")
+
+CuSO4_CSS8_glmer_1byRep_PERM <- readRDS("CuSO4_CSS8_glmer_1byRep_PERM.rds")
+CuSO4_CSS1_glmer_1byRep_PERM <- readRDS("CuSO4_CSS1_glmer_1byRep_PERM.rds")
+
+CuSO4_CSS8_glmer_1byRep_PERM %>%
+  group_by(label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95),
+            q1 = quantile(abs(zscore), 0.99)) %>%
+  mutate(CSS = "VIII") -> q5_CSS8
+
+CuSO4_CSS1_glmer_1byRep_PERM %>%
+  group_by(label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95),
+            q1 = quantile(abs(zscore), 0.99)) %>%
+  mutate(CSS = "I")  -> q5_CSS1
+
+rbind(q5_CSS1, q5_CSS8) -> q5_all
+
+CuSO4_CSS1_glmer_1byRep %>% filter(CHROM != "I") %>% mutate(CSS = "I") -> temp1
+CuSO4_CSS8_glmer_1byRep %>% mutate(CSS = "VIII") %>%
+  rbind(temp1) -> AllCuSO4_glmer_1byRep
+
+rm(temp1)
+
+```
+
+```{r, fig.width=12, fig.height=5}
+AllCuSO4_glmer_1byRep %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_vline(data = TruePeaks_AIG[TruePeaks_AIG$Selection == "CuSO4",], 
+             aes(xintercept = POS),
+             size = 1, alpha = 0.3, color = "lightblue") +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") + ggtitle("Bulk points") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+```
+```{r, fig.width=12, fig.height=5}
+
+AllCuSO4_glmer_1byRep %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) -> AllCuSO4_Filtered
+
+AllAIGs %>% 
+  group_by(label, Selection, CHROM) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 300, FUN = mean, align = "center", na.rm = TRUE)) %>%
+  filter(label == "Bulk") -> smoothedAIGs
+
+################################################################################
+AllCuSO4_Filtered %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  #geom_line(aes(linetype = CSS)) +
+  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_vline(data = TruePeaks_AIG[TruePeaks_AIG$Selection == "CuSO4",], 
+             aes(xintercept = POS),
+             size = 1, alpha = 0.3, color = "lightblue") +
+  geom_line(data = smoothedAIGs[smoothedAIGs$Selection == "CuSO4" & smoothedAIGs$label == "Bulk",], color = "red", aes(y = abs(SmoothZ))) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") + ggtitle("CuSO4 Bulk vs AIGs") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+
+```
+
+## Looking into genes for Fluconazole
+
+```{r, fig.width=12, fig.height=6}
+ERGsnPDRs %>% mutate(Type = substr(Gene.symbol, 1,3)) -> ERGsnPDRs
+AIG_F_glmer_1byRep %>% filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line() +
+  geom_vline(data = ERGsnPDRs, 
+             aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol), linetype = Type),
+             size = 1, alpha = 0.3) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  labs(color = "Gene", linetype = NULL) +
+  theme(legend.position = "bottom")
+```
+
+
+## Load in Fluconazole data if you have it
+
+```{r, fig.width=12, fig.height=5}
+#file.choose()
+Fluc_CSS1 <- readRDS("C:\\Users\\Cassandra\\Documents\\R_FileTransfer\\StandardGLM\\HGVMVDRX2_CSS1_glm_all.rds")
+
+Fluc_CSS8 <- readRDS("C:\\Users\\Cassandra\\Documents\\R_FileTransfer\\StandardGLM\\HVYTYDRX2_Fluc_CSS8_glm_all.rds")
+
+Fluc_CSS8 %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) +
+  geom_line(data = AIG_F_glmer_1byRep[AIG_F_glmer_1byRep$label == "Bulk",], aes(x = POS, y = abs(zscore)), color = "firebrick", linetype = "dashed")+
+  geom_line() +
+  geom_vline(data = sgd_copper_f, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol), size = 2, alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Fluconazole AIG vs CSS 8")
+
+Fluc_CSS8 %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) +
+  geom_line(data = AIG_F_glmer_1byRep[AIG_F_glmer_1byRep$label == "Bulk",], aes(x = POS, y = abs(zscore)), color = "firebrick", linetype = "dashed")+
+  geom_line() +
+  geom_vline(data = sgd_copper_f, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol), size = 2, alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Fluconazole CSS 8 INT vs AIG")
+
+Fluc_CSS1 %>% filter(Factor == "Bulk") %>% filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) +
+  geom_line(data = AIG_F_glmer_1byRep[AIG_F_glmer_1byRep$label == "Bulk" & AIG_F_glmer_1byRep$CHROM == "VIII",], aes(x = POS, y = abs(zscore)), color = "firebrick", linetype = "dashed")+
+  geom_line() +
+  geom_vline(data = sgd_copper_f, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol), size = 2, alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Fluconazole AIG vs CSS18")
+```
+
+## Finally let's look at Zeocin data
+
+```{r, fig.width=12, fig.height=5}
+
+Zeo_CSS1 <- readRDS("C:\\Users\\Cassandra\\Documents\\R_FileTransfer\\StandardGLM\\HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds")
+
+Zeo_CSS1 %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) +
+  geom_line(data = AIG_Z_glmer_1byRep[AIG_Z_glmer_1byRep$label == "Bulk",], aes(x = POS, y = abs(zscore)), color = "darkorange", linetype = "dashed")+
+  geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Zeocin AIG vs CSS 1")
+
+Zeo_CSS1 %>% filter(Factor == "Interaction") %>%
+  ggplot(aes(x = POS, y = abs(Summary))) +
+  geom_line(data = AIG_Z_glmer_1byRep[AIG_Z_glmer_1byRep$label == "Bulk",], aes(x = POS, y = abs(zscore)), color = "darkorange", linetype = "dashed")+
+  geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Zeocin CSS1 INTERACTIONS vs AIG")
+
+```
+
+
+```{r}
+Zeo_CSS1 %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = (Summary))) +
+  geom_line(data = AIG_Z_glmer_1byRep[AIG_Z_glmer_1byRep$label == "Bulk",], aes(x = POS, y = (zscore)), color = "darkorange", linetype = "dashed")+
+  geom_line() +
+  geom_hline(yintercept = 0) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Zeocin AIG vs CSS 1")
+
+Fluc_CSS8 %>% filter(Factor == "Bulk") %>%
+  ggplot(aes(x = POS, y = (Summary))) +
+  geom_line(data = AIG_F_glmer_1byRep[AIG_F_glmer_1byRep$label == "Bulk",], aes(x = POS, y = (zscore)), color = "firebrick", linetype = "dashed")+
+  geom_line() +
+  geom_hline(yintercept = 0) +
+  geom_vline(data = sgd_copper_f, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol), size = 2, alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Fluconazole AIG vs CSS 8")
+
+AllCuSO4_Filtered %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = (zscore))) + 
+  geom_line(aes(linetype = CSS)) +
+  # geom_vline(data = TruePeaks_AIG[TruePeaks_AIG$Selection == "CuSO4",], 
+  #            aes(xintercept = POS),
+  #            size = 1, alpha = 0.3, color = "lightblue") +
+  geom_line(data = smoothedAIGs[smoothedAIGs$Selection == "CuSO4" & smoothedAIGs$label == "Bulk",], color = "darkturquoise", aes(y = (SmoothZ))) +
+  geom_hline(yintercept = 0) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") + ggtitle("CuSO4 Bulk vs AIGs") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
+
+```
+
+## USING TRUE PEAKS HERE
+
+```{r, eval = FALSE, fig.width=12, fig.height=8}
+TruePeaks_AIG %>% mutate(Bulk = substr(Selection, 1,1)) -> TruePeaks_short
+
+logOddsTest %>% filter(POS > 30000, CHROM != "M", Bulk == "U") %>% select(-Bulk) -> Unselected
+
+logOddsTest %>% filter(POS > 30000, CHROM != "M", Bulk != "U") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) + 
+  geom_vline(data = TruePeaks_short, aes(xintercept = POS, color = Bulk), alpha = 0.1, size = 2) +
+  geom_line() +
+  geom_line(data = Unselected, aes(x = POS, y = logOdds, linetype = Rep), color = "black")+
+  geom_vline(xintercept = 604569) +
+  facet_grid(Bulk~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "violet"))
+
+logOddsTest %>% filter(POS > 30000, CHROM == "X", Bulk != "U") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) +  geom_line() +
+  geom_line(data = Unselected[Unselected$CHROM == "X",], aes(x = POS, y = logOdds, linetype = Rep), color = "black")+
+  geom_vline(xintercept = 604569) +
+  facet_grid(Bulk~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "violet"))
+```
+
+```{r}
+#file.choose()
+
+raw_HGV <- readRDS("C:\\Users\\Cassandra\\Documents\\R_FileTransfer\\StandardGLM\\HGVMVDRX2_smoothed.rds")
+
+raw_HGV %>% filter(POS > 30000, grepl("Dilute", Dataset), CHROM == "X") %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
+  geom_line() +
+  geom_vline(xintercept = 604569) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+sgd_orfs
+```
+
+
+```{r}
+logOddsTest %>% filter(POS > 30000, CHROM == "III", Bulk != "U") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) + 
+  geom_vline(data = TruePeaks_short[TruePeaks_short$CHROM == "III",], aes(xintercept = POS, color = Bulk), alpha = 0.1, size = 2) +
+  geom_line() +
+  geom_line(data = Unselected[Unselected$CHROM == "III",], aes(x = POS, y = logOdds, linetype = Rep), color = "black")+
+  geom_vline(xintercept = c(198671,201177)) +
+  facet_grid(Bulk~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "violet"))
+
+
+logOddsTest %>% filter(POS > 30000, CHROM == "VIII", Bulk != "U") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep)) + 
+  geom_vline(data = TruePeaks_short[TruePeaks_short$CHROM == "VIII",], aes(xintercept = POS, color = Bulk), alpha = 0.1, size = 2) +
+  geom_line() +
+  geom_line(data = Unselected[Unselected$CHROM == "VIII",], aes(x = POS, y = logOdds, linetype = Rep), color = "black")+
+  facet_grid(Bulk~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+
+  scale_color_manual(values = c("turquoise", "darkorange", "violet"))
+
+
+AIG_C_glmer_1byRep %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  geom_vline(data = temp_C_peak, aes(xintercept = POS))
+
+TruePeaks_short %>% filter(CHROM == "VIII", Selection == "CuSO4") -> temp_C_peak
+
+logOddsTest %>% filter(Bulk == "C", CHROM == "VIII") -> temp_C_logodds
+logOddsTest %>% filter(Bulk == "U", CHROM == "VIII") -> temp_U_logodds
+
+AIG_C_glmer_1byRep %>% filter(CHROM == "VIII", label == "Bulk") %>% ggplot(aes(x = POS, y = zscore)) + geom_line(aes(color = label)) +
+  geom_line(data = temp_C_logodds, aes(x = POS, y = logOdds), color = "turquoise") +
+  geom_line(data = temp_U_logodds, aes(x = POS, y = logOdds), color = "black") +
+  geom_vline(data = temp_C_peak, aes(xintercept = POS))
+
+```
+
+## Chr III investigation
+
+```{r}
+AllCuSO4_Filtered %>% filter(CHROM == "III") %>% 
+  filter(label %in% c("cept")) -> C3
+Zeo_CSS1 %>% filter(CHROM == "III", Factor == "Intercept") %>% mutate(CSS = "Z_I") -> Z3
+Fluc_CSS8 %>% filter(CHROM == "III", Factor == "Intercept") %>% mutate(CSS = "F_VIII")-> F3
+
+# C3 %>% select(CHROM, POS, Summary = zscore, Factor = label, CSS) %>%
+#   rbind(Z3) %>%
+#   rbind(F3) %>%
+#   ggplot(aes(x = POS, y = Summary)) + 
+#   geom_line(aes(color = CSS)) +
+#   geom_line(data = logOddsTest[logOddsTest$CHROM == "III",], aes(x = POS, y = logOdds, linetype = paste(Bulk, Rep))) +
+#   geom_vline(xintercept = c(198671,201177)) 
+
+C3 %>% select(CHROM, POS, Summary = zscore, Factor = label, CSS) %>%
+  rbind(Z3) %>%
+  rbind(F3) %>%
+  ggplot(aes(x = POS, y = Summary)) + 
+  geom_line(aes(color = CSS), size = 2) +
+  geom_line(data = AllAIGs[AllAIGs$CHROM == "III" & AllAIGs$label == "cept",], aes(x = POS, y = zscore, color = Selection, linetype = Selection), size = 2, alpha = 0.3) +
+  geom_vline(xintercept = c(198671,201177)) +
+  scale_color_manual(values = c("turquoise", "darkorange",  "darkorange","turquoise","turquoise", "violet", "violet")) +
+  ggtitle("Intercepts; Pale is AIG, Dark is CSS Data") + guides(linetype = "none")
+
+#Bulk Effects
+AllAIGs %>% mutate(Bulk = substr(Selection, 1,1)) %>%
+  filter(label == "Bulk", CHROM == "III") %>%
+  ggplot(aes(x = POS, y = zscore)) +
+  geom_line(aes(color = Bulk), size = 2, alpha = 0.3) +
+  geom_line(data = logOddsTest[logOddsTest$CHROM == "III",], aes(x = POS, y = logOdds, linetype = paste(Bulk, Rep), color = Bulk)) +
+  labs(color = "Selection") +
+  ggtitle("AIG Bulk Effects vs logOdds") +
+  scale_linetype_manual(values = c("dashed", "dashed",
+                                   "dashed","dashed",
+                                   "solid", "solid",
+                                   "dashed","dashed")) +
+    geom_vline(xintercept = c(198671,201177)) +
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet")) +guides(linetype = "none")
+
+
+#Intercept Effects
+AllAIGs %>% mutate(Bulk = substr(Selection, 1,1)) %>%
+  filter(label == "cept", CHROM == "III") %>%
+  ggplot(aes(x = POS, y = zscore)) +
+  geom_line(aes(color = Bulk), size = 2, alpha = 0.3) +
+  geom_line(data = logOddsTest[logOddsTest$CHROM == "III",], aes(x = POS, y = logOdds, linetype = paste(Bulk, Rep), color = Bulk)) +
+  labs(color = "Selection") +
+  ggtitle("AIG Intercept Effects vs logOdds") +
+  scale_linetype_manual(values = c("dashed", "dashed",
+                                   "dashed","dashed",
+                                   "solid", "solid",
+                                   "dashed","dashed")) +
+    geom_vline(xintercept = c(198671,201177)) +
+  scale_color_manual(values = c("turquoise", "darkorange", "black", "violet")) +guides(linetype = "none")
+
+
+```
+
+
+# Kernel testing
+
+```{r}
+library(zoo)
+
+gaussian_kernel <- function(x, sigma) {
+  exp(-(x^2) / (2 * sigma^2)) / (sqrt(2 * pi) * sigma)
+}
+
+set.seed(123)
+data <- data.frame(x = seq(1, 1000), y = rnorm(1000, sd = 100))
+plot(data)
+
+# Parameters
+window_size <- 10  # Size of the smoothing window
+sigma <- 5         # Standard deviation for the Gaussian kernel
+
+# Apply Gaussian smoothing using rollapply
+smoothed_data <- data %>%
+  summarize(x = x, smoothed_y = rollapply(y, width = window_size, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA))
+
+plot(smoothed_data)
+```
+
+## Smooth my AIG data and look at log odds for this
+
+```{r, fig.width=12, fig.height=5}
+window_size <- 300  # Size of the smoothing window
+sigma <- 50         # Standard deviation for the Gaussian kernel
+
+rawdata_called %>%
+  group_by(Dataset, CHROM, Allele) %>%
+  #filter(CHROM == "I") %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) -> rawdata_gaussian
+
+#original
+# rawdata_called %>% group_by(Dataset, CHROM, Allele) %>% arrange(POS) %>%
+#   reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center", na.rm = TRUE))) -> rawdata_smoothed 
+
+rawdata_gaussian %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
+
+G_logodds %>% filter(CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
+  geom_line() + 
+  geom_vline(xintercept = 496920, size = 2, color = "gray", alpha = 0.3) +
+  geom_line(data = logOddsTest[logOddsTest$CHROM == "VII",], aes(linetype = paste(Bulk, Rep)), color = "black") +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+
+G_logodds %>% filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
+  geom_line() + 
+  geom_vline(xintercept = 212535) +
+    geom_vline(xintercept = 105586, size = 2, color = "gray", alpha = 0.3) +
+  geom_line(data = logOddsTest[logOddsTest$CHROM == "VIII",], aes(linetype = paste(Bulk, Rep)), color = "black") +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+#Plot to check
+# rawdata_smoothed %>% ggplot(aes(x = POS, y = SmoothCount, color = Dataset)) + geom_line() + facet_grid(Dataset~CHROM, scales = "free", space = "free") +
+#   geom_line(data = rawdata_gaussian, aes(linetype = Dataset), color = "black") +
+#   theme(legend.position = "none ")
+
+sgd_copper
+```
+
