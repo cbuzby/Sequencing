@@ -478,9 +478,30 @@ rd_factor %>% filter(CHROM == "III") %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTD
                                                                   label = c("cept","Bulk", "Background", "Interaction")) 
 ```
 
+```{r}
+#TROUBLESHOOTING
+rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I", POS == 41157) -> weird
+
+table(weird$Allele, weird$Background, weird$Bulk)
+as.data.frame(table(weird$Dataset)) %>% arrange(desc(Freq))
+
+
+rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I") %>% arrange((POS))
+
+rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I", POS == 20008) %>%
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Rep = Dataset,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background + (1 | Rep) "))
+
+
+```
+
 
 ```{r}
-rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
+rd_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
   group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
                                                             Background = Background,
                                                             Rep = Dataset,
@@ -498,7 +519,7 @@ rd_factor %>% filter(CHROM != "M", CHROM != "VIII")%>% distinct() %>% filter(Poo
                                                             Rep = Dataset,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + + (1 | Rep)"),
+                                                            formula = "Allele ~ Bulk*Background + (1 | Rep)"),
                                                                   label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1byRep
 
 saveRDS(CuSO4_CSS8_glmer_1byRep, file = "CuSO4_CSS8_glmer_1byRepG.rds ")
@@ -514,23 +535,23 @@ CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
 ## Permutations for significance
 
 ```{r}
-# Shuffle the entire genome WITHIN replicates, of DILUTE bulks
-
-rd_factor %>% filter(Bulk == "Dilute",
-                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
-  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
-  mutate(label = paste(CHROM, POS, sep = "_")) %>%
-  group_by(Pool, Dataset) %>%
-  summarize(NewPOS = sample(label),
-            Oak = Oak,
-            Wine = Wine,
-            Background = Background) %>%
-  separate(NewPOS, into = c("CHROM", "POS", sep = "_"))-> rd_shuffled
-
-rd_shuffled %>% ggplot(aes(x = POS, y = log(Oak/Wine), color = Dataset)) + geom_point(alpha = 0.1) + facet_grid(Pool ~ CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom")
-
-rd_shuffled %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") 
+# # Shuffle the entire genome WITHIN replicates, of DILUTE bulks
+# 
+# rd_factor %>% filter(Bulk == "Dilute",
+#                      CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+#   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+#   mutate(label = paste(CHROM, POS, sep = "_")) %>%
+#   group_by(Pool, Dataset) %>%
+#   summarize(NewPOS = sample(label),
+#             Oak = Oak,
+#             Wine = Wine,
+#             Background = Background) %>%
+#   separate(NewPOS, into = c("CHROM", "POS", sep = "_"))-> rd_shuffled
+# 
+# rd_shuffled %>% ggplot(aes(x = POS, y = log(Oak/Wine), color = Dataset)) + geom_point(alpha = 0.1) + facet_grid(Pool ~ CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "bottom")
+# 
+# rd_shuffled %>% pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") 
 ```
 
 Actually running a permutation on this
@@ -598,5 +619,12 @@ Perm1contrasts %>%
                                                                   label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1byRep_PERM
 
 saveRDS(CuSO4_CSS8_glmer_1byRep_PERM, "CuSO4_CSS8_glmer_1byRep_PERMG.rds")
+
+CuSO4_CSS8_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "VIII") -> q5_css8
+
+CuSO4_CSS1_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "I") %>% rbind(q5_css8) -> q5_CuSO4_CSS
+
+saveRDS(q5_CuSO4_CSS, file = "q5_CuSO4_CSS.rds")
+
 ```
 
