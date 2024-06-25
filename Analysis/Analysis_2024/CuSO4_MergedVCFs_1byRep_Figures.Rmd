@@ -296,21 +296,18 @@ cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
 theme_classic
 ```
 
+# Load in data
 
 ```{r}
 rd_factor <- readRDS("rd_factorG.rds")
 ```
 
-
-
 ```{r}
 CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
 CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
-```
+q5_all <- readRDS("q5_CuSO4_CSS.rds")
 
-Merging all datasets instead
 
-```{r}
 CuSO4_CSS1_glmer_1byRep %>% filter(CHROM != "I") %>% mutate(CSS = "I") -> temp1
 CuSO4_CSS8_glmer_1byRep %>% mutate(CSS = "VIII") %>%
   rbind(temp1) -> AllCuSO4_glmer_1byRep
@@ -320,7 +317,28 @@ rm(temp1)
 
 What genes are nearby?
 
-```{r}
+```{r, fig.width=10, fig.height=10}
+#file.choose()
+eQTL_hubs <- read.csv("C:\\Users\\Cassandra\\Downloads\\SI_Data_08_hotspotTableForPaper_topGenes100_170420.csv")
+eQTL_hubs %>% select(hotspotMarker, numberGenesInHotspot, numberEQTLInHotspot, bestGeneBootstraps, bestGenePeak) %>%
+  separate(hotspotMarker, c("CHROM", "POS_SNP"), sep = c(":")) %>%
+  separate(POS_SNP, c("POS", "SNP"), sep = c("_")) -> eQTL_hubs_POS
+ChromosomeScale %>% select(CHROM, POS) %>% filter(POS != 1) %>% mutate(CHROM = as.character(CHROM)) -> ChromLength
+eQTL_hubs_POS %>% count(CHROM) %>% mutate(CHROM = gsub("chr", "", CHROM)) %>% merge(ChromLength) %>%
+  ggplot(aes(x = POS, y = n)) + geom_smooth(method = "lm", color = "black") + geom_point(aes(color = CHROM), size = 4) 
+
+eQTL_hubs_POS %>% mutate(CHROM = gsub("chr", "", CHROM)) %>% filter(bestGeneBootstraps == bestGenePeak) %>%
+  select(-bestGeneBootstraps) %>%
+  separate(bestGenePeak, c("G1", "G2", "G3", "G4"), sep = ";") %>%
+  pivot_longer(starts_with("G"), names_to = "NumGenes", values_to = "GeneName") %>%
+  na.omit() -> eQTL_hubs_Genes
+
+eQTL_hubs_Genes %>% arrange(desc(numberGenesInHotspot))
+eQTL_hubs_Genes %>% arrange(desc(numberEQTLInHotspot))
+
+```
+
+```{r, fig.width=10, fig.height=5}
 sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
 
 genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
@@ -330,38 +348,38 @@ sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
 genes_eh <- c("VMA4", "MTL1", "PTR2", "LEU9", "IRC15")
 sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper_eh
+
+#HUBS
+sgd_orfs %>% filter(Gene.symbol %in% c("PTR3", "VPS70", "CUP1", "YLR257W")) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Matsui") -> sgd_hubs_Matsui
+
+sgd_orfs %>% filter(Gene.symbol %in% eQTL_hubs_Genes$GeneName) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Albert") %>% arrange(CHROM) -> sgd_hubs_Albert
+
+#Sporulation Genes
+sgd_orfs %>% filter(Gene.symbol %in% c("RME1", "MKT1", "TAO3")) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Sporulation") -> sgd_sporulation
+
+AllCuSO4_glmer_1byRep %>% filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line(aes(linetype = CSS)) +
+  geom_vline(data = sgd_sporulation, 
+             aes(xintercept = Gene.chromosomeLocation.start),
+             size = 1, alpha = 0.3, color = "black", linetype = "dashed") +
+  geom_vline(data = sgd_hubs_Matsui, 
+             aes(xintercept = Gene.chromosomeLocation.start),
+             size = 1, alpha = 0.3, color = "red", linetype = "dashed") +
+  geom_vline(data = eQTL_hubs_Genes[eQTL_hubs_Genes$numberGenesInHotspot > 5,],
+             aes(xintercept = as.numeric(POS), color = CHROM),
+             size = 1, alpha = 0.3) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_alpha_manual(values = c(0.4, 0))
 ```
 
 
-
-## Permutations for significance
-
-```{r}
-q5_all <- readRDS("q5_CuSO4_CSS.rds")
-
-```
-
-
-# Checking original log ratios
-
-```{r}
-rd_factor <- readRDS("rd_factorG.rds")
-
-# rd_factor %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
-#   mutate(logRatio = log(Wine/Oak)) -> rd_logratios
-# 
-# rd_logratios %>% filter(CHROM == "I") %>% ggplot(aes(x = POS, y = logRatio, color = Bulk)) + geom_point(alpha = 0.2) +
-#   facet_grid(Background~Pool)
-# 
-# rd_logratios %>% filter(CHROM == "I", Pool == "HVYTYDRX2") %>% group_by(Dataset) %>% summarize(unique(Dataset))
-# 
-# rd_factor %>% filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
-#   mutate(logRatio = log(Wine/Oak)) -> rd_logratios
-# 
-# rd_logratios %>% filter(CHROM == "I") %>% ggplot(aes(x = POS, y = logRatio, color = Bulk)) + geom_point(alpha = 0.2) +
-#   facet_grid(Background~Pool)
-
-```
 
 
 
@@ -370,9 +388,6 @@ rd_factor <- readRDS("rd_factorG.rds")
 Ensure filters happen
 
 ```{r}
-excl_duplicates %>% mutate(excl = paste(CHROM, POS)) -> tempexcl
-AllCuSO4_glmer_1byRep %>% mutate(excl = paste(CHROM, POS)) %>% filter(excl %in% tempexcl$excl == FALSE) -> AllCuSO4_glmer_1byRep
-
 AllCuSO4_glmer_1byRep$CHROM <- factor(AllCuSO4_glmer_1byRep$CHROM, levels=as.character(as.roman(c(1:16,1000))))
 sgd_copper$CHROM <- factor(sgd_copper$CHROM, levels=as.character(as.roman(c(1:16,1000))))
 sgd_copper_eh$CHROM <- factor(sgd_copper_eh$CHROM, levels=as.character(as.roman(c(1:16,1000))))
@@ -461,12 +476,12 @@ AllCuSO4_glmer_1byRep %>% filter(CHROM == "VIII") %>%
 
 ```{r}
 AllCuSO4_glmer_1byRep %>% 
-  ungroup() %>%
+  ungroup() %>% na.omit() %>%
   group_by(CHROM, CSS, label) %>%
   arrange(desc(abs(zscore))) %>%
   summarize(peakPOS = head(POS, 1),
             zscore = max(abs(zscore))) %>%
-  merge(q5_all) %>%
+  merge(q5_all) %>% 
   filter(abs(zscore) > q5) -> peaks
 
 knowngenes <- data.frame(Gene = c("CUP1", "FRE1", "FRE1"),
@@ -621,7 +636,7 @@ AllCuSO4_glmer_1byRep %>%
   geom_line(alpha = 0.4, size = 1) +
   geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom") + ylim(0,12) +
+  theme(legend.position = "bottom") + #ylim(0,12) +
   scale_color_manual(values = c("navyblue", "darkorange")) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ggtitle("Bulk Effect Peaks")
@@ -638,7 +653,7 @@ AllCuSO4_glmer_1byRep %>%
   geom_hline(data = q5_all[q5_all$label %in% c("Interaction"),], aes(yintercept = q5)) +
   labs(color = NULL)+
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none") + ylim(0,12) +
+  theme(legend.position = "none") + #ylim(0,12) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ggtitle("Interaction Effect Peaks")
 
@@ -651,7 +666,7 @@ AllCuSO4_glmer_1byRep %>%
   geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
   labs(color = NULL)+
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none") + ylim(0,12) +
+  theme(legend.position = "none") + #ylim(0,12) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ggtitle("Bulk Effect Peaks")
 
