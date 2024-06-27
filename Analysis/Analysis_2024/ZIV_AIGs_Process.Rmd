@@ -347,15 +347,15 @@ Ziv_rawdata_smoothed %>% filter(CHROM == "II") %>%
 
 ```
 
-```{r}
+```{r, fig.width=12, fig.height=6}
 Ziv_rawdata_smoothed %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
   mutate(logOdds = log(Wine/Oak)) -> Ziv_logodds
 
 Ziv_logodds %>% na.omit() %>%
   ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
-    geom_line(alpha = 0.4, size = 0.5) +
+    geom_line(alpha = 0.8, size = 0.5) +
     facet_grid(~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none")
+  theme(legend.position = "bottom")
 
 ```
 
@@ -388,4 +388,227 @@ CB_AIGs_smoothed %>%
   separate(Dataset, into = c("Bulk", "Rep")) %>%
   filter(Bulk %in% c("C", "F", "Z", "U")) -> CB_AIGs_logOdds
 
+CB_AIGs_called %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) %>%
+  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep")) %>%
+  filter(Bulk %in% c("C", "F", "Z", "U")) -> CB_AIGs_logOdds_unsmoothed
+
 ```
+
+```{r, fig.width=12, fig.height=6}
+CB_AIGs_logOdds %>% na.omit() %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + 
+    geom_line(alpha = 0.4, size = 0.5) +
+    facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+
+```{r, fig.width=12, fig.height=6}
+# CB_AIGs_logOdds %>% mutate(Dataset = paste("CB_AIG ", Bulk, Rep)) %>%
+#   select(Dataset, CHROM, POS, Oak, Wine, logOdds) %>%
+#   rbind(Ziv_logodds) -> comparison
+
+CB_AIGs_logOdds_unsmoothed %>% filter(abs(logOdds) != Inf) %>%
+  mutate(Dataset = paste("CB_AIG ", Bulk, Rep)) %>%
+  select(Dataset, CHROM, POS, Oak, Wine, logOdds) %>%
+  rbind(Ziv_logodds) -> comparison
+
+comparison %>% filter(CHROM %in% c("I", "M") == FALSE) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
+    geom_line(alpha = 0.4, size = 0.5) +
+    facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("orchid","orchid","orchid","orchid","orchid","orchid","orchid","orchid",
+                                "black","black","black","black","black","black","black","black","black","black","black","black","black","black","black")) +
+  theme(legend.position = "none") +
+  ggtitle("logOdds of Ziv AIGs (black) vs CB AIGs (purple)")
+
+
+```
+
+
+## Look for sporulation genes
+
+IME1, RME1, and RSF1
+
+```{r, fig.width=12, fig.height=6}
+sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
+
+genes <- c("IME1", "RME1", "RSF1")
+sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_spo
+
+comparison %>% filter(CHROM %in% c("I", "M") == FALSE) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + 
+    geom_line(alpha = 0.4, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(data = sgd_spo, aes(xintercept = Gene.chromosomeLocation.start, linetype = Gene.symbol), 
+             size = 1, alpha = 0.8, color = "lightblue") +
+    facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("orchid","orchid","orchid","orchid","orchid","orchid","orchid","orchid",
+                                "black","black","black","black","black","black","black","black","black","black","black","black","black","black","black")) +
+  theme(legend.position = "bottom") +
+  ggtitle("logOdds of Ziv AIGs (black) vs CB AIGs (purple)")
+
+
+```
+
+
+
+
+## What do the AIGs actually say?
+
+```{r, fig.width=12, fig.height=6}
+CB_AIGs_logOdds %>% filter(Bulk == "U") %>% group_by(CHROM, POS) %>% summarize(UMean = mean(logOdds)) -> Unselected_Avg
+
+CB_AIGs_logOdds %>% merge(Unselected_Avg) %>% mutate(Diff = logOdds - UMean) -> logDiff
+
+logDiff %>% filter(CHROM != "M") %>% ggplot(aes(x = POS, y = Diff, color = Bulk, linetype = Rep)) + 
+    geom_line(alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+logDiff %>% filter(CHROM == "VIII") %>% ggplot() + 
+    geom_line(aes(x = POS, y = Diff, color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(120091,121683)) +
+  geom_vline(xintercept = c(212535,212720,214533,214718)) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+logDiff %>% filter(CHROM == "XII") %>% ggplot() + 
+    geom_line(aes(x = POS, y = Diff, color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(568567,570627)) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+CB_AIGs_logOdds %>% filter(CHROM == "VIII") %>% ggplot() + 
+    geom_line(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(120091,121683)) +
+  geom_vline(xintercept = c(212535,212720,214533,214718)) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+
+```
+
+```{r, fig.width=12, fig.height=6}
+#CHROMOSOME VIII
+CB_AIGs_logOdds_unsmoothed %>% group_by(Bulk, CHROM, POS) %>% summarize(avg = mean(logOdds)) %>% 
+  filter(CHROM == "VIII", Bulk %in% c("U", "C"), POS < (562643 - 30000), POS > 30000) %>% 
+  filter(abs(avg) != Inf) -> CHROM8_AIG_logOdds_unsmoothed
+
+CB_AIGs_logOdds_unsmoothed %>% filter(CHROM == "VIII", Bulk %in% c("U", "C"), POS < (562643 - 30000), POS > 30000) %>% ggplot() + 
+    geom_line(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(120091,121683), alpha = 0.3) +
+  geom_vline(xintercept = c(212535,212720,214533,214718), alpha = 0.3) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+CHROM8_AIG_logOdds_unsmoothed %>% 
+  ggplot() + 
+  geom_vline(xintercept = c(105586,105703), size = 2, color = "gray", alpha = 0.2) +
+    geom_line(aes(x = POS, y = avg, color = Bulk),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(212535,212720,214533,214718), alpha = 0.3) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+CHROM8_AIG_logOdds_unsmoothed %>% 
+  ggplot() + 
+  geom_vline(xintercept = c(105586,105703), size = 2, color = "gray", alpha = 0.2) + #CEN
+    
+  geom_point(aes(x = POS, y = avg, color = Bulk), size = 3, shape = 21) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(212535,212720,214533,214718), alpha = 0.3) + #CUP1
+  xlim(105703+100000, 214718 + 105703 - 100000) + #zoom in
+    facet_grid(~CHROM, scales = "free", space = "free")+
+  theme(axis.text.x=element_text()) +
+  scale_color_manual(values = c("darkturquoise", "black"))
+
+CHROM8_AIG_logOdds_unsmoothed %>% 
+  ggplot() + 
+  geom_vline(xintercept = c(105586,105703), size = 2, color = "gray", alpha = 0.2) + #CEN
+    
+  geom_point(aes(x = POS, y = avg, color = Bulk), size = 3, shape = 21) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(212535,212720,214533,214718)) + #CUP1
+  #geom_vline(xintercept = c(105703+80000, 214718 + 105703 - 80000), color = "red") + #zoom in
+    facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("darkturquoise", "black"))
+
+CHROM8_AIG_logOdds_unsmoothed %>% filter(POS > (105703+80000), POS < 212535) %>% arrange(desc(avg))
+
+```
+
+```{r}
+################################################################################
+#Chromosome XII
+
+CB_AIGs_logOdds_unsmoothed %>% filter(CHROM == "XII", Bulk %in% c("U", "C"), POS < (1078177 - 30000), POS > 30000) %>% ggplot() + 
+    geom_line(aes(x = POS, y = logOdds, color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(568567,570627), alpha = 0.3) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+
+
+CB_AIGs_logOdds_unsmoothed %>% group_by(Bulk, CHROM, POS) %>% summarize(avg = mean(logOdds)) %>% 
+  filter(CHROM == "XII", Bulk %in% c("U", "C"), POS < (1078177 - 30000), POS > 30000) %>% 
+  ggplot() + 
+    geom_vline(xintercept = c(150828,150947), size = 2, color = "gray", alpha = 0.2) +
+    geom_line(aes(x = POS, y = avg, color = Bulk),alpha = 0.8, size = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = c(568567,570627), alpha = 0.3) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+```
+
+
+# Kernel testing
+
+```{r}
+CHROM8_AIG_logOdds_unsmoothed %>% filter(Bulk == "C") %>% arrange(POS) -> testkernel
+
+testkernelmat <- matrix(c(testkernel$POS, testkernel$avg), ncol = 2)
+testpost <- smooth_ksmooth(testkernelmat, smoothness = 0.1, bandwidth = 100)
+
+plot(testkernelmat[,1], testpost[,1])
+
+dim(testkernelmat)
+dim(testpost)
+
+# plot(smooth_ksmooth(testkernelmat, smoothness = 0.1, bandwidth = 100), main = "0.1")
+# plot(smooth_ksmooth(testkernelmat, smoothness = 1, bandwidth = 100), main = "1")
+# plot(smooth_ksmooth(testkernelmat, smoothness = 10, bandwidth = 100), main = "10")
+# plot(smooth_ksmooth(testkernelmat, smoothness = 100, bandwidth = 100), main = "100")
+
+plot(smooth_ksmooth(testkernelmat, bandwidth = 100), main = "100")
+plot(smooth_ksmooth(testkernelmat, bandwidth = 200), main = "200")
+plot(smooth_ksmooth(testkernelmat, bandwidth = 500), main = "500")
+plot(smooth_ksmooth(testkernelmat, bandwidth = 1000), main = "1000")
+plot(smooth_ksmooth(testkernelmat, bandwidth = 5000), main = "5000")
+
+smoothed_5k <- smooth_ksmooth(testkernelmat, bandwidth = 5000)
+
+data.frame(smoothed_5k) %>% select(POS = X1, avg = X2) %>% mutate(TEST = "smoothed") -> test5k
+testkernel %>% select(POS, avg) %>% mutate(TEST = "raw data") %>%
+  rbind(test5k) %>%
+  ggplot(aes(x = POS, y = avg, color = TEST)) + geom_line()
+
+test5k %>% arrange(avg) %>% head()
+
+#212354 - is this cup1?
+
+212535 - 212354
+```
+
+
+Make a function to do the kernel?
+
+```{r}
+smoothmatrix <- function(position, reads){
+  ksmooth <- smooth_ksmooth(matrix(c(position, reads), ncol = 2), bandwidth = 500)
+  
+}
+```
+

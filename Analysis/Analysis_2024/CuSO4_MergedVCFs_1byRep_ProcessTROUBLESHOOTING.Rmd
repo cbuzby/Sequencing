@@ -429,6 +429,21 @@ rawdata_gauss_ex %>% mutate(SmoothCount = ceiling(SmoothCount)) %>%
 
 rawdata_gauss %>% mutate(SmoothCount = ceiling(SmoothCount)) %>%
   mutate(TEST = "rawdata_gauss_ceiling") -> rawdata_gauss_ceiling
+
+
+#ADDING ONE MORE IN: NAs omitted before gaussian
+window_size = 300
+sigma = 10
+rd_ex %>% select(-Selection) %>% na.omit() %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>% 
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) %>%
+  mutate(TEST = "rawdata_gauss_rmNA") -> rawdata_gauss_rmNA
+
+rawdata_gauss_rmNA %>% select(-Pool) -> rawdata_gauss_rmNA
+
 ```
 
 ## Combine
@@ -439,7 +454,9 @@ rbind(rawdata_gauss_ceiling,
       rawdata_gauss_ex,
       rawdata_median_ex,
       rawdata_gauss,
-      rawdata_median) -> testing_smoothing
+      rawdata_median,
+      rawdata_gauss_rmNA) -> testing_smoothing
+
 ```
 
 
@@ -641,4 +658,92 @@ rbind(TEST, TEST2, TEST3, TEST4) %>%
 # TEST %>% filter(Dataset == "OCa") %>% ggplot(aes(x = POS, y = SmoothCount, color = Allele)) + geom_point()
 
 ```
+
+
+# Window size test
+
+```{r}
+#ADDING ONE MORE IN: NAs omitted before gaussian
+
+rd_ex %>% select(-Selection) %>% na.omit() -> rd_ex_rmna
+sigma = 10
+
+rd_ex_rmna %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>% 
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = 200, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) %>%
+  mutate(TEST = "w300_s10") -> w300_s10
+
+
+rd_ex_rmna %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>% 
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = 500, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) %>%
+  mutate(TEST = "w500_s10") -> w500_s10
+
+
+rd_ex_rmna %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>% 
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = 800, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) %>%
+  mutate(TEST = "w800_s10") -> w800_s10
+
+
+rd_ex_rmna %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>% 
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = rollapply(Reads, width = 1000, align = "center", 
+                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
+                                fill = NA)) %>%
+  mutate(TEST = "w1000_s10") -> w1000_s10
+
+rd_ex_rmna %>% select(Pool, Dataset, CHROM, Allele, POS, SmoothCount = Reads) %>% mutate(TEST = "RawData") %>%
+  rbind(w300_s10,
+      w500_s10,
+      w1000_s10) -> GaussianWindowTest
+
+GaussianWindowTest %>%
+filter(Dataset == "OCa", Allele == "Wine") %>% ggplot(aes(x = POS, y = SmoothCount, color = TEST)) + geom_point(alpha = 0.1) +
+  #facet_wrap("TEST") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+################################################################################
+GaussianWindowTest %>%
+  left_join(expnames)  %>% 
+  filter(Bulk != "Fluconazole") %>%
+  select(-Selection, -Replicate) %>% na.omit() %>%
+   filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) %>%
+  mutate_if(is.character, as.factor) -> GaussianWindowTest_factor
+
+contrasts(GaussianWindowTest_factor$Background) <- matrix(c(0.5, -0.5))
+contrasts(GaussianWindowTest_factor$Bulk) <- matrix(c(1, 0))
+
+GaussianWindowTest_factor %>% filter(CHROM == "IX") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2"),
+                                                                              TEST != "RawData") %>%
+  group_by(TEST, CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Rep = Dataset,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background + (1 | Rep) "),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> smoothGaussian_GLM
+
+smoothGaussian_GLM %>%
+  mutate(TEST = gsub("rawdata_", "", TEST)) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = TEST)) +
+  geom_point(alpha = 0.4, size = 1) +
+  facet_grid(TEST~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") 
+```
+
+
 
