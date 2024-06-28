@@ -293,29 +293,6 @@ cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
 
 }
 
-################################################################################
-library(zoo)
-
-gaussian_kernel <- function(x, sigma) {
-  exp(-(x^2) / (2 * sigma^2)) / (sqrt(2 * pi) * sigma)
-}
-
-window_size <- 300  # Size of the smoothing window
-sigma <- 50         # Standard deviation for the Gaussian kernel
-
-#Example of how to use this:
-# rawdata_called %>%
-#   group_by(Dataset, CHROM, Allele) %>%
-#   #filter(CHROM == "I") %>%
-#   arrange(POS) %>%
-#   reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
-#                                 FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
-#                                 fill = NA)) -> rawdata_gaussian
-
-plot(gaussian_kernel(c(100, 100, 100, NA, 10:100), 30))
-
-z <- 1:10
-sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma))
 ```
 
 # Pre-processing
@@ -333,9 +310,6 @@ parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length
 ## Exclude duplicates 
 
 ```{r, message = FALSE, warning=FALSE}
-#testfile <- "C:/Users/cassa/Downloads/AllCuSO4.REF_NC_001143.9.SortedCat.vcf.output.table"
-
-
 myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/AllCuSO4.REF_.SortedCat.vcf.output.table"
 
 #GET RID OF EXCLUDED ONES
@@ -372,30 +346,39 @@ rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclK
 
 
 ################################################################################
+```
 
-rawdata_called %>%
+```{r}
+
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+}
+
+rd_ex %>% ungroup() %>% arrange(POS) %>% mutate(NEWCOL = Reads) %>% 
+  reframe(POS = POS, 
+          SmoothCount = frollapply(NEWCOL, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
+  ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
+
+rawdata_called %>% ungroup() %>% 
   group_by(Dataset, CHROM, Allele) %>%
   arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
-                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
-                                fill = NA)) -> rawdata_gauss
+  reframe(POS = POS, SmoothCount = frollapply(NEWCOL, n = 600, FUN = cybr_weightedgauss, align = "center")) -> rawdata_gauss
 
-rawdata_called_ex %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
-                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
-                                fill = NA)) -> rawdata_gauss_ex
 
-rawdata_gaussian %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
-rawdata_gauss_ex %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds_ex
+
+rawdata_gauss %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
+
+saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
 
 ```
+
+# START HERE 6/27/24
 
 Check on what was excluded - 1081 rows, so not THAT many positions (of 95k)
 
 ```{r, eval = FALSE}
-rawdata <- readRDS("rawdataG.rds")
+rawdata <- readRDS("rawdata_newG.rds")
 
 rawdata %>% #head(3000) %>%
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%

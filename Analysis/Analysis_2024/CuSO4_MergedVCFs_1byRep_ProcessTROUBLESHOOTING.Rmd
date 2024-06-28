@@ -363,13 +363,14 @@ rawdata <- readRDS("rawdata.rds")
 #NORMAL RAW DATA
 rawdata %>% 
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
-  group_by(Pool, Dataset, CHROM, POS) %>%
+  group_by(Dataset, CHROM, POS) %>%
   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
          Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
   select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
 
-rawdata_called %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
+rawdata_called %>% filter(Dataset == "HTG3TDMXY_n01_O8_351_C_2.fastq") %>%
+  mutate(Dataset = gsub("n01_", "", Dataset)) %>%
   mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
   separate(Dataset, into = c("Pool", "Dataset"), sep = "_", extra = "merge") -> rd_unnamed
 
@@ -390,6 +391,37 @@ Changing variables
 #EXCLUSIONS
 rd %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rd_ex
 
+saveRDS(rd_ex, file = "rd_ex_O8_351_C_2.rds")
+
+```
+
+The stuff at the bottom that was broken
+
+```{r}
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+}
+
+rd_ex %>% arrange(POS) %>% head(500) %>% select(Reads) -> myreads
+#plot(frollapply(x = Reads, n = 200, FUN = cybr_weightedgauss, align = "center"))
+plot(myreads$Reads)
+points(frollapply(x = myreads$Reads, n = 200, FUN = cybr_weightedgauss, align = "center"), col = "red")
+points(frollapply(x = myreads$Reads, n = 10, FUN = cybr_weightedgauss, align = "center"), col = "blue")
+
+rm(Reads)
+
+#Moment of truth...
+rd_ex %>% ungroup() %>% arrange(POS) %>% mutate(NEWCOL = Reads) %>% 
+  reframe(POS = POS, 
+          SmoothCount = frollapply(NEWCOL, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
+  ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
+
+```
+
+# Old Stuff
+
+```{r}
 ################################################################################
 
 #MEDIAN ONLY
@@ -518,7 +550,7 @@ glmer_cb2_short <- function (..., W, formula, numgroups = FALSE, outputlength = 
 }
 ```
 
-# Testing differences in Chr IX
+## Testing differences in Chr IX
 
 ### Glmer for all of these combined
 
@@ -660,7 +692,7 @@ rbind(TEST, TEST2, TEST3, TEST4) %>%
 ```
 
 
-# Window size test
+## Window size test
 
 ```{r}
 #ADDING ONE MORE IN: NAs omitted before gaussian
@@ -746,4 +778,131 @@ smoothGaussian_GLM %>%
 ```
 
 
+```{r}
+#Can I just use... weighted.mean?
+
+plot(dnorm(1:100, mean = mean(1:100), sd = max(1:100)/10))
+
+plot(dnorm(1:100, mean = mean(1:100), sd = (max(1:100) - min(1:100))/5))
+
+rd_ex_rmna %>% filter(Dataset == "O8_bC6") %>% arrange(POS) %>% head(100) -> testwm
+testwm$POS
+plot(testwm$POS, dnorm(testwm$POS, mean = mean(testwm$POS), sd = (max(testwm$POS) - min(testwm$POS))/5))
+
+wt <- dnorm(testwm$POS, mean = mean(testwm$POS), sd = (max(testwm$POS) - min(testwm$POS))/5)
+
+weighted.mean(testwm$Reads, wt)
+mean(testwm$Reads)
+
+rd_ex_rmna %>% filter(Dataset == "O8_bC6") %>% arrange(POS) %>% head(500) %>% 
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads,
+                                                      n = 50, 
+                                                      FUN = cybr_weightedmean_simple, 
+                                                      align = "center", 
+                                                      na.rm = TRUE,
+                                                      PositionCol = POS))) -> rawdata_median
+
+rd_ex_rmna %>% filter(Dataset == "O8_bC6") %>% arrange(POS) %>% head(500) -> testagain
+
+Reads <- testagain$Reads
+POS <- testagain$POS
+
+
+frollapply(
+    Reads, n = 5, FUN = weighted.mean(
+      w = dnorm(x = POS, mean = mean(POS), sd = 10)
+      ), 
+    align = "center", 
+    na.rm = TRUE, 
+    )
+
+frollapply(Reads, n = 50, FUN = weighted.mean, 
+           w = dnorm(POS, mean = dnorm(mean(POS, sd = max(range(POS) - min(range(POS)))/5))), align = "center", na.rm = TRUE)
+```
+
+### Make a new function for this I guess
+
+```{r}
+cybr_weightedmean <- function(...) {
+  data <- list(...)
+
+  # as.data.frame(data)$POS
+  # as.data.frame(data)$READS
+  # 
+  
+  output <- weighted.mean(as.data.frame(data)$READS, 
+                w = dnorm(as.data.frame(data)$POS, 
+                          mean = mean(as.data.frame(data)$POS),
+                          sd = (max(range(as.data.frame(data)$POS)) - min(range(as.data.frame(data)$POS)))/5),
+                na.rm = FALSE
+                )
+  
+  
+  if(length(output) == 1){
+    return(output)
+  }else{
+    return("Output > 1")
+  }
+  
+} 
+
+
+cybr_weightedmean_simple <- function(ReadCol, PositionCol) {
+  
+  output <- weighted.mean(x = ReadCol, 
+                w = dnorm(PositionCol, 
+                          mean = mean(PositionCol),
+                          sd = (max(range(PositionCol)) - min(range(PositionCol)))/5),
+                na.rm = FALSE
+                )
+  
+  if(length(output) == 1){
+    return(output)
+  }else{
+    return("Output > 1")
+  }
+  
+} 
+
+cybr_weightedmean(POS = POS, READS = Reads)
+cybr_weightedmean_simple(ReadCol = Reads, PositionCol = POS)
+
+plot(testagain$Reads)
+
+frollapply(x = Reads, n = 4, FUN = cybr_weightedmean_simple, PositionCol = POS, align = "center")
+frollapply(Reads, n = 4, FUN = stats::weighted.mean, w = Reads, align = "center")
+
+```
+
+```{r}
+
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+}
+
+rd_ex_rmna %>% filter(Dataset == "O8_bC6") %>% arrange(POS) %>% head(500) %>% select(Reads) -> myreads
+#plot(frollapply(x = Reads, n = 200, FUN = cybr_weightedgauss, align = "center"))
+plot(myreads$Reads)
+points(frollapply(x = myreads$Reads, n = 200, FUN = cybr_weightedgauss, align = "center"), col = "red")
+points(frollapply(x = myreads$Reads, n = 10, FUN = cybr_weightedgauss, align = "center"), col = "blue")
+
+rm(Reads)
+
+#Moment of truth...
+rd_ex_rmna %>% filter(Dataset == "O8_bC6") %>% arrange(POS) %>% mutate(NEWCOL = Reads) %>% 
+  reframe(POS = POS, 
+          SmoothCount = frollapply(NEWCOL, n = 200, FUN = cybr_weightedgauss, align = "center"))
+            
+            
+            #frollapply(x = Reads, n = 50, FUN = cybr_weightedgauss, align = "center"))
+
+new$SmoothCount
+
+rd %>%
+  group_by(Pool, Dataset, CHROM, Allele) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center", na.rm = TRUE))) %>%
+  mutate(TEST = "rawdata_median") -> rawdata_median
+```
 
