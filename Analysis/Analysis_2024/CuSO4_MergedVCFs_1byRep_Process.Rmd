@@ -346,104 +346,61 @@ rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclK
 
 
 ################################################################################
+
+saveRDS(rawdata_called_ex, file = "rawdata_called_ex.rds")
 ```
+
+### Separate out what could be smoothed here
 
 ```{r}
 
 cybr_weightedgauss <- function(myx){
-  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 1000)
   return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
-}
+} 
 
-rd_ex %>% ungroup() %>% arrange(POS) %>% mutate(NEWCOL = Reads) %>% 
-  reframe(POS = POS, 
-          SmoothCount = frollapply(NEWCOL, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
-  ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
+# rd_ex %>% ungroup() %>% arrange(POS) %>% 
+#   reframe(POS = POS, 
+#           SmoothCount = frollapply(Reads, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
+#   ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
 
-rawdata_called %>% ungroup() %>% 
+Test_VII <- rawdata_called_ex %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak))
+
+rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
   group_by(Dataset, CHROM, Allele) %>%
   arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = frollapply(NEWCOL, n = 600, FUN = cybr_weightedgauss, align = "center")) -> rawdata_gauss
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rg_200
+
+rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+  group_by(Dataset, CHROM, Allele) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 300, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 300) -> rg_400
+
+rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+  group_by(Dataset, CHROM, Allele) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 400, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 400) -> rg_600
+
+#saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
+
+rbind(rg_200,rg_400,rg_600) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
 
 
-
-rawdata_gauss %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
-
-saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
+G_logodds %>% ggplot() + 
+  geom_point(data = Test_VII, aes(x = POS, y = logOdds), alpha = 0.3, color = "lightblue") +
+    geom_line(aes(x = POS, y = logOdds, color = as.factor(smooth))) 
 
 ```
 
 # START HERE 6/27/24
 
-Check on what was excluded - 1081 rows, so not THAT many positions (of 95k)
-
-```{r, eval = FALSE}
-rawdata <- readRDS("rawdata_newG.rds")
-
-rawdata %>% #head(3000) %>%
-  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
-  group_by(Dataset, CHROM, POS) %>%
-  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
-         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
-  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
-  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
-
-rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
-
-
-################################################################################
-
-rawdata_called_ex %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center", na.rm = TRUE))) -> rawdata_median
-
-rawdata_called_ex %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = rollapply(Reads, width = window_size, align = "center", 
-                                FUN = function(z) sum(z * gaussian_kernel(seq_along(z) - (length(z) + 1) / 2, sigma)),
-                                fill = NA)) -> rawdata_gauss_ex
-
-rawdata_median %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
-  mutate(logOdds = log(Wine/Oak)) %>% mutate(d = "median") -> med_logodds
-rawdata_gauss_ex %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% 
-  mutate(logOdds = log(Wine/Oak)) %>% mutate(d = "gaussian") -> G_logodds_ex
-
-unique(G_logodds_ex$Dataset)
-rbind(med_logodds, G_logodds_ex) %>% filter(CHROM == "V") %>%
-  filter(grepl("W8", Dataset)) %>%
-  ggplot(aes(x = POS, y = logOdds)) + geom_line(aes(color = Dataset, linetype = d)) + facet_grid(~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom")
-
-```
-
-```{r, eval = FALSE, fig.width=12, fig.height=4}
-
-c %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Excluded Points") + 
-  theme(legend.position = "none")
-
-G_logodds %>% ggplot(aes(x = POS, y = logOdds)) + geom_line(aes(color = Dataset)) + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("No Exclusions") + 
-  geom_point(data = exclKEY, aes(x = POS, y = 0), alpha = 0.3) +
-  geom_point(data = CuSO4_CSS1_glmer_1byRep, aes(x = POS, y = 2), alpha = 0.3) +
-  theme(legend.position = "none")
-
-G_logodds_ex %>% filter(CHROM == "V") %>%
-  ggplot(aes(x = POS, y = logOdds)) + geom_point(aes(color = Dataset, alpha = 0.1)) + facet_grid(~CHROM, scales = "free", space = "free") +
-  geom_point(data = exclKEY[exclKEY$CHROM == "V",], aes(x = POS, y = 0), alpha = 0.1) +
-  geom_point(data = CuSO4_CSS1_glmer_1byRep[CuSO4_CSS1_glmer_1byRep$CHROM == "V" & CuSO4_CSS1_glmer_1byRep$label == "Bulk",], aes(x = POS, y = zscore), alpha = 0.1) +
-  theme(legend.position = "none")
-
-
-
-```
-
-
 ## Separate into bulks, make ready for glms
 
 ```{r}
 
-rawdata_gauss %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
+rawdata_called_ex <- readRDS("rawdata_called_ex.rds")
+
+rawdata_called_ex %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
   mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
   separate(Dataset, into = c("Pool", "Dataset"), sep = "_", extra = "merge") -> rd
 
@@ -458,7 +415,7 @@ expnames <- read.csv("experiment_names_524.csv")
 
 rd %>% left_join(expnames) -> rd_named
 
-rd_named %>% mutate(SmoothCount = ceiling(SmoothCount)) -> rd_named_ceiling
+#rd_named %>% mutate(SmoothCount = ceiling(SmoothCount)) -> rd_named_ceiling
 ```
 
 
@@ -545,6 +502,7 @@ test %>% ggplot(aes(x = POS, y = abs(zscore))) +
 
 
 ```
+ 
 ```{r}
 rd_named %>% filter(Bulk != "Fluconazole") %>%
   select(-Selection, -Replicate) %>% na.omit() %>%
