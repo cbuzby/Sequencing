@@ -355,40 +355,53 @@ saveRDS(rawdata_called_ex, file = "rawdata_called_ex.rds")
 ```{r}
 
 cybr_weightedgauss <- function(myx){
-  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 1000)
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 100)
   return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
 } 
+
+plot(dnorm(1:200, mean = 200/2, sd = 10), main = "SD 10")
+plot(dnorm(1:200, mean = 200/2, sd = 20), main = "SD 20")
+plot(dnorm(1:200, mean = 200/2, sd = 100), main = "SD 100") #choosing this one for including all of the points
+plot(dnorm(1:200, mean = 200/2, sd = 1000), main = "SD 1000")
 
 # rd_ex %>% ungroup() %>% arrange(POS) %>% 
 #   reframe(POS = POS, 
 #           SmoothCount = frollapply(Reads, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
 #   ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
 
-Test_VII <- rawdata_called_ex %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak))
+# Test_VII <- rawdata_called_ex %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak))
+# 
+# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+#   group_by(Dataset, CHROM, Allele) %>%
+#   arrange(POS) %>%
+#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rg_200
+# 
+# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+#   group_by(Dataset, CHROM, Allele) %>%
+#   arrange(POS) %>%
+#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 300, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 300) -> rg_400
+# 
+# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+#   group_by(Dataset, CHROM, Allele) %>%
+#   arrange(POS) %>%
+#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 400, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 400) -> rg_600
+# 
+# #saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
+# 
+# rbind(rg_200,rg_400,rg_600) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
+# 
+# 
+# G_logodds %>% ggplot() + 
+#   geom_point(data = Test_VII, aes(x = POS, y = logOdds), alpha = 0.3, color = "lightblue") +
+#     geom_line(aes(x = POS, y = logOdds, color = as.factor(smooth))) 
 
-rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
+rawdata_called_ex %>% ungroup() %>% #filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
   group_by(Dataset, CHROM, Allele) %>%
   arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rg_200
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rawdata_called_ex_G200
 
-rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 300, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 300) -> rg_400
+saveRDS(rawdata_called_ex_G200, file = "rawdata_called_ex_G200.rds")
 
-rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>%
-  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 400, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 400) -> rg_600
-
-#saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
-
-rbind(rg_200,rg_400,rg_600) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
-
-
-G_logodds %>% ggplot() + 
-  geom_point(data = Test_VII, aes(x = POS, y = logOdds), alpha = 0.3, color = "lightblue") +
-    geom_line(aes(x = POS, y = logOdds, color = as.factor(smooth))) 
 
 ```
 
@@ -398,7 +411,7 @@ G_logodds %>% ggplot() +
 
 ```{r}
 
-rawdata_called_ex <- readRDS("rawdata_called_ex.rds")
+rawdata_called_ex <- readRDS("rawdata_called_ex_G200.rds")
 
 rawdata_called_ex %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
   mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
@@ -422,7 +435,7 @@ rd %>% left_join(expnames) -> rd_named
 ## Change into factors
 
 ```{r}
-rd_named_ceiling %>% filter(Bulk != "Fluconazole") %>%
+rd_named %>% filter(Bulk != "Fluconazole") %>%
   select(-Selection, -Replicate) %>% na.omit() %>%
   mutate_if(is.character, as.factor) -> rd_factor
 
@@ -431,7 +444,7 @@ rd_factor %>% filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) -> rd_factor
 contrasts(rd_factor$Background) <- matrix(c(0.5, -0.5))
 contrasts(rd_factor$Bulk) <- matrix(c(1, 0))
 
-saveRDS(rd_factor, "rd_factorG.rds")
+saveRDS(rd_factor, "rd_factorG200.rds")
 ```
 
 ################################################################################
@@ -439,7 +452,7 @@ saveRDS(rd_factor, "rd_factorG.rds")
 # Running GLMs
 
 ```{r}
-rd_factor <- readRDS("rd_factorG.rds")
+rd_factor <- readRDS("rd_factorG200.rds")
 
 ```
 
@@ -482,86 +495,6 @@ glmer_cb2_short <- function (..., W, formula, numgroups = FALSE, outputlength = 
 ```
 
 ## Separate Chromosomes
-
-```{r, eval = FALSE}
-#Test the new one
-
-rd_factor %>% filter(CHROM == "III") %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
-  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Pool = Pool, Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Pool) + (Pool | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction")) -> test
-
-test %>% ggplot(aes(x = POS, y = abs(zscore))) +
-  geom_line(alpha = 0.4, size = 1) +
-  facet_grid(label~CHROM, scales = "free", space = "free")
-
-
-
-```
- 
-```{r}
-rd_named %>% filter(Bulk != "Fluconazole") %>%
-  select(-Selection, -Replicate) %>% na.omit() %>%
-  mutate_if(is.character, as.factor) -> rd_factor_nonceiling
-
-rd_factor_nonceiling %>% filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) -> rd_factor_nonceiling
-
-contrasts(rd_factor_nonceiling$Background) <- matrix(c(0.5, -0.5))
-contrasts(rd_factor_nonceiling$Bulk) <- matrix(c(1, 0))
-
-rd_factor_nonceiling %>% filter(CHROM == "III") %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
-  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Pool = Pool, Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Pool) + (Pool | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction")) -> test_nonfactor
-
-test_nonfactor %>% ggplot(aes(x = POS, y = abs(zscore))) +
-  geom_line(alpha = 0.4, size = 1) +
-  facet_grid(label~CHROM, scales = "free", space = "free")
-
-
-```
-```{r}
-test_nonfactor %>% mutate(test = "No ceiling") -> tempx
-test %>% mutate(test = "Rounded with ceiling") %>%
-  rbind(tempx) %>%
-  filter(label == "cept") %>%
-  ggplot(aes(x = POS, y = abs(zscore), color = test)) +
-  #geom_line(alpha = 0.4, size = 1) +
-  geom_point(alpha = 0.4, size = 1) +
-  facet_grid(label~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom")
-```
-
-
-```{r}
-#TROUBLESHOOTING
-rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I", POS == 41157) -> weird
-
-table(weird$Allele, weird$Background, weird$Bulk)
-as.data.frame(table(weird$Dataset)) %>% arrange(desc(Freq))
-
-
-rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I") %>% arrange((POS))
-
-rd_factor %>% filter(CHROM != "M") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% filter(CHROM == "I", POS == 20008) %>%
-  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Rep) "))
-
-
-```
-
 
 ```{r}
 rd_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
