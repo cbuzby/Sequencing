@@ -295,62 +295,37 @@ cybrInputGATKTable2 <- function(rawData, yeast = TRUE){
 
 ```
 
-# Pre-processing
-
-## Load in table and match to oak or wine parents
+# The reason for redoing this
 
 ```{r}
-setwd("C:/Users/Cassandra/Documents/GitHub/Sequencing/Analysis/")
+## Plot Chr VIII Comparison
 
-parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
-parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+CB_AIG_glm_VIII_unsm %>% filter(label == "Bulk") %>%
+  ungroup() %>%
+  reframe(POS = POS, Z = frollapply(zscore, n = 50, FUN = cybr_weightedgauss, align = "center")) -> AIG_50
+  
+AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  geom_vline(xintercept = 212535, color = "darkturquoise", size = 2, alpha = 0.4) +
+  geom_point(data = CB_AIG_glm_VIII[CB_AIG_glm_VIII$label == "Bulk",], aes(x = POS, y = abs(zscore)), alpha = 0.2, color = "orange") +
+  geom_point(data = AIG_50, aes(x = POS, y = Z), color = "firebrick") +
+  geom_hline(aes(yintercept = q5))
 
 ```
 
-## Exclude duplicates 
 
-```{r, message = FALSE, warning=FALSE}
-myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/AllCuSO4.REF_.SortedCat.vcf.output.table"
+# Test Permutations
 
-#GET RID OF EXCLUDED ONES
-read.table(myfile, header = TRUE) -> testrawdata
-testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+Load in raw data with exclusions
 
-ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
-                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
-                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
-                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
-                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
-                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
-
-exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
-
-exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
-
-cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
-  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
-
-
-saveRDS(rawdata, file = "rawdataG.rds")
-
-################################################################################
-rawdata %>% #head(3000) %>%
-  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
-  group_by(Dataset, CHROM, POS) %>%
-  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
-         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
-  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
-  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
-
-rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
-
-
-################################################################################
-
-saveRDS(rawdata_called_ex, file = "rawdata_called_ex.rds")
+```{r}
+rawdata_called_ex <- readRDS("rawdata_called_ex.rds")
 ```
+
 
 ### Separate out what could be smoothed here
+
+This is what the windows look like
 
 ```{r}
 
@@ -364,97 +339,97 @@ plot(dnorm(1:200, mean = 200/2, sd = 20), main = "SD 20")
 plot(dnorm(1:200, mean = 200/2, sd = 100), main = "SD 100") #choosing this one for including all of the points
 plot(dnorm(1:200, mean = 200/2, sd = 1000), main = "SD 1000")
 
-# rd_ex %>% ungroup() %>% arrange(POS) %>% 
-#   reframe(POS = POS, 
-#           SmoothCount = frollapply(Reads, n = 600, FUN = cybr_weightedgauss, align = "center")) %>%
-#   ggplot(aes(x = POS, y = SmoothCount)) + geom_point()
+```
 
-# Test_VII <- rawdata_called_ex %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>% mutate(logOdds = log(Wine/Oak))
-# 
-# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
-#   group_by(Dataset, CHROM, Allele) %>%
-#   arrange(POS) %>%
-#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rg_200
-# 
-# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
-#   group_by(Dataset, CHROM, Allele) %>%
-#   arrange(POS) %>%
-#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 300, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 300) -> rg_400
-# 
-# rawdata_called_ex %>% ungroup() %>% filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
-#   group_by(Dataset, CHROM, Allele) %>%
-#   arrange(POS) %>%
-#   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 400, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 400) -> rg_600
-# 
-# #saveRDS(rawdata_gauss, file = "rawdata_newG.rds")
-# 
-# rbind(rg_200,rg_400,rg_600) %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) -> G_logodds
-# 
-# 
-# G_logodds %>% ggplot() + 
-#   geom_point(data = Test_VII, aes(x = POS, y = logOdds), alpha = 0.3, color = "lightblue") +
-#     geom_line(aes(x = POS, y = logOdds, color = as.factor(smooth))) 
+
+This is how we get the original data with Gaussian of n 200
+
+```{r, eval = FALSE}
 
 rawdata_called_ex %>% ungroup() %>% #filter(Dataset == "HTG3TDMXY_n01_O8_451_E_2.fastq", CHROM == "VII") %>%
   group_by(Dataset, CHROM, Allele) %>%
   arrange(POS) %>%
   reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) %>% mutate(smooth = 200) -> rawdata_called_ex_G200
 
-saveRDS(rawdata_called_ex_G200, file = "rawdata_called_ex_G200.rds")
+#saveRDS(rawdata_called_ex_G200, file = "rawdata_called_ex_G200.rds")
 
-
+rawdata_G200 <- readRDS("rawdata_called_ex_G200.rds")
 ```
 
-# START HERE 6/27/24
 
 ## Separate into bulks, make ready for glms
 
 ```{r}
 
-rawdata_called_ex <- readRDS("rawdata_called_ex_G200.rds")
-
 rawdata_called_ex %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
   mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
   separate(Dataset, into = c("Pool", "Dataset"), sep = "_", extra = "merge") -> rd
 
-# unique(rd$Pool)
-# unique(rd$Dataset)
-
-#write.csv(data.frame(Dataset = unique(rd$Dataset)), file = "experiment_names.csv")
 expnames <- read.csv("experiment_names_524.csv")
-
-# rd %>% filter(CHROM == "II") %>%
-#   ggplot(aes(x = POS, y = Dataset, color = SmoothCount)) + geom_tile()
 
 rd %>% left_join(expnames) -> rd_named
 
-#rd_named %>% mutate(SmoothCount = ceiling(SmoothCount)) -> rd_named_ceiling
 ```
 
-
-## Change into factors
+## Use only unselected bulks and change into factors
 
 ```{r}
-rd_named %>% filter(Bulk != "Fluconazole") %>%
-  select(-Selection, -Replicate) %>% na.omit() %>%
-  mutate_if(is.character, as.factor) -> rd_factor
+rd_named %>% filter(Bulk == "Dilute") %>%
+  select(-Selection) %>% na.omit() -> rd_factor
 
+#Not sure why these were excluded? Unless that experiment was just wrong or had no reps?
 rd_factor %>% filter(Dataset %in% c("O1_aD", "W1_aD") == FALSE) -> rd_factor
 
-contrasts(rd_factor$Background) <- matrix(c(0.5, -0.5))
-contrasts(rd_factor$Bulk) <- matrix(c(1, 0))
+# contrasts(rd_factor$Background) <- matrix(c(0.5, -0.5))
+# contrasts(rd_factor$Bulk) <- matrix(c(1, 0))
 
-saveRDS(rd_factor, "rd_factorG200.rds")
+unique(rd_factor$Dataset)
+
+rd_factor %>% ungroup() %>% select(Pool, Dataset, Bulk, Background) %>% distinct()
 ```
 
 ################################################################################
 
-# Running GLMs
+# Run Permutations
 
 ```{r}
-rd_factor <- readRDS("rd_factorG200.rds")
+rd_factor %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Background) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected
 
+head(rd_shuffled_selected)
+
+rd_factor %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Background) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected) -> Perm1
+
+Perm1 %>% ungroup() %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>% unnest() %>%
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) -> Perm1contrasts
+
+contrasts(Perm1contrasts$Background) <- matrix(c(-0.5, 0.5))
+contrasts(Perm1contrasts$Bulk)
 ```
+
+# Run glmer on permuted values
 
 ## Make function to run glmer
 
@@ -494,117 +469,77 @@ glmer_cb2_short <- function (..., W, formula, numgroups = FALSE, outputlength = 
 }
 ```
 
-## Separate Chromosomes
-
-```{r}
-rd_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>%
-  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Rep) "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_1byRep
-
-saveRDS(CuSO4_CSS1_glmer_1byRep, file = "CuSO4_CSS1_glmer_1byRepG.rds")
-
-################################################################################
-rd_factor %>% filter(CHROM != "M", CHROM != "VIII")%>% distinct() %>% filter(Pool %in% c("HVYTYDRX2","HTG3TDMXY")) %>%
-  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1byRep
-
-saveRDS(CuSO4_CSS8_glmer_1byRep, file = "CuSO4_CSS8_glmer_1byRepG.rds ")
-```
 
 
 ```{r}
-CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
-CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
-```
 
-
-## Permutations for significance
-
-Actually running a permutation on this
-
-```{r}
-rd_factor %>% filter(Bulk == "Dilute",
-                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
-  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
-  mutate(label = paste(CHROM, POS, sep = "_")) %>%
-  group_by(Pool, Dataset) %>%
-  summarize(NewPOS = sample(label),
-            Oak = Oak,
-            Wine = Wine,
-            Background = Background) %>%
-  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
-  mutate(Bulk = "Selected") -> rd_shuffled_selected
-
-rd_factor %>% filter(Bulk == "Dilute",
-                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
-  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
-  mutate(label = paste(CHROM, POS, sep = "_")) %>%
-  group_by(Pool, Dataset) %>%
-  summarize(NewPOS = sample(label),
-            Oak = Oak,
-            Wine = Wine,
-            Background = Background) %>%
-  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
-  mutate(Bulk = "Dilute") %>%
-  rbind(rd_shuffled_selected) -> Perm1
-
-Perm1 %>% ungroup() %>%
-  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
-  mutate(POS = as.numeric(POS)) %>%
-  mutate_if(is.character, as.factor) -> Perm1contrasts
-
-contrasts(Perm1contrasts$Background) <- matrix(c(-0.5, 0.5))
-contrasts(Perm1contrasts$Bulk)
-
-```
-
-```{r}
-
-Perm1contrasts %>%  filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% distinct() %>% 
-  
+Perm1contrasts %>%  filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% distinct() %>%
+  ungroup() %>% 
+  filter((CHROM == "II" & POS == 791816) == FALSE,
+         (CHROM == "IV" & POS == 1296744) == FALSE,
+         (CHROM == "VII" & POS == 1014774) == FALSE) %>%
   group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
                                                             Background = Background,
                                                             Rep = Dataset,
                                                             Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
+                                                            W = Reads, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Background +  (1 | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_1byRep_PERM
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_PERM_unsmoothed
 
-saveRDS(CuSO4_CSS1_glmer_1byRep_PERM, "CuSO4_CSS1_glmer_1byRep_PERMG.rds")
 
-Perm1contrasts %>%
-  filter(Pool %in% c("HVYTYDRX2","HTG3TDMXY")) %>% distinct() %>% 
-  mutate(POS = as.numeric(POS)) %>%
-  mutate_if(is.character, as.factor) %>%
-  group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
-                                                            Background = Background,
-                                                            Rep = Dataset,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background + (1 | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_1byRep_PERM
+# Perm1contrasts %>%  filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% distinct() %>% 
+#   
+#   group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+#                                                             Background = Background,
+#                                                             Rep = Dataset,
+#                                                             Allele = Allele,
+#                                                             W = Reads, outputlength = 4,
+#                                                             formula = "Allele ~ Bulk*Background +  (1 | Rep)"),
+#                                                                   label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_PERM_unsmoothed
 
-saveRDS(CuSO4_CSS8_glmer_1byRep_PERM, "CuSO4_CSS8_glmer_1byRep_PERMG.rds")
+# saveRDS(CuSO4_CSS1_glmer_1byRep_PERM, "CuSO4_CSS1_glmer_1byRep_PERMG.rds")
 
-CuSO4_CSS8_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "VIII") -> q5_css8
+# Perm1contrasts %>%
+#   filter(Pool %in% c("HVYTYDRX2","HTG3TDMXY")) %>% distinct() %>% 
+#   mutate(POS = as.numeric(POS)) %>%
+#   mutate_if(is.character, as.factor) %>%
+#   group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+#                                                             Background = Background,
+#                                                             Rep = Dataset,
+#                                                             Allele = Allele,
+#                                                             W = Reads, outputlength = 4,
+#                                                             formula = "Allele ~ Bulk*Background + (1 | Rep)"),
+#                                                                   label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS8_glmer_PERM_unsmoothed
+# CuSO4_CSS8_glmer_PERM_unsmoothed %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "I") %>% rbind(q5_css8) -> q5_CuSO4_CSS
 
-CuSO4_CSS1_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "I") %>% rbind(q5_css8) -> q5_CuSO4_CSS
+# saveRDS(CuSO4_CSS8_glmer_1byRep_PERM, "CuSO4_CSS8_glmer_1byRep_PERMG.rds")
+#Look at the quantiles without smoothing
+CuSO4_CSS1_glmer_PERM_unsmoothed %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "Unsmoothed") -> c
 
-saveRDS(q5_CuSO4_CSS, file = "q5_CuSO4_CSS.rds")
+#Look at the plot without smoothing
+CuSO4_CSS1_glmer_PERM_unsmoothed %>% filter(abs(zscore) < 2e5) %>% ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_point(alpha = 0.2) + facet_grid(~CHROM, scales = "free", space = "free")
+
+#Smooth with the weighted gaussian?
+CuSO4_CSS1_glmer_PERM_unsmoothed %>% ungroup() %>% na.omit() %>% group_by(CHROM, label) %>% arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(abs(zscore), n = 200, FUN = cybr_weightedgauss, align = "center"))-> CuSO41_Perm_smoothed_I_200
+
+#Look at the plot with smoothing
+CuSO41_Perm_smoothed_I %>% na.omit() %>% ungroup() %>% group_by(label) %>% summarize(q5 = quantile(abs(SmoothCount), 0.95)) %>% mutate(CSS = "Window 50") -> a
+CuSO41_Perm_smoothed_I_200 %>% na.omit() %>% ungroup() %>% group_by(label) %>% summarize(q5 = quantile(abs(SmoothCount), 0.95)) %>% mutate(CSS = "Window 200") -> b
+#CuSO4_CSS8_glmer_1byRep_PERM <- readRDS("CuSO4_CSS8_glmer_1byRep_PERMG.rds")
+CuSO4_CSS8_glmer_1byRep_PERM %>% na.omit() %>% ungroup() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "Smoothed Counts") %>%
+  rbind(a) %>%
+  rbind(b) %>%
+  rbind(c) %>%
+  ggplot(aes(x = CSS, y = q5, color = label)) + geom_point(size = 4, alpha = 0.4) + ylim(0,3)
+
+CuSO41_Perm_smoothed_VIII %>% filter(SmoothCount < 3000) %>% ggplot(aes(x = POS, y = SmoothCount, color = label)) + geom_point(alpha = 0.2) + facet_grid(~CHROM, scales = "free", space = "free")
 
 ```
 
-```{r}
+# Quick plots to compare
+
+```{r, eval = FALSE}
 q5_CuSO4_CSS <- readRDS("q5_CuSO4_CSS.rds")
 CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
 CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
@@ -732,118 +667,6 @@ CB_AIG_readytoglm_XII %>%
                                                             outputlength = 2,
                                                             formula = "Allele ~ Bulk + (1 | Rep)"),
                                     label = c("cept","Bulk"))  -> CB_AIG_glm_XII
-```
-
-## Plot Chr VIII Comparison
-
-```{r}
-CB_AIG_glm_VIII_unsm %>% filter(label == "Bulk") %>%
-  ungroup() %>%
-  reframe(POS = POS, Z = frollapply(zscore, n = 50, FUN = cybr_weightedgauss, align = "center")) -> AIG_50
-  
-AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "VIII") %>%
-  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
-  geom_vline(xintercept = 212535, color = "darkturquoise", size = 2, alpha = 0.4) +
-  geom_point(data = CB_AIG_glm_VIII[CB_AIG_glm_VIII$label == "Bulk",], aes(x = POS, y = abs(zscore)), alpha = 0.2, color = "orange") +
-  geom_point(data = AIG_50, aes(x = POS, y = Z), color = "firebrick") +
-  geom_hline(aes(yintercept = q5))
-
-```
-
-## Plot Chr XII Comparison
-
-```{r}
-# CB_AIG_glm_XII %>% filter(label == "Bulk") %>%
-#   ungroup() %>%
-#   reframe(POS = POS, Z = frollapply(zscore, n = 50, FUN = cybr_weightedgauss, align = "center")) -> AIG_50
-  
-AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "XII") %>%
-  ggplot(aes(x = POS, y = abs(zscore))) + geom_line(aes(linnetype = CSS)) +
-  geom_vline(xintercept = 568567, color = "red", size = 2, alpha = 0.4) +
-  geom_point(data = CB_AIG_glm_XII[CB_AIG_glm_XII$label == "Bulk",], aes(x = POS, y = abs(zscore)), alpha = 0.2, color = "firebrick") +
-  geom_hline(aes(yintercept = q5)) +
-  facet_grid(~CHROM)
-
-```
-
-## Run Chr VII
-
-```{r}
-CB_AIGs %>% filter(CHROM == "VII") %>%
-  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
-  group_by(Dataset, CHROM, POS) %>%
-  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
-         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
-  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
-  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
-  ungroup() %>%
-  group_by(Dataset, CHROM, Allele) %>%
-  arrange(POS) %>% #
-  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 50, FUN = cybr_weightedgauss, align = "center"))-> CB_AIGs_smoothed_VII
-
-CB_AIGs_smoothed_VII %>%
-  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
-  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
-  separate(Dataset, into = c("Bulk", "Rep")) %>%
-  filter(Bulk %in% c("C", "F", "Z", "U")) %>%
-  distinct() %>% 
-  mutate_if(is.character, as.factor) -> CB_AIG_readytoglm_VII
-
-CB_AIG_readytoglm_VII %>% 
-  #mutate(SmoothCount = Reads + 1) %>%
-  filter(Bulk %in% c("C", "U")) %>%
-  ungroup() %>%
-  na.omit() %>%
-  mutate_if(is.character, as.factor) %>%
-  group_by(POS) %>% summarize(zscore = glmer_cb2_short(Bulk = Bulk, 
-                                                              Rep = Rep,
-                                                            Allele = Allele,
-                                                            W = SmoothCount, 
-                                                            outputlength = 2,
-                                                            formula = "Allele ~ Bulk + (1 | Rep)"),
-                                    label = c("cept","Bulk"))  -> CB_AIG_glm_VII
-
-AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "VII") %>%
-  ggplot(aes(x = POS, y = abs(zscore))) + geom_line(aes(linetype = CSS)) +
-  geom_point(data = CB_AIG_glm_VII[CB_AIG_glm_VII$label == "Bulk",], aes(x = POS, y = abs(zscore)), alpha = 0.2, color = "darkorange") +
-  geom_hline(aes(yintercept = q5)) +
-  facet_grid(~CHROM)
-
-AllCuSO4_g200 %>% filter(label %in% c("Interaction", "Bulk"), CHROM == "VII") %>%
-  ggplot(aes(x = POS, y = abs(zscore))) + geom_line(aes(linetype = CSS, color = label)) +
-  geom_point(data = CB_AIG_glm_VII[CB_AIG_glm_VII$label == "Bulk",], aes(x = POS, y = abs(zscore)), alpha = 0.2, color = "darkorange") +
-  geom_hline(aes(yintercept = q5)) +
-  facet_grid(~CHROM)
-
-```
-
-This didn't work and I can't get the numerics to be right for some reason :(
-
-```{r, eval = FALSE}
-library(zoo)
-
-rollapply(OG, width = 3, FUN = mean)
-
-newfunction <- function(Num, Pos){
-  
-  Pos <- pull(as.numeric(Pos))
-  myy <- dnorm(Pos, mean = median(Pos), sd = 100)
-  
-  return(weighted.mean(x = Num, w = myy, na.rm = TRUE))
-
-}
-
-
-rollapply(data = CB_AIG_glm_VIII_unsm[CB_AIG_glm_VIII_unsm$label == "Bulk",], width = 30,
-          FUN = function(data) newfunction(Num = data[,"zscore"], Pos = data[,"POS"]),
-          by.column = FALSE, align = "center")
-
-plot(CB_AIG_glm_VIII_unsm$POS[CB_AIG_glm_VIII_unsm$label == "Bulk"],
-     CB_AIG_glm_VIII_unsm$zscore[CB_AIG_glm_VIII_unsm$label == "Bulk"],
-     xlab = "POS", ylab = "Zscore")
-
-smooth_ksmooth(CB_AIG_glm_VIII_unsm$zscore[CB_AIG_glm_VIII_unsm$label == "Bulk"])
-
 ```
 
 

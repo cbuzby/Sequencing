@@ -603,12 +603,3 @@ test5k %>% arrange(avg) %>% head()
 ```
 
 
-Make a function to do the kernel?
-
-```{r}
-smoothmatrix <- function(position, reads){
-  ksmooth <- smooth_ksmooth(matrix(c(position, reads), ncol = 2), bandwidth = 500)
-  
-}
-```
-
