@@ -595,42 +595,99 @@ saveRDS(CuSO4_CSS8_glmer_unsm_PERM, "CuSO4_CSS8_glmer_unsm_PERMG.rds")
 # 
 # saveRDS(q5_CuSO4_CSS, file = "q5_CuSO4_CSS_unsm.rds")
 
+
+#SMOOTH LIKE G200
+CuSO4_CSS1_glmer_unsm_PERM %>% mutate(CSS = "I") -> temp
+
+CuSO4_CSS8_glmer_unsm_PERM %>%
+  mutate(CSS = "VIII") %>%
+  rbind(temp) %>%
+  arrange(POS) %>% group_by(CSS, CHROM, label) %>%
+  #filter(CHROM == "VIII", label == "Bulk") %>%
+  reframe(POS = POS, SmoothCount = frollapply(abs(zscore), n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200_PERM
+
+AllCuSO4_cybrG200_PERM %>% na.omit() %>% group_by(label, CSS) %>% summarize(q5 = quantile(abs(SmoothCount), 0.95)) -> q5_css_G200
+
+saveRDS(q5_css_G200, file = "q5_css_G200.rds")
+
+```
+
+```{r}
+CuSO4_CSS1_glmer_unsm <- readRDS("CuSO4_CSS1_glmer_unsmG.rds")
+CuSO4_CSS8_glmer_unsm <- readRDS("CuSO4_CSS8_glmer_unsmG.rds")
+q5_css_G200 <- readRDS("q5_css_G200.rds")
+
+CuSO4_CSS1_glmer_unsm %>% mutate(CSS = "I") -> temp
+CuSO4_CSS8_glmer_unsm %>% mutate(CSS = "VIII") %>%
+  rbind(temp) %>%
+  merge(q5_css_G200) -> AllCuSO4_unsm
 ```
 
 ```{r, eval = FALSE}
 
 q5_CuSO4_CSS <- readRDS("q5_CuSO4_CSS.rds")
-CuSO4_CSS1_glmer_unsm <- readRDS("CuSO4_CSS1_glmer_unsmG.rds")
-CuSO4_CSS8_glmer_unsm <- readRDS("CuSO4_CSS8_glmer_unsmG.rds")
+
 
 CuSO4_CSS1_glmer_unsm %>% mutate(CSS = "I") -> temp
 CuSO4_CSS8_glmer_unsm %>% mutate(CSS = "VIII") %>%
-  rbind(temp) %>%
-  merge(q5_CuSO4_CSS) -> AllCuSO4_g200
+  rbind(temp) -> AllCuSO4_unsm
 
-AllCuSO4_g200 %>% filter(label %in% c("Bulk", "Interaction")) %>%
+AllCuSO4_unsm %>% filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = zscore, color = CSS)) + geom_line() +
-  geom_hline(aes(yintercept = q5, color = CSS)) +
-  geom_hline(aes(yintercept = -q5, color = CSS)) +
   facet_grid(label~CHROM, scales = "free", space = "free")
 
-AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "VIII") %>%
-  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
-  geom_hline(aes(yintercept = q5, color = CSS))
-
+AllCuSO4_unsm %>% filter(label %in% c("Bulk"), CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line()
 
 ```
 
 ```{r}
+# AllCuSO4_unsm %>% arrange(POS) %>% filter(CHROM == "VIII", CSS == "I", label == "Bulk") %>% na.omit() -> testmatrix
+# testmatrixactually <- matrix(c(testmatrix$zscore, testmatrix$POS), ncol = 2)
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+} 
 
-cbyr_ksmooth <- function(z, p){
-  result <- smoothr::smooth_ksmooth(matrix(c(z,p), ncol = 2))
+#limit is 1400 positions
+# smoothr::smooth_ksmooth(x = testmatrixactually, smoothness = 500) -> XII_I_Bulk_1400
+# data.frame(XII_I_Bulk_1400) %>% ggplot(aes(x = X2, y = X1)) + geom_line()
+
+cbyr_ksmooth <- function(z, p, b = 1000){
+  result <- smoothr::smooth_ksmooth(matrix(c(z,p), ncol = 2), bandwidth = b)
   return(data.frame(result))
 }
 
-AllCuSO4_g200 %>% arrange(POS) %>% group_by(CSS, CHROM, Label) %>%
-  summarize(cbyr_ksmooth(z = zscore, p = POS)) -> AllCuSO4_Smoothed
+# AllCuSO4_unsm %>% na.omit() %>% arrange(POS) %>% group_by(CSS, CHROM, label) %>%
+#   filter(CHROM == "VIII", label == "Bulk") %>%
+#   summarize(cbyr_ksmooth(z = zscore, p = POS, b = 25000)) -> AllCuSO4_Smoothed
 
+AllCuSO4_unsm %>% na.omit() %>% arrange(POS) %>% group_by(CSS, CHROM, label) %>%
+  #filter(CHROM == "VIII", label == "Bulk") %>%
+  reframe(POS = POS, SmoothCount = frollapply(zscore, n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200
+
+# saveRDS(AllCuSO4_Smoothed, file = "AllCuSO4_Smoothed.rds")
+# 
+# AllCuSO4_Smoothed %>% filter(X2 > 3000) %>% ggplot(aes(x = X1, color = label)) + geom_density() + theme(axis.text.x = element_text()) + xlim(-25, 25)
+
+AllCuSO4_cybrG200 %>% 
+  filter(POS > 3000, abs(SmoothCount) < 50) %>% 
+  ggplot(aes(x = POS, y = SmoothCount, color = label)) + geom_line() + 
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylim(-10, 10)
+
+AllCuSO4_cybrG200 %>% 
+  filter(POS > 3000, abs(SmoothCount) < 50, CHROM == "VIII") %>% 
+  ggplot(aes(x = POS, y = SmoothCount, color = label)) + geom_line() + 
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylim(-12, 10) + geom_vline(xintercept = 212535)
+
+AllCuSO4_cybrG200 %>% 
+  filter(POS > 3000, abs(SmoothCount) < 50, CHROM == "VIII") %>%
+  arrange(SmoothCount)
+
+209243 - 212535
+#3.2 kb away from CUP1
 
 ```
 
@@ -790,21 +847,3 @@ AllCuSO4_g200 %>% filter(label %in% c("Interaction", "Bulk"), CHROM == "VII") %>
 
 ```
 
-
-
-
-NOTES FROM MARK
-
-- weight by distance AND total counts?
-- or just by total counts?
-- to do permutations, sample with probabilites that are the weights?
-- don't just scramble? I don't think that's how this works...
-- scramble WITHIN the window, then compute z score?
-- normal ANOVA - just what is the variance that I have to beat?
-- permute by SNP and then smooth by abs z score...?
-- compare thresholds with that
-
-- change cutoffs and iterate to find the right balance of FDR that gives what % they would be under a peak?...???
-- look at how they do it in RNAseq
-- call number of positives and false positives...? Check if someone has solved this already
-- then use the rest of the data to say if positives are positive......? Tunable thing, check this out (at least know what he's talking about)
