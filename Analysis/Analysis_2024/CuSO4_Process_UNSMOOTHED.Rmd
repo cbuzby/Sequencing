@@ -603,13 +603,15 @@ CuSO4_CSS8_glmer_unsm_PERM %>%
   mutate(CSS = "VIII") %>%
   rbind(temp) %>%
   arrange(POS) %>% group_by(CSS, CHROM, label) %>%
+  filter(abs(zscore) < 100) %>%
   #filter(CHROM == "VIII", label == "Bulk") %>%
-  reframe(POS = POS, SmoothCount = frollapply(abs(zscore), n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200_PERM
+  reframe(POS = POS, SmoothCount = frollapply(abs(zscore), n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200_PERM_100
 
-AllCuSO4_cybrG200_PERM %>% na.omit() %>% group_by(label, CSS) %>% summarize(q5 = quantile(abs(SmoothCount), 0.95)) -> q5_css_G200
+AllCuSO4_cybrG200_PERM_100 %>% na.omit() %>% 
+  group_by(label, CSS) %>% summarize(q5 = quantile(abs(SmoothCount), 0.95)) -> q5_css_G200_100
 
 saveRDS(q5_css_G200, file = "q5_css_G200.rds")
-
+saveRDS(q5_css_G200_100, file = "q5_css_G200_100.rds")
 ```
 
 ```{r}
@@ -691,12 +693,59 @@ AllCuSO4_cybrG200 %>%
 
 ```
 
+# AIG Gaussian 200 Process
+
+Run the entire thing here and save to load into figures
+
+```{r}
+CB_AIGs <- readRDS("AIG_CFZ_rawdata.rds")
+
+CB_AIGs %>% #filter(CHROM == "VII") %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") %>%
+  mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Bulk", "Rep")) %>%
+  filter(Bulk %in% c("C", "F", "Z", "U")) %>%
+  distinct() %>% 
+  filter(Bulk %in% c("C", "U")) %>%
+  ungroup() %>%
+  na.omit() %>%
+  mutate_if(is.character, as.factor) -> AIG_toglm
+
+contrasts(AIG_toglm$Bulk) <- matrix(c(1,0))
+
+AIG_toglm %>%
+  group_by(CHROM, POS) %>% summarize(zscore = glmer_cb2_short_septest(Bulk = Bulk, 
+                                                              Rep = Rep,
+                                                            Allele = Allele,
+                                                            W = Reads, 
+                                                            outputlength = 2,
+                                                            formula = "Allele ~ Bulk + (1 | Rep)"),
+                                    label = c("cept","Bulk"))  -> CB_AIG_glm_unsm
+
+saveRDS(CB_AIG_glm_unsm, file = "CB_AIG_glm_unsm.rds")
+
+CB_AIG_glm_unsm %>% na.omit() %>% filter(abs(zscore) < 100) %>%
+  arrange(POS) %>% group_by(CHROM, label) %>%
+  reframe(POS = POS, SmoothCount = frollapply(zscore, n = 50, FUN = cybr_weightedgauss, align = "center")) -> AIG_CU_cybrG50
+
+#saveRDS(AIG__CU_cybrG200, file = "AIG_CU_cybrG200.rds")
+
+saveRDS(AIG_CU_cybrG50, file = "AIG_CU_cybrG50.rds")
+
+```
+
 # Quick process of Chr VIII of AIGs
 
 ```{r}
 CB_AIGs <- readRDS("AIG_CFZ_rawdata.rds")
 
-CB_AIGs %>% filter(CHROM == "VIII") %>%
+CB_AIGs %>% #filter(CHROM == "VIII") %>%
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
   group_by(Dataset, CHROM, POS) %>%
   mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
@@ -706,7 +755,7 @@ CB_AIGs %>% filter(CHROM == "VIII") %>%
   ungroup() %>%
   group_by(Dataset, CHROM, Allele) %>%
   arrange(POS) %>% #
-  reframe(POS = POS, Reads = frollapply(Reads, n = 50, FUN = cybr_weightedgauss, align = "center"))-> CB_AIGs_smoothed_VIII
+  reframe(POS = POS, Reads = frollapply(Reads, n = 50, FUN = cybr_weightedgauss, align = "center")) -> CB_AIGs_smoothed_VIII
 
 CB_AIGs %>% filter(CHROM == "XII") %>%
   merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%

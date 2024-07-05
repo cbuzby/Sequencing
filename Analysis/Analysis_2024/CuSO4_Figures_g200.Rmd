@@ -300,10 +300,12 @@ theme_classic
 
 ```{r}
 #rd_factor <- readRDS("rd_factorG.rds")
-q5_css_G200 <- readRDS("q5_css_G200.rds")
+q5_css_G200 <- readRDS("q5_css_G200_100.rds")
 AllCu_plot <- readRDS("AllCu_plot.rds")
+AIG_CU_cybrG50 <- readRDS("AIG_CU_cybrG50.rds")
 
-AllCu_plot %>% filter(abs(zscore) < 20) -> AllCu_plot
+
+#AllCu_plot %>% filter(abs(zscore) < 20) -> AllCu_plot
 
 ```
 
@@ -316,11 +318,17 @@ CuSO4_CSS1_glmer_unsm %>% mutate(CSS = "I") -> temp
 CuSO4_CSS8_glmer_unsm %>% mutate(CSS = "VIII") %>%
   rbind(temp) -> AllCuSO4_unsm
 
-AllCuSO4_unsm %>% na.omit() %>% arrange(POS) %>% group_by(CSS, CHROM, label) %>%
-  #filter(CHROM == "VIII", label == "Bulk") %>%
-  reframe(POS = POS, SmoothCount = frollapply(zscore, n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200
+AllCuSO4_unsm %>% ggplot(aes(x = abs(zscore))) + geom_density() +
+  theme(axis.text.x = element_text()) +
+  xlim(0, 40)
 
-AllCuSO4_cybrG200 %>% merge(q5_css_G200) -> AllCu_plot
+AllCuSO4_unsm %>% na.omit() %>% arrange(POS) %>% group_by(CSS, CHROM, label) %>%
+  filter(abs(zscore) < 100) %>%
+  
+  #filter(CHROM == "VIII", label == "Bulk") %>%
+  reframe(POS = POS, SmoothCount = frollapply(zscore, n = 200, FUN = cybr_weightedgauss, align = "center")) -> AllCuSO4_cybrG200_100
+
+AllCuSO4_cybrG200_100 %>% merge(q5_css_G200_100) -> AllCu_plot
 
 AllCu_plot %>% mutate(zscore = SmoothCount) -> AllCu_plot
 
@@ -389,11 +397,43 @@ AllCu_plot %>% filter(label %in% c("Bulk", "Interaction")) %>%
   facet_grid(label~CHROM, scales = "free", space = "free") +
   theme(legend.position = "bottom") +
     scale_size_manual(values = c(0.1, 2)) +
-  scale_alpha_manual(values = c(0.4, 0))
+  scale_alpha_manual(values = c(0.4, 0)) + ggtitle("eQTL Hub Locations")
 ```
 
 
 
+# Comparison with AIGs
+
+```{r}
+#CUP1
+AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == "VIII") -> Chr8Isolated
+
+AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+  geom_line(data = Chr8Isolated, aes(x = POS, y = (zscore))) +
+  geom_vline(xintercept = 212535) + ggtitle("CUP1 F2 and F12")
+
+#FRE1
+AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == "XII") -> Chr12Isolated
+
+AIG__CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+  geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS)) +
+  geom_vline(xintercept = 568567) + ggtitle("FRE1 F2 and F12 G200")
+
+AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+  geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS)) +
+  geom_vline(xintercept = 568567) + ggtitle("FRE1 F2 and F12 G50")
+
+#CHROM 7
+AllCu_plot %>% filter(label %in% c("Bulk", "Interaction"), CHROM == "VII") -> Chr7Isolated
+
+AIG__CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
+  geom_line(data = Chr7Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
+  geom_hline(yintercept = 0) + ggtitle("Chr VII, Window 200")
+
+AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
+  geom_line(data = Chr7Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
+  geom_hline(yintercept = 0) + ggtitle("Chr VII, Window 50")
+```
 
 
 # Final Plotting
@@ -442,6 +482,7 @@ AllCu_plot %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
   geom_line() +
+  geom_hline(aes(yintercept = q5)) +
   geom_vline(data = sgd_copper, 
              aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
              size = 1, alpha = 0.3) +
@@ -878,50 +919,6 @@ AllCu_plot %>%
   theme(legend.position = "none") +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ggtitle("CSS Bulk Agreements within 8 kb")
-```
-
-# Let's correlate them?
-
-## Bulk vs Interaction
-
-```{r}
-AllCu_plot %>% pivot_wider(names_from = label, values_from = zscore) %>%
-  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
-  geom_smooth(method = "lm") +
-  facet_wrap(facets = "CHROM", scales = "free") +
-   theme(axis.text.x=element_text())
-
-chromlist <- c(c("VII", "X", "XII", "XIV", "XV"))
-AllCu_plot %>% 
-    filter(CHROM %in% chromlist) %>%
-  pivot_wider(names_from = label, values_from = zscore) %>%
-  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
-  geom_smooth(method = "lm") +
-  facet_wrap(facets = "CHROM", scales = "free") +
-  ggtitle("Interaction Peak Chromosomes") +
-   theme(axis.text.x=element_text())
-
-AllCu_plot %>% 
-    filter(CHROM %in% chromlist == FALSE) %>%
-  pivot_wider(names_from = label, values_from = zscore) %>%
-  ggplot(aes(y = abs(Bulk), x = abs(Interaction), color = CSS)) + geom_point(alpha = 0.1, size = 0.1) +
-  geom_smooth(method = "lm") +
-  facet_wrap(facets = "CHROM", scales = "free") +
-  ggtitle("Non Interaction Peak Chromosomes") +
-   theme(axis.text.x=element_text())
-```
-
-## Chr I vs VIII Fixed
-
-```{r}
-AllCu_plot %>% pivot_wider(names_from = CSS, values_from = zscore) %>%
-  ggplot(aes(y = abs(I), x = abs(VIII), color = label)) + geom_point(alpha = 0.1, size = 0.1) +
-  geom_smooth(method = "lm", color = "black") +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
-  facet_wrap(facets = "label", scales = "free") +
-  ggtitle("Correlations between Fixed Chr I and VIII in each parameter") +
-  theme(axis.text.x=element_text(),
-        legend.position = "none")
 ```
 
 
