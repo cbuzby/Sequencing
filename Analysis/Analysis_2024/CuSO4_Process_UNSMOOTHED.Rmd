@@ -738,6 +738,12 @@ CB_AIG_glm_unsm %>% na.omit() %>% filter(abs(zscore) < 100) %>%
 
 saveRDS(AIG_CU_cybrG50, file = "AIG_CU_cybrG50.rds")
 
+CB_AIG_glm_unsm %>% na.omit() %>% filter(abs(zscore) < 100) %>%
+  arrange(POS) %>% group_by(CHROM, label) %>%
+  reframe(POS = POS, SmoothCount = frollapply(zscore, n = 200, FUN = cybr_weightedgauss, align = "center")) -> AIG_CU_cybrG200
+
+saveRDS(AIG_CU_cybrG200, file = "AIG_CU_cybrG200.rds")
+
 ```
 
 # Quick process of Chr VIII of AIGs

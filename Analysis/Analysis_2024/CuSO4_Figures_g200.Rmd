@@ -51,6 +51,8 @@ ChromosomeScale2 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
   pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
   mutate(summary = 0, label = "Bulk") %>% select(-delete)
 
+
+
 # Loci to look at specifically
 
 myloci <- data.frame(CHROM = c("V","V","IX", "III", "IV", "I", "III"),
@@ -363,9 +365,14 @@ eQTL_hubs_Genes %>% arrange(desc(numberEQTLInHotspot))
 ```{r, fig.width=10, fig.height=5}
 sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
 
-genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+genes <- c( "CUP1-1", "CUP1-2", "FRE1") #,
+           # "CRS5", "SOD1", "MET17", "FRE7", "MUP1", "PCL1", "OYE3",  "CTR1", "IRC7", "FET3", "PTK1", "CTR3", "MAC1")
 sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+genes_CB <- c("MATALPHA2", "MATA", "URA3", "HO")
+sgd_orfs %>% filter(Gene.symbol %in% genes_CB) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_CB
 
 genes_eh <- c("VMA4", "MTL1", "PTR2", "LEU9", "IRC15")
 sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
@@ -404,35 +411,97 @@ AllCu_plot %>% filter(label %in% c("Bulk", "Interaction")) %>%
 
 # Comparison with AIGs
 
-```{r}
+```{r, fig.height=2, fig.width=4}
 #CUP1
 AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == "VIII") -> Chr8Isolated
 
-AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "darkorange") +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = -1.311763, color = "red", alpha = 0.4) +
+  geom_hline(yintercept = 1.311763, color = "red", alpha = 0.4) +
+  geom_vline(xintercept = 212535, color = "skyblue3") + ggtitle("Chr VIII") + ylab("Z-Score") + xlab("Chromosome VIII Position") +
   geom_line(data = Chr8Isolated, aes(x = POS, y = (zscore))) +
-  geom_vline(xintercept = 212535) + ggtitle("CUP1 F2 and F12")
+  theme(legend.position = "none")
 
 #FRE1
 AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == "XII") -> Chr12Isolated
 
-AIG__CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "darkorange") +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = -1.311763, color = "red", alpha = 0.4) +
+  geom_hline(yintercept = 1.311763, color = "red", alpha = 0.4) +
   geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS)) +
-  geom_vline(xintercept = 568567) + ggtitle("FRE1 F2 and F12 G200")
+  geom_vline(xintercept = 568567, color = "skyblue3") +  ggtitle("Chr XII") + ylab("Z-Score") + xlab("Chromosome XII Position") +
+    theme(legend.position = "none")
 
-AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
-  geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS)) +
-  geom_vline(xintercept = 568567) + ggtitle("FRE1 F2 and F12 G50")
+```
+
+```{r}
+# AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "skyblue2") +
+#   geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS)) +
+#   geom_hline(yintercept = 0) +
+#   geom_vline(xintercept = 568567, color = "red") + ggtitle("FRE1 F2 and F12 G50")
 
 #CHROM 7
 AllCu_plot %>% filter(label %in% c("Bulk", "Interaction"), CHROM == "VII") -> Chr7Isolated
 
-AIG__CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "VII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
   geom_line(data = Chr7Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
   geom_hline(yintercept = 0) + ggtitle("Chr VII, Window 200")
 
-AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
-  geom_line(data = Chr7Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
-  geom_hline(yintercept = 0) + ggtitle("Chr VII, Window 50")
+# AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "VII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "gray") +
+#   geom_line(data = Chr7Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
+#   geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$CHROM == "VII" & AIG_CU_cybrG200$label == "Bulk",], color = "black") +
+#   geom_hline(yintercept = 0) + ggtitle("Chr VII, Window 50")
+
+
+#CHROM 10
+AllCu_plot %>% filter(label %in% c("Bulk", "Interaction"), CHROM == "X") -> Chr10Isolated
+
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "X") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
+  geom_line(data = Chr10Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
+  geom_hline(yintercept = 0) + ggtitle("Chr X, Window 200")
+
+
+#CHROM 12
+AllCu_plot %>% filter(label %in% c("Bulk", "Interaction"), CHROM == "XIV") -> Chr12Isolated
+
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XIV") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "black") +
+  geom_line(data = Chr12Isolated, aes(x = POS, y = (zscore), linetype = CSS, color = label)) +
+  geom_hline(yintercept = 0) + ggtitle("Chr XIV, Window 200")
+
+
+```
+
+```{r, fig.width=12, fig.height=5}
+
+#Do this all at once
+AllCu_plot %>% filter(label %in% c("Bulk")) %>%
+  ggplot() +
+  geom_line(data = AIG_CU_cybrG50[AIG_CU_cybrG50$label == "Bulk" & AIG_CU_cybrG50$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "gray", alpha = 0.3) +
+  geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$label == "Bulk"& AIG_CU_cybrG200$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "red", alpha = 0.3) +
+  geom_line(aes(x = POS, y = zscore, linetype = CSS)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  geom_vline(data = sgd_copper, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol)) +
+  geom_vline(data = sgd_CB, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol), linetype = "dashed") +
+  theme(legend.position = "bottom") 
+
+#Do this all at once
+AllCu_plot$CHROM <- factor(AllCu_plot$CHROM, levels = as.character(as.roman(1:16)))
+AllCu_plot %>% filter(label %in% c("Bulk")) %>%
+  ggplot() +
+  # geom_line(data = AIG_CU_cybrG50[AIG_CU_cybrG50$label == "Bulk" & AIG_CU_cybrG50$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "gray", alpha = 0.3) +
+  # geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$label == "Bulk"& AIG_CU_cybrG200$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "red", alpha = 0.3) +
+  geom_hline(yintercept = 0) +
+  geom_hline(aes(yintercept = -q5), alpha = 0.4, color = "red") +
+  geom_hline(aes(yintercept = q5), alpha = 0.4, color = "red") +
+  geom_line(aes(x = POS, y = zscore, linetype = CSS)) +
+  geom_vline(data = sgd_copper, aes(xintercept = Gene.chromosomeLocation.start, color = Gene.symbol)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("skyblue3", "skyblue3", "skyblue3"))
+  
+  
 ```
 
 
@@ -447,8 +516,8 @@ sgd_copper_eh$CHROM <- factor(sgd_copper_eh$CHROM, levels=as.character(as.roman(
 
 AllCu_plot %>% filter(label %in% c("Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore))) + 
-  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
-  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) > q5), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < q5), color = "black", size = 0.1) +
   geom_vline(data = sgd_copper, 
              aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
              size = 1, alpha = 0.3) +
@@ -463,8 +532,8 @@ AllCu_plot %>% filter(label %in% c("Interaction")) %>%
 
 AllCu_plot %>% filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore))) + 
-  geom_point(aes(alpha = abs(zscore) > 1.01), color = "gray", size = 0.1) +
-  geom_point(aes(alpha = abs(zscore) < 1.01), color = "black", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) > q5), color = "gray", size = 0.1) +
+  geom_point(aes(alpha = abs(zscore) < q5), color = "black", size = 0.1) +
   geom_vline(data = sgd_copper, 
              aes(xintercept = Gene.chromosomeLocation.start, color = paste(CHROM,Gene.symbol)),
              size = 1, alpha = 0.3) +
@@ -477,6 +546,7 @@ AllCu_plot %>% filter(label %in% c("Bulk")) %>%
     scale_size_manual(values = c(0.1, 2)) +
   scale_alpha_manual(values = c(0.4, 0))
 ```
+
 ```{r, fig.height=6, fig.width=12}
 AllCu_plot %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
@@ -580,7 +650,6 @@ AllCu_plot %>%
   filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore), shape = CSS)) +
   #cutoffs and genes
-  geom_rect(aes(xmin = 212535, xmax = 212720, ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "lightblue") +
   geom_rect(aes(xmin = 214533, xmax = 214718, ymin = -Inf, ymax = Inf), alpha = 0.2, fill = "lightblue") +
   geom_vline(data = peaks[peaks$label %in% c("Bulk") & peaks$CHROM == "VIII",], 
              aes(xintercept = peakPOS, color = CHROM, linetype = CSS),
@@ -643,20 +712,69 @@ Applying this to everythingg
 
 ```{r}
 AllCu_plot %>% 
+  ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
   group_by(label, CSS, CHROM) %>%
+  mutate(SmoothZ = zscore) %>%
   summarize(POS = POS,
             zscore = zscore,
-            SmoothZ = frollapply(zscore, n = 600, FUN = mean, align = "center", na.rm = TRUE)) %>%
+            SmoothZ = frollapply(zscore, n = 100, FUN = mean, align = "center", na.rm = TRUE)) %>%
   summarize(POS = POS,
                     zscore = zscore,
                     SmoothZ = SmoothZ,
-                    change = frollapply(abs(SmoothZ), n = 10, findchange, align = "center")) %>%
+                    change = frollapply(abs(SmoothZ), n = 100, findchange, align = "center")) %>%
   summarize(POS = POS,
                     zscore = zscore,
                     SmoothZ = SmoothZ,
           change = change,
-                    peak = frollapply(abs(change), n = 4, findpeak, align = "center")) %>%
+                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak
+
+# smoothpeak %>% filter(label == "Bulk") %>% ggplot(aes(x = POS, y = zscore)) + geom_line() + geom_line(aes(y = SmoothZ), color = "lightblue") +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "bottom")
+  
+smoothpeak%>%
   filter(peak == -1) %>% merge(q5_css_G200) %>% filter(abs(zscore) > q5) -> TruePeaks
+
+################################################################################
+#TESTING
+AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>%
+  ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+  group_by(label, CSS, CHROM) %>%
+  #mutate(SmoothZ = zscore) %>%
+  summarize(POS = POS,
+            zscore = zscore,
+            SmoothZ = frollapply(zscore, n = 200, FUN = mean, align = "center", na.rm = TRUE)) %>%
+    ggplot(aes(x = POS, y = zscore)) + geom_point() + geom_point(aes(y = SmoothZ), color = "lightblue") +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+  
+AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>% ggplot(aes(x = zscore, color = CSS, y = CSS)) + geom_boxplot(size = 3) + geom_jitter(alpha = 0.3) +
+  theme(axis.text.x = element_text())
+
+################################################################################
+cbyr_ksmooth <- function(z, p, b = 1000){
+  result <- smoothr::smooth_ksmooth(matrix(c(z,p), ncol = 2), bandwidth = b)
+  return(data.frame(result))
+}
+
+#Using ksmooth
+AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>%
+  ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+  group_by(label, CSS, CHROM) %>%
+  summarize(cbyr_ksmooth(z = zscore, p = POS, b = 20000)) -> anattempt
+
+anattempt %>%
+  ggplot(aes(y = X1, x = X2)) + geom_line() +
+  geom_line(data = AllCu_plot[AllCu_plot$label == "Bulk" & AllCu_plot$CHROM == "VII",], aes(x = POS, y = zscore), color = "red") +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
 
 ```
 
@@ -955,5 +1073,158 @@ AllCu_plot %>%
   theme(legend.position = "bottom") +
   ggtitle("Bulk and Interaction Effects") +
   scale_color_manual(values = c("black", "purple"))
+
+```
+
+# Circos plot 
+
+Since I haven't added these in yet :(
+
+Function first
+```{r}
+require(circlize)
+
+cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, color1 = "#24588A", color8 = "#ED7B01", opacity = "50"){
+  
+  color1fade_50 <- paste(color1, "50", sep = "")
+  color8fade_50 <- paste(color8, "50", sep = "")
+  
+  color1fade <- paste(color1, opacity, sep = "")
+  color8fade <- paste(color8, opacity, sep = "")
+
+  if(is.null(d8)){
+    d8 <- d1
+    include8 <- FALSE
+  }else{
+    include8 <- TRUE
+  }
+    #SET UP DATA
+  df8 <- data.frame(sectors = as.character(d8$CHROM),
+                 x = d8$POS,
+                 y = abs(d8$summary),
+                  label = d8$label)
+
+  df1 <- data.frame(sectors = as.character(d1$CHROM),
+                 x = d1$POS,
+                 y = abs(d1$summary),
+                  label = d1$label)
+
+  #Take just the interactions of each
+  df8int <- df8 %>% filter(label == "Interaction")
+  df1int <- df1 %>% filter(label == "Interaction")
+
+    #REORDER THE CHROMOSOMES
+  df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+  df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+  
+  ##############################################################################
+  dfall <- rbind(df1int, df8int) %>% na.omit()
+  circos.par("track.height" = 0.3, start.degree = 90, cell.padding = c(0,0))
+  circos.initialize(sectors = dfall$sectors, x = dfall$x)
+
+  if(is.null(maxy)){
+    #I think this makes the sizes?
+    circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, y = dfall$y, 
+        panel.fun = function(x, y) {
+            circos.text(CELL_META$xcenter, 
+                0 - mm_y(5), 
+                CELL_META$sector.index,
+                niceFacing = FALSE)
+            circos.axis(labels.cex = 0.1)
+    })
+  }else{
+    circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+      panel.fun = function(x, y) {
+          circos.text(CELL_META$xcenter, 
+              0 - mm_y(5), 
+              CELL_META$sector.index,
+              niceFacing = FALSE)
+          circos.axis(labels.cex = 0.1)
+      })
+  }
+  #Makes the chromosome overlap parts
+  #CHROMOSOME I
+  draw.sector(83.5, #RIGHT
+              90, #LEFT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color1fade_50, border = FALSE)
+  if(include8 == TRUE){
+    #CHROMOSOME VIII
+    draw.sector(289.5, #LEFT
+              305.4, #RIGHT
+              rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, col = color8fade_50, border = FALSE)
+  }
+  
+  
+  #Makes the lines
+  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
+  circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
+  
+  if(is.null(peaklist8) == FALSE){
+    if(length(peaklist8$POS) >= 1){
+      for(i in 1:length(peaklist8$POS)){
+      circos.link(peaklist8$CHROM[i], 
+                  peaklist8$POS[i], 
+                  #Add 8 after
+                  "VIII", c(0, max(dfall$x[dfall$sectors == "VIII"])),  
+                  
+                  col = color8fade, 
+                  h.ratio = 0.3, 
+                  border = color8fade, 
+                  lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 8")
+    }
+    
+  }
+
+  if(is.null(peaklist1) == FALSE){
+    if(length(peaklist1$POS) >= 1){
+      for(i in 1:length(peaklist1$POS)){
+        circos.link("I",c(0, max(dfall$x[dfall$sectors == "I"])),  
+                    #add 1 first
+                    peaklist1$CHROM[i], 
+                    peaklist1$POS[i], 
+                    col = color1fade, 
+                    h.ratio = 0.3, 
+                    border = color1fade, 
+                    lwd = 1)
+      }
+    }else{
+      print("No interactions on Chr 1")
+    }
+  }  
+  
+  circos.clear()
+}
+
+```
+
+Run the actual function to produce plots
+```{r}
+ChromosomeScale3 <- data.frame(CHROM = factor(as.character(as.roman(1:16)),
+                                             levels = as.character(as.roman(1:16))),
+                              start = rep(1, 16),
+                              end = c(.23,.81,.32, 1.53, .58, .27, 1.09, .56, .44, .75, .67, 1.08, .92, .78, 1.09, .95)*1000000) %>% 
+  pivot_longer(c(start, end), names_to = "delete", values_to = "POS") %>%
+  mutate(SmoothCount = 0, label = "Interaction", q5 = 0, zscore = 0, CSS = "VIII") %>% select(-delete) %>%
+  select(CSS, label, CHROM, POS, SmoothCount, q5, zscore) 
+
+C_1_intpeaks <- AllCu_plot %>% filter(label == "Interaction", CSS == "VIII") %>%
+  filter(abs(SmoothCount) > q5) %>%
+  group_by(CHROM) %>% arrange(SmoothCount) %>%
+  summarize(POS = head(POS, 1))
+
+C_8_intpeaks <- AllCu_plot %>% filter(label == "Interaction", CSS == "VIII") %>%
+  filter(abs(SmoothCount) > q5) %>%
+  group_by(CHROM) %>% arrange(SmoothCount) %>%
+  summarize(POS = head(POS, 1))
+  
+d1new <- rbind(AllCu_plot, ChromosomeScale3) %>% mutate(summary = SmoothCount) %>% filter(CSS == "I")
+d8new <- rbind(AllCu_plot, ChromosomeScale3) %>% mutate(summary = SmoothCount) %>% filter(CSS == "VIII")
+
+cybr_circos(d1 = d1new, 
+            d8 = d8new, 
+            peaklist8 = C_8_intpeaks)
 ```
 
