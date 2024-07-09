@@ -305,7 +305,7 @@ theme_classic
 q5_css_G200 <- readRDS("q5_css_G200_100.rds")
 AllCu_plot <- readRDS("AllCu_plot.rds")
 AIG_CU_cybrG50 <- readRDS("AIG_CU_cybrG50.rds")
-
+AIG_CU_cybrG200 <- readRDS("AIG_CU_cybrG200.rds")
 
 #AllCu_plot %>% filter(abs(zscore) < 20) -> AllCu_plot
 
@@ -423,6 +423,14 @@ AIG_CU_cybrG50 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = P
   geom_line(data = Chr8Isolated, aes(x = POS, y = (zscore))) +
   theme(legend.position = "none")
 
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "darkorange") +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = -1.311763, color = "red", alpha = 0.4) +
+  geom_hline(yintercept = 1.311763, color = "red", alpha = 0.4) +
+  geom_vline(xintercept = 212535, color = "skyblue3") + ggtitle("Chr VIII") + ylab("Z-Score") + xlab("Chromosome VIII Position") +
+  geom_line(data = Chr8Isolated, aes(x = POS, y = (zscore))) +
+  theme(legend.position = "none")
+
 #FRE1
 AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == "XII") -> Chr12Isolated
 
@@ -434,6 +442,24 @@ AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "XII") %>% ggplot(aes(x = P
   geom_vline(xintercept = 568567, color = "skyblue3") +  ggtitle("Chr XII") + ylab("Z-Score") + xlab("Chromosome XII Position") +
     theme(legend.position = "none")
 
+```
+
+Distance of "significant" regions
+
+```{r}
+AIG_CU_cybrG200 %>% ungroup() %>% filter(CHROM == "VIII", label == "Bulk") %>% filter(SmoothCount < -1.311763) %>% summarize(min = min(POS), max = max(POS)) %>% mutate(ds = "AIG") -> temp
+
+AllCu_plot %>% ungroup() %>% filter(CHROM == "VIII", label == "Bulk") %>% filter(zscore < -1.311763) %>% summarize(min = min(POS), max = max(POS)) %>% mutate(ds = "CSS_I") %>%
+  rbind(temp) %>% pivot_longer(-ds, names_to = "minmax", values_to = "POS") -> PeakWidths
+
+AIG_CU_cybrG200 %>% filter(label == "Bulk", CHROM == "VIII") %>% ggplot(aes(x = POS, y = (SmoothCount))) + geom_line(color = "darkorange") +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = -1.311763, color = "red", alpha = 0.4) +
+  geom_hline(yintercept = 1.311763, color = "red", alpha = 0.4) +
+  geom_vline(xintercept = 212535, color = "skyblue3", size = 2, alpha = 0.4) + ggtitle("Chr VIII") + ylab("Z-Score") + xlab("Position") +
+  geom_vline(data = PeakWidths, aes(xintercept = POS, color = ds), linetype = "dashed") +
+  geom_line(data = Chr8Isolated, aes(x = POS, y = (zscore))) +
+  theme(legend.position = "none")
 ```
 
 ```{r}
@@ -710,93 +736,137 @@ findpeak <- function(x){
 
 Applying this to everythingg
 
-```{r}
-AllCu_plot %>% 
-  ungroup() %>% 
-  na.omit() %>%
-  arrange(POS) %>%
-  group_by(label, CSS, CHROM) %>%
-  mutate(SmoothZ = zscore) %>%
-  summarize(POS = POS,
-            zscore = zscore,
-            SmoothZ = frollapply(zscore, n = 100, FUN = mean, align = "center", na.rm = TRUE)) %>%
-  summarize(POS = POS,
-                    zscore = zscore,
-                    SmoothZ = SmoothZ,
-                    change = frollapply(abs(SmoothZ), n = 100, findchange, align = "center")) %>%
-  summarize(POS = POS,
-                    zscore = zscore,
-                    SmoothZ = SmoothZ,
-          change = change,
-                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak
-
-# smoothpeak %>% filter(label == "Bulk") %>% ggplot(aes(x = POS, y = zscore)) + geom_line() + geom_line(aes(y = SmoothZ), color = "lightblue") +
-#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
-#   theme(legend.position = "bottom")
-  
-smoothpeak%>%
-  filter(peak == -1) %>% merge(q5_css_G200) %>% filter(abs(zscore) > q5) -> TruePeaks
+```{r, eval = FALSE}
+# AllCu_plot %>% 
+#   ungroup() %>% 
+#   na.omit() %>%
+#   arrange(POS) %>%
+#   group_by(label, CSS, CHROM) %>%
+#   mutate(SmoothZ = zscore) %>%
+#   summarize(POS = POS,
+#             zscore = zscore,
+#             SmoothZ = frollapply(zscore, n = 100, FUN = mean, align = "center", na.rm = TRUE)) %>%
+#   summarize(POS = POS,
+#                     zscore = zscore,
+#                     SmoothZ = SmoothZ,
+#                     change = frollapply(abs(SmoothZ), n = 100, findchange, align = "center")) %>%
+#   summarize(POS = POS,
+#                     zscore = zscore,
+#                     SmoothZ = SmoothZ,
+#           change = change,
+#                     peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak
+# 
+# # smoothpeak %>% filter(label == "Bulk") %>% ggplot(aes(x = POS, y = zscore)) + geom_line() + geom_line(aes(y = SmoothZ), color = "lightblue") +
+# #   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+# #   theme(legend.position = "bottom")
+#   
+# smoothpeak%>%
+#   filter(peak == -1) %>% merge(q5_css_G200) %>% filter(abs(zscore) > q5) -> TruePeaks
 
 ################################################################################
 #TESTING
-AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>%
-  ungroup() %>% 
-  na.omit() %>%
-  arrange(POS) %>%
-  group_by(label, CSS, CHROM) %>%
-  #mutate(SmoothZ = zscore) %>%
-  summarize(POS = POS,
-            zscore = zscore,
-            SmoothZ = frollapply(zscore, n = 200, FUN = mean, align = "center", na.rm = TRUE)) %>%
-    ggplot(aes(x = POS, y = zscore)) + geom_point() + geom_point(aes(y = SmoothZ), color = "lightblue") +
-  facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom")
-  
-AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>% ggplot(aes(x = zscore, color = CSS, y = CSS)) + geom_boxplot(size = 3) + geom_jitter(alpha = 0.3) +
-  theme(axis.text.x = element_text())
+# AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>%
+#   ungroup() %>% 
+#   na.omit() %>%
+#   arrange(POS) %>%
+#   group_by(label, CSS, CHROM) %>%
+#   #mutate(SmoothZ = zscore) %>%
+#   summarize(POS = POS,
+#             zscore = zscore,
+#             SmoothZ = frollapply(zscore, n = 200, FUN = mean, align = "center", na.rm = TRUE)) %>%
+#     ggplot(aes(x = POS, y = zscore)) + geom_point() + geom_point(aes(y = SmoothZ), color = "lightblue") +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "bottom")
+#   
+# AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>% ggplot(aes(x = zscore, color = CSS, y = CSS)) + geom_boxplot(size = 3) + geom_jitter(alpha = 0.3) +
+#   theme(axis.text.x = element_text())
 
 ################################################################################
-cbyr_ksmooth <- function(z, p, b = 1000){
+cybr_ksmooth <- function(z, p, b = 1000){
   result <- smoothr::smooth_ksmooth(matrix(c(z,p), ncol = 2), bandwidth = b)
   return(data.frame(result))
 }
 
 #Using ksmooth
-AllCu_plot %>% filter(label == "Bulk", CHROM == "VII") %>%
+AllCu_plot %>% #filter(label == "Bulk", CHROM == "VII") %>%
   ungroup() %>% 
   na.omit() %>%
   arrange(POS) %>%
   group_by(label, CSS, CHROM) %>%
-  summarize(cbyr_ksmooth(z = zscore, p = POS, b = 20000)) -> anattempt
+  summarize(cybr_ksmooth(z = zscore, p = POS, b = 20000)) -> anattempt
 
-anattempt %>%
-  ggplot(aes(y = X1, x = X2)) + geom_line() +
-  geom_line(data = AllCu_plot[AllCu_plot$label == "Bulk" & AllCu_plot$CHROM == "VII",], aes(x = POS, y = zscore), color = "red") +
-  facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom")
+saveRDS(anattempt, file = "ksmooth_zscores_G200.rds")
 
+#Using ksmooth
+AIG_CU_cybrG200 %>% #filter(label == "Bulk", CHROM == "VII") %>%
+  ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+  group_by(label, CHROM) %>%
+  summarize(cybr_ksmooth(z = SmoothCount, p = POS, b = 20000)) -> AIG_CU_cybrG200_ksmoothed
+
+saveRDS(AIG_CU_cybrG200_ksmoothed, file = "ksmooth_AIG_CU_cybrG200.rds")
+```
+
+```{r}
+anattempt <- readRDS("ksmooth_zscores_G200.rds")
+AIG_CU_cybrG200_ksmoothed <- readRDS("ksmooth_AIG_CU_cybrG200.rds")
+
+# anattempt %>%
+#   ggplot(aes(y = X1, x = X2)) + geom_line() +
+#   geom_line(data = AllCu_plot[AllCu_plot$label == "Bulk" & AllCu_plot$CHROM == "VII",], aes(x = POS, y = zscore), color = "red") +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "bottom")
+
+anattempt %>% 
+    group_by(label, CSS, CHROM) %>%
+
+  summarize(POS = X2,
+                    SmoothZ = X1,
+                    change = frollapply(abs(X1), n = 100, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak
+
+smoothpeak %>%
+  filter(peak == -1) %>% merge(q5_css_G200) %>% filter(abs(SmoothZ) > q5) -> TruePeaks
+
+AIG_CU_cybrG200_ksmoothed %>% 
+    group_by(label, CHROM) %>%
+
+  summarize(POS = X2,
+                    SmoothZ = X1,
+                    change = frollapply(abs(X1), n = 100, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) %>%
+  filter(peak == -1) -> AIG_CU_cybrG200_smoothpeak
+
+AIG_CU_cybrG200_smoothpeak %>% filter(label == "Bulk") -> AIG_BulkPeaks
 
 ```
 
 ```{r, fig.width=8, fig.height=4}
 
-AllCu_plot %>%
+AllCu_plot %>% #filter(CHROM == "VII") %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction"),],
              aes(xintercept = POS, color = CSS), alpha = 0.2, linetype = "dashed")+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   facet_grid(label~CHROM, scales = "free", space = "free") +
   theme(legend.position = "bottom") +
   scale_color_manual(values = c("navyblue", "darkorange")) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
-AllCu_plot %>%
+AllCu_plot %>% 
   filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),],
              aes(xintercept = POS, color = CSS), alpha = 0.2, linetype = "dashed")+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
   theme(legend.position = "bottom") + #ylim(0,12) +
   scale_color_manual(values = c("navyblue", "darkorange")) +
@@ -811,7 +881,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV"))) + 
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Interaction"),], 
              aes(xintercept = POS, color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV")), alpha = 0.2, linetype = "dashed")+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   labs(color = NULL)+
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
   theme(legend.position = "none") + #ylim(0,12) +
@@ -823,7 +893,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV"))) + 
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),], 
              aes(xintercept = POS, color = CHROM %in% c("I", "III", "V", "VII", "IX", "XI", "XIII", "XV")), alpha = 0.2, linetype = "dashed")+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   labs(color = NULL)+
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
   theme(legend.position = "none") + #ylim(0,12) +
@@ -840,7 +910,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction"),],
              aes(xintercept = POS, color = CSS), alpha = 0.2)+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   geom_vline(data = sgd_copper, 
              aes(xintercept = Gene.chromosomeLocation.start, linetype = paste(CHROM,Gene.symbol)),
              size = 1, alpha = 0.3)+ 
@@ -864,7 +934,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
              aes(xintercept = POS, color = CSS), alpha = 0.2)+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   geom_hline(aes(yintercept = q5)) +
   geom_vline(data = sgd_copper[sgd_copper$CHROM %in% chromlist,], 
              aes(xintercept = Gene.chromosomeLocation.start, linetype = paste(CHROM,Gene.symbol)),
@@ -887,7 +957,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist,],
              aes(xintercept = POS, color = CSS), alpha = 0.05, size = 2)+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   geom_hline(aes(yintercept = q5)) +
   labs(linetype = NULL) +
   facet_grid(label~CHROM, scales = "free", space = "free") +
@@ -902,7 +972,7 @@ AllCu_plot %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist,],
              aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
   geom_hline(aes(yintercept = q5)) +
   labs(linetype = NULL) +
   facet_grid(CSS~CHROM, scales = "free", space = "free") +
@@ -910,28 +980,81 @@ AllCu_plot %>%
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   ggtitle("CSS Bulk Agreements")
 
-chromlist <- c(c("IV", "VII", "IX", "XI", "XII", "XIV", "XVI"))
-AllCu_plot %>%
-  filter(CHROM %in% chromlist) %>%
-  filter(label %in% c("Bulk", "Interaction")) %>%
-  ggplot(aes(x = POS, y = abs(zscore), color = CHROM)) +
-  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
-             aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
-  geom_line(alpha = 0.4, size = 1) +
-  geom_hline(aes(yintercept = q5)) +
-  labs(linetype = NULL) +
-  facet_grid(label~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "bottom") +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-  ggtitle("CSS Bulk Agreements")
-
-
-
 
 ```
 
 
 # How close are the peaks?
+
+```{r}
+#Permutations for the peak distances
+
+AllCu_plot %>% select(CSS, label, CHROM, POS) %>% distinct() -> potentialpositions
+
+potentialpositions %>% group_by(CSS, label, CHROM) %>%
+  mutate(POS = sample(POS)) -> newpositions
+
+newpositions %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  select(label, CHROM, CSS, POS) %>%
+  pivot_wider(names_from = CSS, values_from = POS) -> TotalList_permuted
+
+for(i in 1:20){
+  potentialpositions %>% group_by(CSS, label, CHROM) %>%
+  mutate(POS = sample(POS)) -> newpositions
+
+  newpositions %>%
+    filter(label %in% c("Bulk", "Interaction")) %>%
+    select(label, CHROM, CSS, POS) %>%
+    pivot_wider(names_from = CSS, values_from = POS) -> TotalList_permuted
+
+  TotalList_permuted %>% select(-VIII) %>% unnest() %>% group_by(CHROM) %>% summarize(I = head(I, 100)) -> chr1p
+  TotalList_permuted %>% select(-I) %>% unnest() %>% group_by(CHROM) %>% summarize(VIII = head(VIII, 100)) -> chr8p
+  
+  merge(chr1p, chr8p) %>% mutate(diff = abs(I - VIII)) -> PermutedDifferences
+  
+  if(i == 1)
+  {AllDiffs <- PermutedDifferences}else{
+    AllDiffs <- rbind(AllDiffs,PermutedDifferences)
+  }
+}
+
+# TotalList_permuted %>% select(-VIII) %>% unnest() %>% group_by(CHROM) %>% summarize(I = head(I, 500)) -> chr1p
+# TotalList_permuted %>% select(-I) %>% unnest() %>% group_by(CHROM) %>% summarize(VIII = head(VIII, 500)) -> chr8p
+# 
+# merge(chr1p, chr8p) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) -> PermutedDifferences
+
+AllDiffs %>% ggplot(aes(x = diff, color = CHROM)) + geom_density() +
+  geom_vline(xintercept = quantile(AllDiffs$diff, c(0.01, 0.05, 0.95)), color = "red", linetype = "dashed")+
+    theme(axis.text.x=element_text())+
+  xlim(0, 3e5)
+
+AllDiffs %>% ggplot(aes(x = diff, color = CHROM)) + geom_density() +
+  geom_vline(xintercept = quantile(AllDiffs$diff, c(0.01, 0.05, 0.95)), color = "red", linetype = "dashed")+
+    theme(axis.text.x=element_text()) 
+
+AllDiffs %>% ggplot(aes(x = (diff))) + geom_density() +
+  geom_vline(xintercept = quantile(AllDiffs$diff, c(0.01, 0.05, 0.95)), color = "red", linetype = "dashed")+
+    theme(axis.text.x=element_text()) +
+  xlim(0, 1e5)
+
+AllDiffs %>% filter(CHROM == "III") %>% ggplot(aes(x = (diff))) + geom_density() +
+  geom_vline(xintercept = quantile(AllDiffs$diff, c(0.01, 0.05)), color = "red", linetype = "dashed")+
+    theme(axis.text.x=element_text())
+
+quantile(AllDiffs$diff, c(0.025, 0.05, 0.95))
+
+AllCu_plot %>% select(CHROM, POS) %>% distinct() %>% ggplot(aes(x = POS, color = CHROM)) + geom_density(aes(linetype = CHROM == "IV")) +
+  theme(legend.position = "bottom", axis.text.x=element_text())
+
+AllCu_plot %>% select(CHROM, POS) %>% distinct() %>% ggplot(aes(x = POS, color = CHROM)) + geom_density(aes(linetype = CHROM == "IV")) +
+  facet_wrap("CHROM", scales = "free") +
+  theme(legend.position = "none", axis.text.x=element_text())
+
+AllCu_plot %>% filter(CHROM == "III") %>% select(CSS, POS) %>% distinct() %>% ggplot(aes(x = POS, color = CSS)) + geom_boxplot()
+
+```
+
 
 ```{r, fig.width=10, fig.height=4}
 TruePeaks %>%
@@ -942,22 +1065,33 @@ TruePeaks %>%
 TotalList %>% select(-VIII) %>% unnest() -> chr1
 TotalList %>% select(-I) %>% unnest() -> chr8
 
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) -> PeakDifferences
+
+quants <- as.data.frame(quantile(PeakDifferences$diff, c(0.05,0.95))) %>% select(xval = `quantile(PeakDifferences$diff, c(0.05, 0.95))`)
+
+PeakDifferences %>% ggplot(aes(x = diff)) + geom_density() +
+  geom_vline(data = quants, aes(xintercept = xval))+
+    theme(axis.text.x=element_text())
+
+
 merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
-  filter(diff < 8000) %>%
+  filter(diff < 6504) %>%
   ggplot() + geom_point(aes(y = diff, x = CHROM)) +
   theme(axis.text.x=element_text())
 
 merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
-  filter(diff < 8000) %>%
-  group_by(label, CHROM, diff) %>%
+  filter(diff < 13849) %>%
+  group_by(CHROM, diff) %>%
   summarize(maxpoint = max(I, VIII),
             minpoint = min(I, VIII)) %>%
-  ggplot(aes(color = CHROM)) + geom_linerange(aes(xmax = maxpoint, xmin = minpoint, y = diff)) +
-  facet_grid(rows = "CHROM") +
+  ggplot(aes(color = CHROM)) + geom_linerange(aes(xmax = maxpoint, xmin = minpoint, y = diff), size = 3) +
+  #facet_grid(rows = "CHROM") +
   theme(axis.text.x=element_text())
 
 merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
-  filter(diff < 1500) %>%
+  #filter(diff < 2350) %>%
+  filter(diff < 15200) %>%
+  #filter(diff < 6504) %>%
   group_by(label, CHROM, diff) %>%
   summarize(maxpoint = max(I, VIII),
             minpoint = min(I, VIII)) %>%
@@ -965,9 +1099,192 @@ merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
   theme(axis.text.x=element_text())
 
 merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
-  filter(diff < 1500) %>%
+  #filter(diff < 2350) %>%
+  filter(diff < 15200) %>%
+  #filter(diff < 6504) %>%
+  group_by(label, CHROM, diff) %>%
+  summarize(maxpoint = max(I, VIII),
+            minpoint = min(I, VIII)) -> newlist
+
+newlist %>% ungroup() %>% 
+  mutate(round_diff = round(diff/100, 0)) %>%
+   group_by(CHROM,round_diff) %>%
+  summarize(diff = min(diff)) %>%
+  merge(newlist) %>%
+  ungroup() %>% group_by(round_diff) %>%
+  mutate(POS = mean(c(minpoint, maxpoint))) -> minlist
+
+minlist %>% ggplot(aes(x = CHROM, y = diff)) + geom_point()
+
+#MINIMUM
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  group_by(CHROM) %>%
+  summarize(diff = min(diff)) %>%
+  ggplot(aes(color = CHROM)) + geom_point(aes(x = CHROM, y = diff), alpha = 0.4, size = 2) +
+  theme(axis.text.x=element_text())
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  filter(diff < 6504) %>%
   pivot_longer(c(I, VIII)) ->listofdiffs
 
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) -> savethis
+
+merge(chr1, chr8) %>% mutate(diff = abs(I - VIII)) %>% arrange(diff) %>%
+  group_by(CHROM) %>%
+  summarize(diff = min(diff)) %>%
+  merge(savethis) %>%
+  group_by(CHROM) %>%
+  mutate(POS = mean(c(I, VIII))) -> listofdiffs
+```
+
+A better version of those plots
+```{r,  fig.width=10, fig.height=4}
+AllCu_plot %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
+  geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction"),],
+             aes(xintercept = POS, linetype = CSS), alpha = 0.2)+
+  geom_vline(data = listofdiffs,
+             aes(xintercept = POS), color = "red", size = 1, alpha = 0.2)+
+  geom_line(alpha = 0.4, size = 1) +
+    
+  geom_hline(aes(yintercept = q5)) +
+  
+  labs(linetype = NULL, color = NULL) +
+  facet_grid(label~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("CSS Bulk Agreements")
+
+#PEAKS OF INTERACTIONS
+AllCu_plot %>% filter(label == "Interaction", 
+                      abs(zscore) > q5) %>%
+  arrange(desc(abs(zscore))) %>%
+  group_by(CHROM, CSS) %>%
+  summarize(POS = head(POS, 1)) -> IntPeaks
+
+AllCu_plot %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) +
+  geom_vline(data = minlist,
+             aes(xintercept = POS), color = "gray", size = 1)+
+  geom_vline(data = IntPeaks,
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", size = 1)+
+  
+  geom_line() +
+  geom_hline(aes(yintercept = q5)) +
+  
+  labs(linetype = NULL, color = NULL) +
+  scale_color_manual(values = c("black", "purple")) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("Selection Agreements vs Interaction Peaks")
+
+
+# AllCu_plot %>%
+#   filter(label %in% c("Bulk", "Interaction"), CHROM == "VII") %>%
+#   ggplot(aes(x = POS, y = abs(zscore), color = label, linetype = CSS)) +
+#   geom_vline(data = IntPeaks[IntPeaks$CHROM == "VII",],
+#              aes(xintercept = POS),
+#              color = "purple")+
+#   # geom_vline(data = minlist,
+#   #            aes(xintercept = POS), color = "red", size = 1, alpha = 0.2)+
+#   geom_line() +
+#     
+#   geom_hline(aes(yintercept = q5)) 
+  
+```
+
+Are interactions under AIG peaks?
+
+```{r,fig.width=10, fig.height=4}
+AllCu_plot %>% filter(label %in% c("Interaction"), CHROM %in% c("X", "XI", "XIV", "XV")) %>%
+  ggplot() +
+  #geom_line(data = AIG_CU_cybrG50[AIG_CU_cybrG50$label == "Bulk" & AIG_CU_cybrG50$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "gray", alpha = 0.3) +
+  geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$label == "Bulk"& AIG_CU_cybrG200$CHROM %in% c("X", "XI", "XIV", "XV"),], aes(x = POS, y = SmoothCount), color = "gray") +
+  geom_vline(data = IntPeaks,
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", size = 1)+
+  geom_line(aes(x = POS, y = zscore, linetype = CSS), color = "purple") +
+  geom_hline(aes(yintercept = q5)) +
+    geom_hline(aes(yintercept = -q5)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") 
+
+AllCu_plot %>% filter(label %in% c("Interaction"), CHROM %in% c("X", "XI", "XIV", "XV")) %>%
+  ggplot() +
+  #geom_line(data = AIG_CU_cybrG50[AIG_CU_cybrG50$label == "Bulk" & AIG_CU_cybrG50$CHROM != "M",], aes(x = POS, y = SmoothCount), color = "gray", alpha = 0.3) +
+  geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$label == "Bulk"& AIG_CU_cybrG200$CHROM %in% c("X", "XI", "XIV", "XV"),], 
+            aes(x = POS, y = abs(SmoothCount)), color = "gray") +
+  geom_vline(data = IntPeaks,
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", size = 1)+
+  geom_line(aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple") +
+  geom_hline(aes(yintercept = q5)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") 
+
+AIG_BulkPeaks
+
+#max(AllCu_plot$POS)
+for(i in unique(AllCu_plot$CHROM)){
+  AllCu_plot %>% filter(label %in% c("Bulk"), CHROM == i) %>%
+  ggplot() +
+  geom_vline(data = TruePeaks[TruePeaks$label == "Bulk" & TruePeaks$CHROM == i,],
+             aes(xintercept = POS))+
+     geom_vline(data = IntPeaks[IntPeaks$CHROM == i,],
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", size = 1)+
+    geom_vline(data = AIG_BulkPeaks[AIG_BulkPeaks$label == "Bulk" & AIG_BulkPeaks$CHROM == i,],
+             aes(xintercept = POS), color = "darkorange")+
+  geom_line(aes(x = POS, y = (zscore), linetype = CSS), color = "black") +
+  geom_line(data = AIG_CU_cybrG200[AIG_CU_cybrG200$label == "Bulk"& AIG_CU_cybrG200$CHROM %in% c(i),], 
+            aes(x = POS, y = (SmoothCount)), color = "darkorange") +
+  # geom_hline(aes(yintercept = q5)) +
+    geom_hline(aes(yintercept = 0)) +
+    xlim(0,1525226) +
+    ggtitle(i) +
+  theme(legend.position = "bottom")  -> plotchrom
+  
+  print(plotchrom)
+}
+
+TruePeaks %>% filter(CHROM == "VIII", label == "Bulk") %>% arrange(SmoothZ)
+AllCu_plot %>% filter(CHROM == "VIII", label == "Bulk") %>% arrange(zscore) %>% head(1)
+AllCu_plot %>% filter(CHROM == "VIII", label == "Bulk") %>% arrange(SmoothCount) %>% head(1)
+
+AIG_CU_cybrG50 %>% filter(CHROM == "VIII", label == "Bulk") %>% arrange(SmoothCount) %>% head(1)
+AIG_CU_cybrG200 %>% filter(CHROM == "VIII", label == "Bulk") %>% arrange(SmoothCount) %>% head(1)
+
+212720 - 218601
+212535 - 209243
+212535 - 204693
+212720 - 227343
+214718 - 227343
+
+```
+
+Are parents significant?
+
+```{r,  fig.width=10, fig.height=4}
+AllCu_plot %>%
+  filter(label %in% c("Background")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) +
+  
+  geom_line(color = "gray") +
+  geom_hline(aes(yintercept = q5)) +
+  
+  labs(linetype = NULL, color = NULL) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylim(0,3) +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ggtitle("Background Effects are primarily non-significant except for loci which appear to be artifacts")
+```
+
+```{r, fig.width=10, fig.height=4}
 chromlist <- c(c("IX", "XII", "XIV", "XVI"))
 AllCu_plot %>%
   filter(CHROM %in% chromlist) %>%
@@ -989,9 +1306,9 @@ AllCu_plot %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist & TruePeaks$POS %in% listofdiffs$value,],
-             aes(xintercept = POS, color = CSS), alpha = 0.2, size = 2, color = "black")+
+             aes(xintercept = POS, color = CSS), alpha = 0.2, color = "black")+
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk", "Interaction") & TruePeaks$CHROM %in% chromlist,],
-             aes(xintercept = POS, color = CHROM), alpha = 0.05, size = 2)+
+             aes(xintercept = POS, color = CHROM), alpha = 0.05)+
   geom_line(alpha = 0.4, size = 1) +
     
   geom_hline(aes(yintercept = q5)) +
@@ -1005,9 +1322,9 @@ AllCu_plot %>%
   filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$CHROM %in% chromlist & TruePeaks$POS %in% listofdiffs$value,],
-             aes(xintercept = POS, color = CHROM), size = 1)+
+             aes(xintercept = POS, color = CHROM))+
 
-  geom_line(alpha = 0.4, size = 1) +
+  geom_line(alpha = 0.4) +
     
   geom_hline(aes(yintercept = q5)) +
   labs(linetype = NULL) +
@@ -1027,9 +1344,8 @@ AllCu_plot %>%
   filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = CHROM, linetype = CSS)) +
   geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk") & TruePeaks$POS %in% listofdiffs5k$value,],
-             aes(xintercept = POS, color = CHROM), size = 1)+
-
-  geom_line(alpha = 0.4, size = 1) +
+             aes(xintercept = POS, color = CHROM))+
+  geom_line(alpha = 0.4) +
     
   geom_hline(aes(yintercept = q5)) +
   labs(linetype = NULL) +
@@ -1042,7 +1358,7 @@ AllCu_plot %>%
 
 # The Classics
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 AllCu_plot %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = zscore, color = label)) + 
@@ -1081,6 +1397,7 @@ AllCu_plot %>%
 Since I haven't added these in yet :(
 
 Function first
+
 ```{r}
 require(circlize)
 
@@ -1156,8 +1473,8 @@ cybr_circos <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL,
   
   
   #Makes the lines
-  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
   circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), col = color1, pch = 16, cex = 0.1)
+  circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), col = color8, pch = 16, cex = 0.1)
   
   if(is.null(peaklist8) == FALSE){
     if(length(peaklist8$POS) >= 1){
@@ -1226,5 +1543,12 @@ d8new <- rbind(AllCu_plot, ChromosomeScale3) %>% mutate(summary = SmoothCount) %
 cybr_circos(d1 = d1new, 
             d8 = d8new, 
             peaklist8 = C_8_intpeaks)
+
+cybr_circos(d1 = d1new, 
+            d8 = d8new, 
+            peaklist8 = C_8_intpeaks,
+            color8 = "#974EDE",
+            color1 = "#808080")
+
 ```
 
