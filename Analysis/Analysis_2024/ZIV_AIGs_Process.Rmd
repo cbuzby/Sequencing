@@ -363,6 +363,26 @@ Ziv_logodds %>% na.omit() %>%
 
 # Loading in my AIG data
 
+```{r}
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/AllCuSO4.REF_.SortedCat.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+```
+
 
 ```{r}
 CB_AIGs <- readRDS("AIG_CFZ_rawdata.rds")
@@ -563,10 +583,32 @@ CB_AIGs_logOdds_unsmoothed %>% group_by(Bulk, CHROM, POS) %>% summarize(avg = me
 
 ```
 
+```{r}
+################################################################################
+#Chromosome XVI
+CB_AIGs_logOdds_unsmoothed %>% filter(CHROM == "XVI", Bulk %in% c("U", "C")) %>% ggplot() + 
+    geom_line(aes(x = POS, y = abs(logOdds), color = Bulk, linetype = Rep),alpha = 0.8, size = 0.5) +
+    geom_line(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CHROM == "XVI" & AllCuSO4_glmer_1byRep$label == "Bulk",], aes(x = POS, y = abs(zscore), color = CSS)) +
+
+  geom_hline(yintercept = 0) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+
+CB_AIGs_logOdds_unsmoothed %>% group_by(Bulk, CHROM, POS) %>% select(-Coverage, -Oak, -Wine) %>% distinct() %>%
+  filter(CHROM == "XVI", Bulk %in% c("U", "C"), POS < (1078177 - 30000), POS > 30000) %>% 
+  pivot_wider(names_from = Bulk, values_from = logOdds) %>% unnest() %>%
+  mutate(diff = C-U) %>%
+  ggplot() + 
+    geom_line(aes(x = POS, y = diff),alpha = 0.8, size = 0.5) +
+  geom_line(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CHROM == "XVI" & AllCuSO4_glmer_1byRep$label == "Bulk",], aes(x = POS, y = zscore, color = CSS)) +
+  geom_hline(yintercept = 0) +
+    facet_grid(~CHROM, scales = "free", space = "free")
+
+```
 
 # Kernel testing
 
-```{r}
+```{r, eval = FALSE}
 CHROM8_AIG_logOdds_unsmoothed %>% filter(Bulk == "C") %>% arrange(POS) -> testkernel
 
 testkernelmat <- matrix(c(testkernel$POS, testkernel$avg), ncol = 2)
@@ -602,4 +644,636 @@ test5k %>% arrange(avg) %>% head()
 212535 - 212354
 ```
 
+# Smoothing after log odds
+
+```{r}
+Ziv_rawdata_called %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> Ziv_logOdds_unsmoothed
+
+CB_AIGs <- readRDS("AIG_CFZ_rawdata.rds")
+CB_AIGs %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> CB_rawdata_called
+
+CB_rawdata_called %>% pivot_wider(names_from = Allele, values_from = Reads) %>% unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> CBAIG_logOdds_unsmoothed
+
+cybr_ksmooth <- function(z, p, b = 1000){
+  result <- smoothr::smooth_ksmooth(matrix(c(z,p), ncol = 2), bandwidth = b)
+  return(data.frame(result))
+}
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+} 
+
+
+#Using ksmooth
+Ziv_logOdds_unsmoothed %>% ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+  group_by(Dataset, CHROM) %>%
+  summarize(POS = POS,
+            LODsmooth = frollapply(logOdds, n = 200, FUN = cybr_weightedgauss, align = "center")) -> Ziv_logOdds_ksmooth
+
+CBAIG_logOdds_unsmoothed %>% ungroup() %>% 
+  na.omit() %>%
+  arrange(POS) %>%
+  group_by(Dataset, CHROM) %>%
+  summarize(POS = POS,
+            LODsmooth = frollapply(logOdds, n = 200, FUN = cybr_weightedgauss, align = "center")) -> CBAIG_logOdds_ksmooth
+
+
+Ziv_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ggplot(aes(x = POS, y = LODsmooth, color = Dataset)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+CBAIG_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ggplot(aes(x = POS, y = LODsmooth, color = Dataset)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+
+```
+Average these and find peaks
+
+```{r, fig.width=10, fig.height=4}
+CBAIG_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ungroup() %>% group_by(CHROM, POS) %>% summarize(LODavg = mean(LODsmooth, na.rm = TRUE)) %>% mutate(ds = "CB") -> CBAIG_LODavg
+Ziv_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ungroup() %>% group_by(CHROM, POS) %>% summarize(LODavg = mean(LODsmooth, na.rm = TRUE)) %>% mutate(ds = "NZ") -> Ziv_LODavg
+
+rbind(CBAIG_LODavg, Ziv_LODavg) %>%
+  ggplot(aes(x = POS, y = LODavg, color = ds)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+  
+rbind(CBAIG_LODavg, Ziv_LODavg) %>%
+arrange(POS) %>%
+  group_by(ds, CHROM) %>%
+  summarize(cybr_ksmooth(z = LODavg, p = POS, b = 40000)) %>%
+  summarize(POS = X2,
+                    SmoothZ = X1,
+                    change = frollapply(abs(X1), n = 100, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak_k_AIGs
+  
+rbind(CBAIG_LODavg, Ziv_LODavg) %>%
+  arrange(POS) %>%
+  group_by(ds, CHROM) %>%
+  summarize(POS = POS,
+                    SmoothZ = LODavg,
+                    change = frollapply(abs(LODavg), n = 100, findchange, align = "center")) %>%
+  summarize(POS = POS,
+                    SmoothZ = SmoothZ,
+          change = change,
+                    peak = frollapply(abs(change), n = 5, findpeak, align = "center")) -> smoothpeak_AIGs
+
+smoothpeak_AIGs %>% filter(peak == -1) -> AIGpeaks
+smoothpeak_k_AIGs %>% filter(peak == -1) -> AIGpeaks
+
+rbind(CBAIG_LODavg, Ziv_LODavg) %>%
+  ggplot(aes(x = POS, y = LODavg, color = ds)) + geom_line() + 
+  geom_vline(data = AIGpeaks, aes(xintercept = POS, color = ds)) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+  
+smoothpeak_k_AIGs %>%
+  ggplot(aes(x = POS, y = SmoothZ, color = ds)) + geom_line(color = "black") +
+    geom_vline(data = AIGpeaks, aes(xintercept = POS, color = ds)) +
+  geom_hline(yintercept = 0) +
+  facet_grid(ds~CHROM, scales = "free", space = "free")
+
+# sgd_sporulation
+# sgd_spo
+
+smoothpeak_k_AIGs %>%
+  ggplot(aes(x = POS, y = SmoothZ, color = ds)) +
+    #geom_vline(data = AIGpeaks, aes(xintercept = POS, color = ds)) +
+  geom_vline(data = sgd_sporulation, aes(xintercept = Gene.chromosomeLocation.start, linetype = Gene.symbol), 
+             color = "skyblue3", size = 2, alpha = 0.4) +
+  geom_vline(data = sgd_spo, aes(xintercept = Gene.chromosomeLocation.start, linetype = Gene.symbol), 
+             color = "skyblue3", size = 2, alpha = 0.4) +
+   geom_line() +
+  ylab("Averaged Smoothed log(Wine/Oak)") +
+  geom_hline(yintercept = 0) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+```
+
+
+# Using MultiPool
+
+Python tool to be used in Ubuntu via WSL
+
+```{python, eval = FALSE}
+#Within Ubunt, navigate to environment
+conda env list
+activate MP2024_test2
+
+#Check to make sure Python version is 2 and not 3
+which conda
+
+#Go to directory
+cd /mnt/c/Users/Cassandra/Documents/GitHub/Sequencing/Analysis/Analysis_2024/
+
+#Run either individual files or a loop of all of them
+python mp_inference.py -n 10000 -r 2000 ../U_VII_b.txt ../C_VII_b.txt -m contrast -np -o bVII_out.txt
+
+ for i in I II III IV V VI VII VIII IX X XI XII XIII XIV XV XVI; do python mp_inference.py -n 1000 C_B_$i.txt U_B_$i.txt -m contrast -np -o Bout_$i.txt; done
+
+################################################################################
+-n 10000 -r 2000 -m contrast -np #These are important
+################################################################################
+#CHANGE THE PARAMETERS
+usage: mp_inference.py [-h] -n N [-m {replicates,contrast}] [-r RES] [-c CM]
+                       [-t FILTER] [-np] [-o OUTFILE] [-v]
+                       countfile [countfile ...]
+    
+Multipool: Efficient multi-locus genetic mapping with pooled sequencing,
+version 0.10.2. See http://cgs.csail.mit.edu/multipool/ for more details.
+
+positional arguments:
+  countfile             Input file[s] of allele counts
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -n N, --individuals N
+                        Individuals in each pool (required)
+  -m {replicates,contrast}, --mode {replicates,contrast}
+                        Mode for statistical testing. Default: replicates
+  -r RES, --resolution RES
+                        Bin size for discrete model. Default: 100 bp
+  -c CM, --centimorgan CM
+                        Length of a centimorgan, in base pairs. Default: 3300
+                        (yeast average)
+  -t FILTER, --truncate FILTER
+                        Truncate possibly fixated (erroneous) markers.
+                        Default: true
+  -np, --noPlot         Turn off plotting output.. Default: false
+  -o OUTFILE, --output OUTFILE
+                        Output file for bin-level statistics
+  -v, --version         show program's version number and exit
+```
+
+
+```{r}
+#Produce text files for each chromosome
+
+CB_AIGs <- readRDS("AIG_CFZ_rawdata.rds")
+
+CB_AIGs %>% filter(CHROM == "VIII", Dataset %in% c("U_A", "U_B", "C_A", "C_B")) %>% ggplot(aes(x = POS, y = Coverage)) + geom_point() +geom_vline(xintercept = 212535, color = "red") 
+CB_AIGs %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Wine, Oak)  %>% filter(Dataset %in% c("H5LHYDRX5_n01_C_B.fastq",
+                                            "H5LHYDRX5_n01_C_A.fastq",
+                                            "H5LHYDRX5_n01_U_A.fastq",
+                                            "H5LHYDRX5_n01_U_B.fastq")) -> mpsetup
+
+mpsetup %>% mutate(Dataset = gsub("H5LHYDRX5_n01_", "", Dataset),
+                   Dataset = gsub(".fastq", "", Dataset)) %>%
+  na.omit() -> mpsetup
+
+mpsetup %>% separate(Dataset, into = c("Selection", "Rep"), sep = "_") -> mpsetup_new
+
+mpsetup_new %>% group_by(CHROM, POS, Selection, Rep) %>% mutate(MAF = min(Wine, Oak)/sum(Oak, Wine)) %>%
+  filter(MAF > 0.1) -> mpsetup_maf
+
+mpsetup_new %>% group_by(CHROM, POS, Selection, Rep) %>% mutate(MAF = min(Wine, Oak)/sum(Oak, Wine)) %>%
+  filter(MAF < 0.1) -> mpsetup_maf_sub
+
+mpsetup_maf %>% filter(Selection %in% c("C", "U"), CHROM == "VIII") %>% ggplot(aes(x = POS, y = Wine+Oak)) +
+  geom_point(data = mpsetup_maf_sub[mpsetup_maf_sub$CHROM == "VIII",], color = "black") +
+  geom_point(aes(color = Selection)) +geom_vline(xintercept = 212535, color = "red")
+
+mpsetup_maf %>% filter(Selection %in% c("C", "U"), CHROM == "VIII") %>% ggplot(aes(x = POS, y = log(Wine/Oak))) +
+  geom_point(data = mpsetup_maf_sub[mpsetup_maf_sub$CHROM == "VIII",], color = "black") +
+  geom_point(aes(color = Selection)) +geom_vline(xintercept = 212535, color = "red")
+
+# for(d in unique(mpsetup$Dataset)){
+#   for(c in unique(mpsetup$CHROM)){
+#    mpsetup %>% filter(CHROM == c, Dataset == d) %>%
+#       arrange(POS) %>% ungroup() %>%
+#       select(POS, Wine, Oak) -> temp
+#     filename = paste(d,"_", c,".txt", sep = "")
+#     write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+#   }
+# }
+
+for(d in unique(mpsetup_new$Selection)){
+  for(c in unique(mpsetup_new$CHROM)){
+   mpsetup_new %>% filter(CHROM == c, Selection == d) %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+    filename = paste("MultiPool_Inputs/", d,"_", c,"new.txt", sep = "")
+    write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+  }
+}
+
+mpsetup_maf_sub %>%
+  filter(CHROM == "VIII", Selection == "C") %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  write.table(temp, file = "maf_C_VIII.txt", col.names = FALSE, row.names = FALSE)
+
+  mpsetup_maf_sub %>%
+  filter(CHROM == "VIII", Selection == "U") %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  write.table(temp, file = "maf_U_VIII.txt", col.names = FALSE, row.names = FALSE)
+  
+  ###############################
+  mpsetup_maf_sub %>%
+  filter(CHROM == "XVI", Selection == "C") %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  write.table(temp, file = "maf_C_XVI.txt", col.names = FALSE, row.names = FALSE)
+
+  mpsetup_maf_sub %>%
+  filter(CHROM == "XVI", Selection == "U") %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  write.table(temp, file = "maf_U_XVI.txt", col.names = FALSE, row.names = FALSE)
+  
+```
+
+Chr 7 Zooming in
+
+```{r}
+###############################
+mpsetup_maf_sub %>%
+filter(CHROM == "VII", Selection == "C") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_C_VII.txt", col.names = FALSE, row.names = FALSE)
+
+mpsetup_maf_sub %>%
+filter(CHROM == "VII", Selection == "U") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_U_VII.txt", col.names = FALSE, row.names = FALSE)
+
+###############################
+mpsetup_maf_sub %>% filter(POS < 661735, POS > 332360) %>%
+filter(CHROM == "VII", Selection == "C") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_C_VII_a.txt", col.names = FALSE, row.names = FALSE)
+
+mpsetup_maf_sub %>% filter(POS < 661735, POS > 332360) %>%
+filter(CHROM == "VII", Selection == "U") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_U_VII_a.txt", col.names = FALSE, row.names = FALSE)
+
+###############################
+mpsetup_new %>% filter(POS < 661735, POS > 332360) %>%
+filter(CHROM == "VII", Selection == "C") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_C_VII_b.txt", col.names = FALSE, row.names = FALSE)
+
+mpsetup_new %>% filter(POS < 661735, POS > 332360) %>%
+filter(CHROM == "VII", Selection == "U") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "maf_U_VII_b.txt", col.names = FALSE, row.names = FALSE)
+
+###############################
+mpsetup_new %>% 
+filter(CHROM == "VII", Selection == "C") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "C_VII_b.txt", col.names = FALSE, row.names = FALSE)
+
+mpsetup_new %>% 
+filter(CHROM == "VII", Selection == "U") %>%
+    arrange(POS) %>% ungroup() %>%
+    select(POS, Wine, Oak) -> temp
+write.table(temp, file = "U_VII_b.txt", col.names = FALSE, row.names = FALSE)
+
+```
+
+### How to run in python
+
+python mp_inference.py -n 10000 -r 2000 ../U_VII_b.txt ../C_VII_b.txt -m contrast -np -o bVII_out.txt
+
+Chr VII
+```{r}
+MAF_VII <- read.table("MultiPool_Inputs/VII_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+
+MAF_VII %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = c(171995, 172032, 172132, 187373, 187532, 188143, 205215, 205433, 205637), color = "red") + 
+  geom_vline(xintercept = c(332360, 332484, 332582, 492468, 492815, 492864, 217776, 218225, 218227, 
+                            484222, 484656, 484663, 661642, 661713, 661735)) +
+  geom_vline(xintercept = c(332360, 332484, 332582, 661642, 661713, 661735), size = 2) +
+  ggtitle("CHROM VII") -> MAF7_Plot
+
+require(cowplot)  
+cowplot::plot_grid(Chr7_Plot,MAF7_Plot, ncol = 1)
+
+min(c(332360, 332484, 332582, 661642, 661713, 661735)) #332360
+max(c(332360, 332484, 332582, 661642, 661713, 661735)) #661735
+
+
+MAF_VIIa <- read.table("MultiPool_Inputs/aVII_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+
+MAF_VIIa %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = c(171995, 172032, 172132, 187373, 187532, 188143, 205215, 205433, 205637), color = "red") + 
+  geom_vline(xintercept = c(332360, 332484, 332582, 492468, 492815, 492864, 217776, 218225, 218227, 
+                            484222, 484656, 484663, 661642, 661713, 661735)) +
+  geom_vline(xintercept = c(332360, 332484, 332582, 661642, 661713, 661735), size = 2) +
+  ggtitle("CHROM VII")
+
+MAF_VIIb <- read.table("MultiPool_Inputs/bVII_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+
+MAF_VIIb %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = c(171995, 172032, 172132, 187373, 187532, 188143, 205215, 205433, 205637), color = "red") + 
+  geom_vline(xintercept = c(332360, 332484, 332582, 492468, 492815, 492864, 217776, 218225, 218227, 
+                            484222, 484656, 484663, 661642, 661713, 661735)) +
+  geom_vline(xintercept = c(332360, 332484, 332582, 661642, 661713, 661735), size = 2) +
+  ggtitle("CHROM VII")
+
+VIIb <- read.table("MultiPool_Inputs/bVII_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+
+VIIb %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = c(171995, 172032, 172132, 187373, 187532, 188143, 205215, 205433, 205637), color = "red") + 
+  geom_vline(xintercept = c(332360, 332484, 332582, 492468, 492815, 492864, 217776, 218225, 218227, 
+                            484222, 484656, 484663, 661642, 661713, 661735), color = "blue") +
+  ggtitle("CHROM VII")
+```
+
+```{r}
+MAF_VIII <- read.table("MultiPool_Inputs/VIII_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+A_VIII <- read.table("MultiPool_Inputs/New_out_VIII.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIG")
+
+A_VIII %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = 212535, color = "red") + ggtitle("CHROM VIII")
+
+read.table("MultiPool_Inputs/Aout_XII.txt", sep = "\t", header = TRUE) %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
+  geom_vline(xintercept = 568567, color = "red") + ggtitle("CHROM XII")
+```
+
+Trying this with my own CuSO4 data actually
+
+```{r}
+rd_factor <- readRDS("rd_factorG.rds")
+
+unique(rd_factor$Dataset)
+
+testmultipool <- rd_factor %>% filter(Dataset %in% c("CuSO4_CSSI_SelectedA" ,  "CuSO4_CSSI_SelectedC" ,  "CuSO4_CSSI_UnselectedA", "CuSO4_CSSI_UnselectedC"))
+################################################################################
+testmultipool %>% filter(Background == "Oak", Bulk == "Copper", CHROM == "VIII") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Oak_C_VIII
+Oak_C_VIII %>% select(POS, Wine, Oak) %>% na.omit() -> temp
+write.table(temp, file = "Oak_C_VIII.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Oak", Bulk == "Dilute", CHROM == "VIII") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Oak_U_VIII
+Oak_U_VIII %>% select(POS, Wine, Oak) %>% na.omit() -> temp
+write.table(temp, file = "Oak_U_VIII.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Wine", Bulk == "Copper", CHROM == "VIII") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Wine_C_VIII
+Wine_C_VIII %>% select(POS, Wine, Oak) %>% na.omit() -> temp
+write.table(temp, file = "Wine_C_VIII.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Wine", Bulk == "Dilute", CHROM == "VIII") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Wine_U_VIII
+Wine_U_VIII %>% select(POS, Wine, Oak) %>% na.omit() -> temp
+write.table(temp, file = "Wine_U_VIII.txt", col.names = FALSE, row.names = FALSE)
+################################################################################
+OakVIII <- read.table("MultiPool_Inputs/VIII_Oak_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_O")
+WineVIII <- read.table("MultiPool_Inputs/VIII_Wine_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_W")
+
+rbind(OakVIII,WineVIII,MAF_VIII) %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = exp)) + geom_line() +
+  geom_vline(xintercept = 212535, color = "black") + ggtitle("CHROM VIII")
+
+rbind(A_VIII, OakVIII,WineVIII, MAF_VIII) %>% ggplot(aes(x = Bin.start..bp., y = MLE.allele.freq., color = exp)) + geom_line() +
+  geom_vline(xintercept = 212535, color = "black") + ggtitle("CHROM VIII")
+```
+
+Attempt with Chr XVI
+
+```{r}
+testmultipool <- rd_factor %>% filter(Dataset %in% c("CuSO4_CSSI_SelectedA" ,  "CuSO4_CSSI_SelectedC" ,  "CuSO4_CSSI_UnselectedA", "CuSO4_CSSI_UnselectedC"))
+################################################################################
+testmultipool %>% filter(Background == "Oak", Bulk == "Copper", CHROM == "XVI") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Oak_C_XVI
+Oak_C_XVI %>% select(POS, Wine, Oak) %>% na.omit() %>% unnest() -> temp
+write.table(temp, file = "Oak_C_XVI.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Oak", Bulk == "Dilute", CHROM == "XVI") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Oak_U_XVI
+Oak_U_XVI %>% select(POS, Wine, Oak) %>% na.omit() %>% unnest() -> temp
+write.table(temp, file = "Oak_U_XVI.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Wine", Bulk == "Copper", CHROM == "XVI") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Wine_C_XVI
+Wine_C_XVI %>% select(POS, Wine, Oak) %>% na.omit() %>% unnest() -> temp
+write.table(temp, file = "Wine_C_XVI.txt", col.names = FALSE, row.names = FALSE)
+
+testmultipool %>% filter(Background == "Wine", Bulk == "Dilute", CHROM == "XVI") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Wine_U_XVI
+Wine_U_XVI %>% select(POS, Wine, Oak) %>% na.omit()  %>% unnest()-> temp
+write.table(temp, file = "Wine_U_XVI.txt", col.names = FALSE, row.names = FALSE)
+################################################################################
+OakXVI <- read.table("MultiPool_Inputs/XVI_Oak_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_O")
+WineXVI <- read.table("MultiPool_Inputs/XVI_Wine_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_W")
+MAF_XVI <- read.table("MultiPool_Inputs/XVI_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
+
+
+rbind(OakXVI,WineXVI,MAF_XVI) %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = exp)) + geom_line() + ggtitle("CHROM XVI")
+
+rbind(OakXVI,WineXVI, MAF_XVI) %>% ggplot(aes(x = Bin.start..bp., y = MLE.allele.freq., color = exp)) + geom_line() + ggtitle("CHROM XVI")
+```
+
+### Running everything with a larger window size and population
+
+```{r, fig.width=12, fig.height=4}
+test8 <- read.table("MultiPool_Inputs/2kr_out_VIII.txt", sep = "\t", header = TRUE) %>% mutate(CHROM = "VIII")
+AllMP <- head(test8,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/2kr_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AllMP <- rbind(AllMP, tempfile)
+}
+
+
+AllMP %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + ggtitle("CHROM VIII") +
+  facet_wrap("CHROM", scales = "free")
+
+AllMP %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() + ggtitle("CHROM VIII") +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  ylim(0,100)
+
+AllMP %>% distinct() %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq.,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000) %>%
+  filter(LOD < 75) %>%
+  ggplot(aes(x = POS, y = LOD, color = CHROM)) + geom_line() + ggtitle("AIG, n = 10k, r = 2k") +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+  theme(legend.position = "none")
+
+```
+
+
+
+Fewer individuals (n = 1000 instead of 10000)
+```{r}
+AllMP_few <- head(test8,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/2kr_few_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AllMP_few <- rbind(AllMP, tempfile)
+}
+
+AllMP_few4k <- head(test8, 1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/4kr_few_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AllMP_few4k <- rbind(AllMP_few4k, tempfile)
+}
+
+AllMP_few8k <- head(test8, 1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/8kr_few_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AllMP_few8k <- rbind(AllMP_few8k, tempfile)
+}
+```
+
+
+```{r, fig.width=12, fig.height=4}
+rbind(
+      data.frame(AllMP_few, W = "2k"),
+      data.frame(AllMP_few4k, W = "4k"),
+      data.frame(AllMP_few8k, W = "8k")) %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq., W = W,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000) %>%
+  ungroup() %>%
+  group_by(W) %>%
+  summarize(CHROM = CHROM, LOD = LOD, MLE = MLE, POS = POS, maxLOD = max(LOD)) %>%
+  mutate(LOD_scaled = LOD/maxLOD) %>%
+  ggplot() +
+  geom_line(aes(x = POS, y = LOD_scaled, color = W)) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  ylim(0,0.5)
+
+rbind(
+      data.frame(AllMP_few, W = "2k"),
+      data.frame(AllMP_few4k, W = "4k"),
+      data.frame(AllMP_few8k, W = "8k")) %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq., W = W,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000) %>%
+  ungroup() %>%
+  group_by(W) %>%
+  summarize(CHROM = CHROM, LOD = LOD, MLE = MLE, POS = POS, maxLOD = max(LOD)) %>%
+  mutate(LOD_scaled = LOD/maxLOD) %>%
+  filter(CHROM == "VII") %>%
+  ggplot() +
+  geom_point(aes(x = POS, y = LOD_scaled, color = W)) +
+  facet_grid(~CHROM, scales = "free", space = "free") 
+
+```
+
+```{r, fig.width=12, fig.height=4}
+AllMP_few %>% distinct() %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq.,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000) -> addtoplot
+
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) +
+  # geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),],
+  #            aes(xintercept = POS), alpha = 0.2)+
+  # geom_vline(data = TruePeaks[TruePeaks$label %in% c("Interaction"),],
+             # aes(xintercept = POS), alpha = 0.2, color = "red", size = 2)+
+  geom_line(aes(color = CSS)) +
+  geom_point(data = addtoplot, aes(x = POS, y = LOD/5), size = 0.1, alpha = 0.3) +
+  #geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_wrap("CHROM", scales = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) +
+  # geom_vline(data = TruePeaks[TruePeaks$label %in% c("Bulk"),],
+  #            aes(xintercept = POS), alpha = 0.2)+
+  # geom_vline(data = TruePeaks[TruePeaks$label %in% c("Interaction"),],
+             # aes(xintercept = POS), alpha = 0.2, color = "red", size = 2)+
+  geom_line(aes(color = CSS)) +
+  geom_line(data = addtoplot, aes(x = POS, y = LOD/5)) +
+  #geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(~CHROM, scales = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ylim(0, 20)
+
+```
+
+```{r, fig.width=6, fig.height=4}
+AllMP_few %>% distinct() %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq.,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000, CHROM == "VII") -> addtoplot2
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label %in% c("Bulk", "Interaction"), CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) +
+  geom_line(aes(color = label, linetype = CSS)) +
+  geom_line(data = addtoplot2, aes(x = POS, y = LOD/5)) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_color_manual(values = c("gray", "purple"))
+
+AllMP_few %>% distinct() %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq.,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000, CHROM == "VIII") -> addtoplot2
+AllCuSO4_glmer_1byRep %>%
+  filter(label %in% c("Bulk"), CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) +
+  geom_line(aes(color = label, linetype = CSS)) +
+  geom_line(data = addtoplot2, aes(x = POS, y = LOD/5)) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk", "Interaction"),], aes(yintercept = q5)) +
+  labs(linetype = NULL) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_color_manual(values = c("gray", "purple"))
+
+```
+
+```{r}
+OakVIII <- read.table("MultiPool_Inputs/VIII_Oak_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_O")
+WineVIII <- read.table("MultiPool_Inputs/VIII_Wine_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "CB_W")
+
+AllMP_few %>% filter(CHROM == "VIII") %>%
+  summarize(LOD.score = LOD.score, MLE.allele.freq. = MLE.allele.freq.,
+            Bin.start..bp. = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+    filter(Bin.start..bp. < max - 30000, Bin.start..bp. > 30000) %>%
+  select(-max) %>%
+
+  mutate(exp = "AIG") %>%
+  rbind(OakVIII,WineVIII) %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = exp)) + geom_line() + ggtitle("CHROM 8, n = 1k, r = 2k")
+
+```
 

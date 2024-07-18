@@ -615,6 +615,15 @@ saveRDS(q5_css_G200_100, file = "q5_css_G200_100.rds")
 ```
 
 ```{r}
+CuSO4_CSS8_glmer_unsm_PERM <- readRDS("CuSO4_CSS8_glmer_unsm_PERMG.rds")
+
+CuSO4_CSS8_glmer_unsm_PERM %>% ggplot(aes(x = (zscore))) + geom_density(aes(color = label))
+
+CuSO4_CSS8_glmer_unsm_PERM %>% ggplot(aes(x = abs(zscore))) + geom_density(aes(color = label), size = 2, alpha = 0.5)
+```
+
+
+```{r}
 CuSO4_CSS1_glmer_unsm <- readRDS("CuSO4_CSS1_glmer_unsmG.rds")
 CuSO4_CSS8_glmer_unsm <- readRDS("CuSO4_CSS8_glmer_unsmG.rds")
 q5_css_G200 <- readRDS("q5_css_G200.rds")
