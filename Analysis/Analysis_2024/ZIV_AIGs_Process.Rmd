@@ -2,7 +2,11 @@
 title: "MergedVCFs_ZivAIG_May24"
 author: "Cassandra Buzby"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -288,6 +292,59 @@ cybrInputGATKTable2 <- function(Ziv_rawData, yeast = TRUE){
   return(results)
 
 }
+
+################################################################################
+
+subtract <- function(POS){
+  return(max(POS) - min(POS))
+}
+
+findchange <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  if(is.na(diff)){
+    return(NA)
+  }else if(diff == 0){
+    return(0)
+  }else{
+    return(diff > 0)  
+  }
+}
+
+findpeak <- function(x){
+  t <- length(x)
+  diff <- x[t] - x[1]
+  return(diff)
+}
+
+  
+cybr_weightedgauss <- function(myx){
+  myy <- dnorm(1:length(myx), mean = length(myx)/2, sd = 10)
+  return(weighted.mean(x = myx, y = myy, na.rm = TRUE))
+} 
+
+################################################################################
+sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
+
+genes <- c("CRS5", "SOD1", "CUP1-1", "CUP1-2", "MET17", "MUP1", "PCL1", "OYE3", "FRE1", "FRE7", "CTR1", "IRC7")
+sgd_orfs %>% filter(Gene.symbol %in% genes) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper
+
+genes_eh <- c("VMA4", "MTL1", "PTR2", "LEU9", "IRC15")
+sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) -> sgd_copper_eh
+
+#HUBS
+sgd_orfs %>% filter(Gene.symbol %in% c("PTR3", "VPS70", "CUP1", "YLR257W")) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Matsui") -> sgd_hubs_Matsui
+
+sgd_orfs %>% filter(Gene.symbol %in% eQTL_hubs_Genes$GeneName) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Albert") %>% arrange(CHROM) -> sgd_hubs_Albert
+
+#Sporulation Genes
+sgd_orfs %>% filter(Gene.symbol %in% c("RME1", "MKT1", "TAO3")) %>%
+  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Sporulation") -> sgd_sporulation
+
 ```
 
 ## Load in table and match to oak or wine parents
@@ -584,6 +641,18 @@ CB_AIGs_logOdds_unsmoothed %>% group_by(Bulk, CHROM, POS) %>% summarize(avg = me
 ```
 
 ```{r}
+CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
+CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
+q5_all <- readRDS("q5_CuSO4_CSS.rds")
+
+
+CuSO4_CSS1_glmer_1byRep %>% filter(CHROM != "I") %>% mutate(CSS = "I") -> temp1
+CuSO4_CSS8_glmer_1byRep %>% mutate(CSS = "VIII") %>%
+  rbind(temp1) -> AllCuSO4_glmer_1byRep
+
+```
+
+```{r}
 ################################################################################
 #Chromosome XVI
 CB_AIGs_logOdds_unsmoothed %>% filter(CHROM == "XVI", Bulk %in% c("U", "C")) %>% ggplot() + 
@@ -866,6 +935,37 @@ for(d in unique(mpsetup_new$Selection)){
   }
 }
 
+```
+
+```{r}
+rawdata_called_ex <- readRDS("rawdata_called_ex.rds")
+rawdata_called_ex %>% pivot_wider(names_from = Allele, values_from = Reads) %>%
+  select(CHROM, POS, Wine, Oak, Dataset) -> CuSO4_mpsetup
+
+expnames <- read.csv("experiment_names_524.csv")
+
+CuSO4_mpsetup %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Pool", "Dataset"), sep = "_", extra = "merge") %>%
+  merge(expnames) %>% unnest() %>% select(CHROM, POS, Bulk, Wine, Oak)-> CuSO4_mpsetup_final
+
+CuSO4_mpsetup_final %>% na.omit() -> CuSO4_mpsetup_final
+
+CuSO4_mpsetup_final %>% filter(Bulk != "Fluconazole") -> CuSO4_mpsetup_final
+
+for(d in unique(CuSO4_mpsetup_final$Bulk)){
+  for(c in unique(CuSO4_mpsetup_final$CHROM)){
+   CuSO4_mpsetup_final %>% filter(CHROM == c, Bulk == d) %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+    filename = paste("MultiPool_Inputs/CUSO4all", d,"_", c,"new.txt", sep = "")
+    write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+  }
+}
+
+```
+
+```{r}
 mpsetup_maf_sub %>%
   filter(CHROM == "VIII", Selection == "C") %>%
       arrange(POS) %>% ungroup() %>%
@@ -999,7 +1099,7 @@ VIIb %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() +
   ggtitle("CHROM VII")
 ```
 
-```{r}
+```{r, eval = FALSE}
 MAF_VIII <- read.table("MultiPool_Inputs/VIII_MAF_out.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIGmaf")
 A_VIII <- read.table("MultiPool_Inputs/New_out_VIII.txt", sep = "\t", header = TRUE) %>% mutate(exp = "AIG")
 
@@ -1012,7 +1112,7 @@ read.table("MultiPool_Inputs/Aout_XII.txt", sep = "\t", header = TRUE) %>% ggplo
 
 Trying this with my own CuSO4 data actually
 
-```{r}
+```{r, eval = FALSE}
 rd_factor <- readRDS("rd_factorG.rds")
 
 unique(rd_factor$Dataset)
@@ -1047,7 +1147,7 @@ rbind(A_VIII, OakVIII,WineVIII, MAF_VIII) %>% ggplot(aes(x = Bin.start..bp., y =
 
 Attempt with Chr XVI
 
-```{r}
+```{r, eval = FALSE}
 testmultipool <- rd_factor %>% filter(Dataset %in% c("CuSO4_CSSI_SelectedA" ,  "CuSO4_CSSI_SelectedC" ,  "CuSO4_CSSI_UnselectedA", "CuSO4_CSSI_UnselectedC"))
 ################################################################################
 testmultipool %>% filter(Background == "Oak", Bulk == "Copper", CHROM == "XVI") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) -> Oak_C_XVI
@@ -1275,5 +1375,39 @@ AllMP_few %>% filter(CHROM == "VIII") %>%
   mutate(exp = "AIG") %>%
   rbind(OakVIII,WineVIII) %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = exp)) + geom_line() + ggtitle("CHROM 8, n = 1k, r = 2k")
 
+```
+
+## My actual data run through multipool
+
+```{r, fig.width=12, fig.height=4}
+test8 <- read.table("MultiPool_Inputs/CuSO4_all_out_I.txt", sep = "\t", header = TRUE) %>% mutate(CHROM = "4")
+
+Cu_MP <- head(test8,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/CuSO4_all_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  Cu_MP <- rbind(Cu_MP, tempfile)
+}
+
+Cu_MP %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + ggtitle("CuSO4 Multipool, n = 10k, r = 2k") +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot, aes(x = POS, y = LOD/5), color = "black") +
+
+  theme(legend.position = "none") +
+  ylim(0,20)
+
+
+Cu_MP %>% ggplot(aes(x = Bin.start..bp., y = MLE.allele.freq., color = CHROM)) + geom_line() + ggtitle("CuSO4 Multipool, n = 10k, r = 2k") +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot, aes(x = POS, y = MLE), color = "black") +
+geom_hline(yintercept = 0.5, linetype = "dashed")+
+  theme(legend.position = "none") 
+
+Cu_MP %>% filter(CHROM == "VIII") %>% ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + ggtitle("CuSO4 Multipool, n = 10k, r = 2k") +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "VIII",], aes(x = POS, y = LOD), color = "black") +
+geom_hline(yintercept = 0.5, linetype = "dashed")+
+  theme(legend.position = "none") 
 ```
 
