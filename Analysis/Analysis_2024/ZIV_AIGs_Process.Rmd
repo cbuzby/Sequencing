@@ -338,9 +338,6 @@ sgd_orfs %>% filter(Gene.symbol %in% genes_eh) %>%
 sgd_orfs %>% filter(Gene.symbol %in% c("PTR3", "VPS70", "CUP1", "YLR257W")) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Matsui") -> sgd_hubs_Matsui
 
-sgd_orfs %>% filter(Gene.symbol %in% eQTL_hubs_Genes$GeneName) %>%
-  mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Albert") %>% arrange(CHROM) -> sgd_hubs_Albert
-
 #Sporulation Genes
 sgd_orfs %>% filter(Gene.symbol %in% c("RME1", "MKT1", "TAO3")) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Sporulation") -> sgd_sporulation
@@ -385,12 +382,16 @@ Ziv_rawdata %>% #head(3000) %>%
   select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> Ziv_rawdata_called
 
+saveRDS(Ziv_rawdata_called, file = "Ziv_rawdata_called.rds")
+
 # Ziv_rawdata_called %>% filter(CHROM == "II") %>%
 #   ggplot(aes(x = POS, y = Dataset, color = Reads)) + geom_tile()
 
 ################################################################################
 Ziv_rawdata_called %>% group_by(Dataset, CHROM, Allele) %>% arrange(POS) %>%
   reframe(POS = POS, SmoothCount = ceiling(frollapply(Reads, n = 300, FUN = median, align = "center", na.rm = TRUE))) -> Ziv_rawdata_smoothed #%>% na.omit()
+
+saveRDS(Ziv_rawdata_smoothed, file = "Ziv_rawdata_smoothed.rds")
 
 # Ziv_rawdata_smoothed %>% filter(CHROM == "II") %>%
 #   ggplot(aes(x = POS, y = Dataset, color = SmoothCount)) + geom_tile()
@@ -472,6 +473,7 @@ CB_AIGs_called %>%
   separate(Dataset, into = c("Bulk", "Rep")) %>%
   filter(Bulk %in% c("C", "F", "Z", "U")) -> CB_AIGs_logOdds_unsmoothed
 
+saveRDS(CB_AIGs_logOdds, file = "CB_AIGs_logOdds.rds")
 ```
 
 ```{r, fig.width=12, fig.height=6}
