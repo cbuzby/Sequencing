@@ -608,11 +608,6 @@ AllCuSO4_glmer_1byRep %>% ungroup() %>%
 
 checksd %>% filter(sdz < 0.25) -> AllCuSO4_glmer_1byRep
 
-```
-
-What genes are nearby?
-
-```{r, fig.width=16, fig.height=5}
 sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
 
 ################################################################################
@@ -639,6 +634,177 @@ sgd_orfs %>% filter(Gene.symbol %in% c("PTR3", "VPS70", "CUP1", "YLR257W")) %>%
 #Sporulation Genes
 sgd_orfs %>% filter(Gene.symbol %in% c("RME1", "MKT1", "TAO3")) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Sporulation") -> sgd_sporulation
+```
+# Figures in Order
+
+## Figure 1
+
+There is no code for this because it's all done in Illustrator
+
+## Figure 2
+
+```{r}
+
+sgd_copper %>% filter(Gene.symbol %in% c("CUP1-1", "FRE1")) -> Fig2Genes
+
+AllCuSO4_glmer_1byRep %>% filter(CHROM %in% c("VIII", "XII")) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_vline(data = Fig2Genes, aes(xintercept = c(Gene.chromosomeLocation.start), color = Gene.symbol),
+             size = 2, alpha = 0.5) +  
+  geom_line(aes(linetype = CSS)) +
+  # geom_line(data = Cu_MP[Cu_MP$CHROM == "VIII" | Cu_MP$CHROM == "XII",], aes(x = Bin.start..bp., y = LOD.score), color = "red") +
+
+    geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  facet_wrap("CHROM", scales = "free") +
+  #facet_grid(~CHROM, scales = "free", space = "free") +
+  labs(color = NULL, linetype = NULL, alpha = NULL) +
+  theme(legend.position = "bottom") +ylab("")+
+    scale_size_manual(values = c(0.1, 2)) +
+  scale_color_manual(values = c("darkturquoise", "darkorange"))
+
+```
+
+## Figure 3
+
+```{r, fig.width=8, fig.height=3}
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ungroup() %>%
+  group_by(CHROM, CSS) %>%
+  summarize(max_zscore = max(zscore),
+            min_zscore = min(zscore)) %>%
+  pivot_longer(c(max_zscore, min_zscore), values_to = "zscore") %>%
+  group_by(CHROM, CSS) %>%
+  summarize(zscore = zscore,
+            maxactual = max(abs(zscore))) %>%
+  filter(abs(zscore) == maxactual) %>%
+  merge(AllCuSO4_glmer_1byRep) -> peaks_rainbow
+
+peaks_rainbow %>% filter(abs(zscore) > 1.1) -> peaks_rainbow
+
+peaks_rainbow$CHROM <- factor(peaks_rainbow$CHROM, levels = as.character(as.roman(1:16)))
+
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, color = CHROM, linetype = CSS), alpha = 0.3, size = 1) + 
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  #theme_classic() +
+  theme(legend.position = "none",panel.grid = element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_color_manual(values = c(1,"darkorange","skyblue3","darkorange","skyblue3","darkorange","skyblue3",1,
+                                "skyblue3","darkorange","skyblue3","darkorange","skyblue3","darkorange","skyblue3","darkorange"))
+```
+
+
+## Figure 4
+
+The big one
+
+```{r}
+AllCuSO4_glmer_1byRep %>% filter(label == "Interaction", CSS == "VIII",
+                                 CHROM %in% c("VII", "X", "XI", "XII", "XIV", "XV")) %>%
+  group_by(CHROM) %>%
+  arrange(desc(abs(zscore))) %>%
+  summarize(POS = head(POS, 1)) -> IntPeaks2
+
+rd_factor %>% filter(POS %in% IntPeaks2$POS) %>%
+  mutate(Background = gsub("Oak", 0, Background),
+         Background = gsub("Wine", 1, Background)) %>%
+  mutate(Bulk = gsub("Dilute", "Unselected", Bulk)) %>%
+  ggplot(aes(x = as.numeric(Background), y = SmoothCount, color = Allele)) + 
+  geom_point(shape = 1, size = 2, stroke = 1, alpha = 0.8) + 
+  geom_smooth(method = "lm", alpha = 0.2) +
+  scale_color_manual(values = c("palegreen3", "firebrick3")) +
+    xlab("Parental Background") +
+  ylab("Allele Count") +
+    theme(legend.position = "bottom") +
+
+    geom_hline(yintercept = Inf, color = "white", size = 4) +
+    theme(strip.background.y = element_rect(fill = c("black", "darkturquoise" )),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid(Bulk ~ paste(CHROM, POS)) -> pa
+
+AllCuSO4_glmer_1byRep %>% merge(IntPeaks2) %>%
+  filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
+  mutate(Coefficient = label) %>%
+  #filter(abs(zscore) > 1.1) %>%
+  ggplot(aes(x = as.character(POS), y = abs(zscore), color = Coefficient)) + 
+  geom_point(stroke = 1, size = 2, alpha = 0.8, shape = 2) + 
+  facet_grid( ~ CHROM, scales = "free") +
+  ylim(0,10) +
+  xlab("") + ylab("abs Z-score") +
+      theme(legend.position = "bottom") +
+
+  scale_color_manual(values = c("black", "purple")) -> pb
+
+#plot_grid(pa, pb, ncol = 1, rel_heights = c(2,1))
+
+```
+```{r}
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CSS == "I") %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) +
+  geom_line() +
+  xlab("") +
+  ylab("abs Z-score") +
+  geom_hline(aes(yintercept = q5)) +
+  #labs(linetype = NULL, color = NULL) +
+  scale_color_manual(values = c("black", "purple")) +
+  theme(strip.background.y = element_rect(fill = c("#6aa0c7", "#f8923a"),color = c("#6aa0c7", "#f8923a")),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS1
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CSS == "VIII") %>%
+  merge(q5_all) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) +
+  geom_line() +
+  geom_vline(data = IntPeaks,
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", size = 1, alpha = 0.4)+
+  xlab("") +
+  ylab("abs Z-score") +
+  geom_hline(aes(yintercept = q5)) +
+  #labs(linetype = NULL, color = NULL) +
+  scale_color_manual(values = c("black", "purple")) +
+  theme(strip.background.y = element_rect(fill = c( "#f8923a"),color = c("#f8923a")),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS8
+
+```
+
+```{r, fig.height=12, fig.width=8}
+plot_grid(pCSS1, pCSS8, pa, pb, ncol = 1, rel_heights = c(1,1,2,1))
+
+```
+
+## Figure 5
+
+Not sure if I'll even keep this one, so not necessarily putting it in here
+
+## Figure 6
+
+Also not sure if keeping this one
+
+# All Code
+
+What genes are nearby?
+
+```{r, fig.width=16, fig.height=5}
+
 
 AllCuSO4_glmer_1byRep %>% filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore))) + 
@@ -2064,6 +2230,60 @@ AllCuSO4_glmer_1byRep %>%
 
 ```{r, fig.height=12, fig.width=8}
 plot_grid(pCSS1, pCSS8, pa, pb, ncol = 1, rel_heights = c(1,1,2,1))
+
+```
+
+# Random sim
+
+Assume that you have two alleles, and that they can take on 9 different values (1-9). The sum of the values are the phenotype. If they are the SAME number, there is an advantage of +2 to the phenotype. If they are both even or both odd, there is a +1. For 2,2 for example, it would be +3 because (1) same number and (2) both even.
+
+If only one number can change at a time, what is the evolutionary landscape?
+
+```{r}
+merge(data.frame(A1 = 1:9),
+      data.frame(A2 = 1:9)) %>%
+  mutate(Same = 2* as.numeric(A1 == A2)) %>%
+  mutate(Even = as.numeric((abs(A1 - A2))%%2 == 0)) %>%
+  mutate(pheno = A1+A2+Same+Even) -> genotypephenotype
+
+genotypephenotype %>%
+  ggplot(aes(x= A1, y = A2, fill = pheno, alpha = pheno > 10)) + geom_tile() +
+  theme_minimal()
+
+genotypephenotype %>%
+  ggplot(aes(x = A1, y = pheno)) + geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(slope = 1,intercept = 0) +
+  ylim(0,20) +
+  ggtitle("No Selection")+
+  facet_wrap("A2")
+
+genotypephenotype %>%
+  filter(pheno > 5) %>%
+  ggplot(aes(x = A1, y = pheno)) + geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(slope = 1,intercept = 0) +
+  ylim(0,20) +
+  ggtitle("Selection > 5")+
+  facet_wrap("A2")
+
+genotypephenotype %>%
+  filter(pheno > 10) %>%
+  ggplot(aes(x = A1, y = pheno)) + geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(slope = 1,intercept = 0) +
+  ylim(0,20) +
+  ggtitle("Selection > 10")+
+  facet_wrap("A2")
+
+genotypephenotype %>%
+  filter(pheno > 10) %>%
+  ggplot(aes(x = A1, y = pheno)) + 
+  geom_point() +
+  geom_smooth(method = "lm") +
+  geom_smooth(data = genotypephenotype, method = "lm", color = "red") +
+  geom_abline(slope = 1,intercept = 0) +  ylim(0,20) +
+  ggtitle("Overall Effect of A1 with and without selection > 10")
 
 ```
 
