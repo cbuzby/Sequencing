@@ -454,6 +454,8 @@ CB_AIGs %>% #head(3000) %>%
   select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> CB_AIGs_called
 
+saveRDS(CB_AIGs_called, file = "CB_AIGs_called.rds")
+
 CB_AIGs_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> CB_AIGs_called
 
 CB_AIGs_called %>% group_by(Dataset, CHROM, Allele) %>% arrange(POS) %>%
@@ -763,6 +765,7 @@ Ziv_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ggplot(aes(x = POS, y 
 CBAIG_logOdds_ksmooth %>% filter(abs(LODsmooth) != Inf) %>% ggplot(aes(x = POS, y = LODsmooth, color = Dataset)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
 
 ```
+
 Average these and find peaks
 
 ```{r, fig.width=10, fig.height=4}

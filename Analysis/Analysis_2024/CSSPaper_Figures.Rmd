@@ -610,6 +610,13 @@ checksd %>% filter(sdz < 0.25) -> AllCuSO4_glmer_1byRep
 
 sgd_orfs <- read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/SGD_ORFs.csv")
 
+AllCuSO4_glmer_1byRep %>%
+  merge(q5_all) %>% filter(label == "Interaction", 
+                      abs(zscore) > q5) %>%
+  arrange(desc(abs(zscore))) %>%
+  group_by(CHROM, CSS) %>%
+  summarize(POS = head(POS, 1)) -> IntPeaks
+
 ################################################################################
 #TESTING
 sgd_orfs %>% filter(Gene.symbol %in% c("COA2")) %>%
@@ -635,6 +642,37 @@ sgd_orfs %>% filter(Gene.symbol %in% c("PTR3", "VPS70", "CUP1", "YLR257W")) %>%
 sgd_orfs %>% filter(Gene.symbol %in% c("RME1", "MKT1", "TAO3")) %>%
   mutate(CHROM = gsub("chr", "", Gene.chromosome.primaryIdentifier)) %>% mutate(Hub = "Sporulation") -> sgd_sporulation
 ```
+MULTIPOOL Data
+```{r}
+#Start header to make everything easier
+test8 <- read.table("MultiPool_Inputs/CuSO4_all_out_I.txt", sep = "\t", header = TRUE) %>% mutate(CHROM = "4")
+
+#Load in all advanced intercross data
+AllMP_few <- head(test8,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/2kr_few_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AllMP_few <- rbind(AllMP_few, tempfile)
+}
+
+AllMP_few %>% distinct() %>%
+  group_by(CHROM) %>%
+  summarize(LOD = LOD.score, MLE = MLE.allele.freq.,
+            POS = Bin.start..bp.,
+            max = max(Bin.start..bp.)) %>%
+  filter(POS < max - 30000, POS > 30000) -> addtoplot
+
+#Load in all CuSO4 F2 data
+Cu_MP <- head(test8,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/CuSO4_all_out_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  Cu_MP <- rbind(Cu_MP, tempfile)
+}
+```
+
 # Figures in Order
 
 ## Figure 1
@@ -656,12 +694,53 @@ AllCuSO4_glmer_1byRep %>% filter(CHROM %in% c("VIII", "XII")) %>%
   # geom_line(data = Cu_MP[Cu_MP$CHROM == "VIII" | Cu_MP$CHROM == "XII",], aes(x = Bin.start..bp., y = LOD.score), color = "red") +
 
     geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
-  facet_wrap("CHROM", scales = "free") +
-  #facet_grid(~CHROM, scales = "free", space = "free") +
+  facet_wrap("CHROM", ncol = 1, scales = "free_y") +
   labs(color = NULL, linetype = NULL, alpha = NULL) +
-  theme(legend.position = "bottom") +ylab("")+
-    scale_size_manual(values = c(0.1, 2)) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  ylab("") + ylim(0, NA) + 
+  scale_y_continuous( breaks=pretty_breaks()) +
+  scale_size_manual(values = c(0.1, 2)) +
   scale_color_manual(values = c("darkturquoise", "darkorange"))
+
+AllCuSO4_glmer_1byRep %>% filter(CHROM %in% c("VIII", "XII")) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_vline(data = Fig2Genes, aes(xintercept = c(Gene.chromosomeLocation.start), color = Gene.symbol),
+             size = 2, alpha = 0.5) +  
+  geom_line(aes(linetype = CSS)) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5)) +
+  facet_wrap("CHROM", ncol = 1, scales = "free") +
+  labs(color = NULL, linetype = NULL, alpha = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  ylab("") + ylim(0, NA) + 
+  scale_y_continuous( breaks=pretty_breaks()) +
+  scale_x_continuous( breaks=pretty_breaks()) +
+  scale_size_manual(values = c(0.1, 2)) +
+  scale_color_manual(values = c("darkturquoise", "darkorange")) +
+  scale_linetype_manual(values = c(2,1))
+
+```
+
+```{r, fig.width=10, fig.height=3}
+AllCuSO4_glmer_1byRep %>% filter(CHROM %in% c("VIII", "XII")) %>%
+  filter(label %in% c("Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_vline(data = Fig2Genes, aes(xintercept = c(Gene.chromosomeLocation.start), color = Gene.symbol),
+             size = 2, alpha = 0.5) +  
+  geom_line(aes(linetype = CSS)) +
+  geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5, linetype = CSS)) +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  labs(color = NULL, linetype = NULL, alpha = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  ylab("") + ylim(0, NA) + 
+  scale_y_continuous( breaks=pretty_breaks()) +
+  scale_x_continuous( breaks=pretty_breaks()) +
+  scale_size_manual(values = c(0.1, 2)) +
+  scale_color_manual(values = c("darkturquoise", "darkorange")) +
+  scale_linetype_manual(values = c(2,1))
 
 ```
 
@@ -681,10 +760,25 @@ AllCuSO4_glmer_1byRep %>%
   filter(abs(zscore) == maxactual) %>%
   merge(AllCuSO4_glmer_1byRep) -> peaks_rainbow
 
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Interaction", CHROM == "XII") %>%
+  ungroup() %>%
+  group_by(CHROM, CSS) %>%
+  summarize(max_zscore = max(zscore),
+            min_zscore = min(zscore)) %>%
+  pivot_longer(c(max_zscore, min_zscore), values_to = "zscore") %>%
+  group_by(CHROM, CSS) %>%
+  summarize(zscore = zscore,
+            maxactual = max(abs(zscore))) %>%
+  filter(abs(zscore) == maxactual) %>%
+  merge(AllCuSO4_glmer_1byRep) 
+
 peaks_rainbow %>% filter(abs(zscore) > 1.1) -> peaks_rainbow
 
 peaks_rainbow$CHROM <- factor(peaks_rainbow$CHROM, levels = as.character(as.roman(1:16)))
+AllCuSO4_glmer_1byRep$CHROM <- factor(AllCuSO4_glmer_1byRep$CHROM, levels = as.character(as.roman(1:16)))
 
+q5_all %>% filter(label == "Bulk") %>% select(CSS, Bulkq5 = q5) -> q5_Bulk
 
 AllCuSO4_glmer_1byRep %>%
   filter(label == "Bulk") %>%
@@ -695,10 +789,89 @@ AllCuSO4_glmer_1byRep %>%
   facet_grid(~CHROM, space = "free", scales = "free") +
   #theme_classic() +
   theme(legend.position = "none",panel.grid = element_blank()) +
+   theme(strip.background.x = element_rect(color = "skyblue3", fill = c("skyblue3", "darkturquoise" )),
+        strip.text.x = element_text(color = "white", size = 10, face = "bold")) +
   scale_linetype_manual(values = c(2,1)) +
   scale_color_manual(values = c(1,"darkorange","skyblue3","darkorange","skyblue3","darkorange","skyblue3",1,
                                 "skyblue3","darkorange","skyblue3","darkorange","skyblue3","darkorange","skyblue3","darkorange"))
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, color = CHROM, linetype = CSS), alpha = 0.3, size = 1) + 
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme(strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
+        strip.text.x = element_text(color = "white", size = 10, face = "bold")) +
+  #theme_classic() +
+  theme(legend.position = "none",panel.grid = element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_color_manual(values = c(1,"red","red","red","red","red","red",1,
+                                "red","red","red","red","red","red","red","red"))+
+  theme(panel.spacing = unit(0.2, "lines"))
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, color = CSS), alpha = 0.3, size = 1) + 
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme(strip.background.x = element_rect(color = "black", fill = c("black", "darkturquoise" )),
+        strip.text.x = element_text(color = "white", size = 10, face = "bold")) +
+  #theme_classic() +
+  theme(legend.position = "none",panel.grid = element_blank()) +
+  scale_color_manual(values = c("skyblue3", "darkorange"))
 ```
+
+```{r, fig.width=8, fig.height=3}
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, color = CHROM, linetype = CSS), alpha = 0.3, size = 1) + 
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme_bw() +
+  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
+        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
+    strip.background.x = element_rect(color = "gray"),
+        legend.position = "none", 
+        panel.grid = element_blank(),
+        panel.spacing = unit(0.1, "lines"),
+        panel.border = element_rect(color = "gray"),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_color_manual(values = c(1,"red","red","red","red","red","red",1,
+                                "red","red","red","red","red","red","red","red"))+
+  theme(panel.spacing = unit(0.2, "lines"))
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), alpha = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, alpha = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, color = CHROM, linetype = CSS), alpha = 0.4, size = 1) + 
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme_bw() +
+  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
+        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
+    strip.background.x = element_rect(color = "gray"),
+        legend.position = "none", 
+        panel.grid = element_blank(),
+        panel.spacing = unit(0.1, "lines"),
+        panel.border = element_rect(color = "gray"),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_alpha_manual(values = c(0.5, 1)) +
+  scale_color_manual(values = c(1,"darkorange","darkorange","darkorange","darkorange","darkorange","darkorange",1,
+                                "darkorange","darkorange","darkorange","darkorange","darkorange","darkorange","darkorange","darkorange"))+
+  theme(panel.spacing = unit(0.2, "lines"))
+```
+
 
 
 ## Figure 4
@@ -711,79 +884,322 @@ AllCuSO4_glmer_1byRep %>% filter(label == "Interaction", CSS == "VIII",
   group_by(CHROM) %>%
   arrange(desc(abs(zscore))) %>%
   summarize(POS = head(POS, 1)) -> IntPeaks2
+# 
+# rd_factor %>% filter(POS %in% IntPeaks2$POS) %>%
+#   mutate(Background = gsub("Oak", 0, Background),
+#          Background = gsub("Wine", 1, Background)) %>%
+#   mutate(Bulk = gsub("Dilute", "Unselected", Bulk)) %>%
+#   ggplot(aes(x = as.numeric(Background), y = SmoothCount, color = Allele)) +
+#   geom_point(shape = 1, size = 2, stroke = 1, alpha = 0.8) +
+#   geom_smooth(method = "lm", alpha = 0.2) +
+#   scale_color_manual(values = c("palegreen3", "firebrick3")) +
+#     xlab("Parental Background") +
+#   ylab("Allele Count") +
+#     theme(legend.position = "bottom") +
+# 
+#     geom_hline(yintercept = Inf, color = "white", size = 4) +
+#     theme(strip.background.y = element_rect(fill = c("black", "darkturquoise" )),
+#         strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+#   facet_grid(Bulk ~ paste(CHROM, POS)) -> pa
+
+#REDOING PA TO GET RID OF THE OTHER HALF
+rd_factor %>% filter(POS %in% IntPeaks2$POS) %>%
+  mutate(Background = gsub("Oak", 0, Background),
+         Background = gsub("Wine", 1, Background)) %>%
+  mutate(Bulk = gsub("Dilute", "Unselected", Bulk)) %>%
+  ungroup() %>%
+  group_by(CHROM, POS, Dataset) %>%
+  mutate(Coverage = sum(SmoothCount)) %>%
+  mutate(AlleleFrequency = SmoothCount/Coverage) %>%
+  filter(Allele == "Wine") %>%
+  ggplot(aes(x = as.numeric(Background), y = AlleleFrequency, color = Bulk, fill = Bulk)) + 
+  geom_point(shape = 1, size = 2, stroke = 1, alpha = 0.8) + 
+  geom_smooth(aes(color = Bulk, fill = Bulk), method = "lm", alpha = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  scale_fill_manual(values = c("#177871", "gray")) +
+  scale_color_manual(values = c("#177871", "gray")) +
+    xlab("OAK <- Parental Background -> WINE") +
+  ylab("Wine Allele Frequency") +
+    theme(legend.position = "bottom", panel.grid.minor = element_blank(), panel.grid.major = element_blank()) +
+  #scale_x_continuous( breaks=pretty_breaks()) +
+    # geom_hline(yintercept = Inf, color = "white", size = 4) +
+    theme(strip.background.y = element_rect(fill = c("black", "#196761" )),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid( ~ paste(CHROM, POS)) -> pa
 
 rd_factor %>% filter(POS %in% IntPeaks2$POS) %>%
   mutate(Background = gsub("Oak", 0, Background),
          Background = gsub("Wine", 1, Background)) %>%
   mutate(Bulk = gsub("Dilute", "Unselected", Bulk)) %>%
-  ggplot(aes(x = as.numeric(Background), y = SmoothCount, color = Allele)) + 
+  ungroup() %>%
+  group_by(CHROM, POS, Dataset) %>%
+  mutate(Coverage = sum(SmoothCount)) %>%
+  mutate(AlleleFrequency = SmoothCount/Coverage) %>%
+  filter(Allele == "Wine") %>%
+  ggplot(aes(x = as.numeric(Background), y = AlleleFrequency, color = Bulk, fill = Bulk)) + 
   geom_point(shape = 1, size = 2, stroke = 1, alpha = 0.8) + 
-  geom_smooth(method = "lm", alpha = 0.2) +
-  scale_color_manual(values = c("palegreen3", "firebrick3")) +
-    xlab("Parental Background") +
-  ylab("Allele Count") +
-    theme(legend.position = "bottom") +
+  geom_smooth(aes(color = Bulk, fill = Bulk), method = "lm", alpha = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  scale_fill_manual(values = c("#177871", "gray")) +
+  scale_color_manual(values = c("#177871", "gray")) +
+    xlab("OAK <- Parental Background -> WINE") +
+  ylab("Wine Allele Frequency") + 
+  theme_bw() +
+    theme(legend.position = "bottom", 
+          axis.text.x=element_blank(),
+          panel.grid.minor = element_blank(), 
+          panel.grid.major = element_blank(), 
+          axis.ticks.x = element_blank(),
+          strip.background = element_rect(fill = c("darkorange", "#CD5C5C" )),
+        strip.text = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid( ~ paste(CHROM, POS)) -> pa
+```
 
-    geom_hline(yintercept = Inf, color = "white", size = 4) +
-    theme(strip.background.y = element_rect(fill = c("black", "darkturquoise" )),
-        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
-  facet_grid(Bulk ~ paste(CHROM, POS)) -> pa
+```{r}
+chromwidth = 200000
+IntPeaks2 %>% group_by(CHROM, POS) %>%
+  summarize(POSNew = seq(POS - chromwidth, POS + chromwidth, length.out = 1+chromwidth*2)) %>%
+  mutate(POS_rel = POSNew - POS) %>%
+  select(CHROM, POS = POSNew, Rel = POS_rel) -> IntRange2
 
-AllCuSO4_glmer_1byRep %>% merge(IntPeaks2) %>%
+AllCuSO4_glmer_1byRep %>% merge(IntRange2) %>%
   filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
   mutate(Coefficient = label) %>%
-  #filter(abs(zscore) > 1.1) %>%
-  ggplot(aes(x = as.character(POS), y = abs(zscore), color = Coefficient)) + 
-  geom_point(stroke = 1, size = 2, alpha = 0.8, shape = 2) + 
-  facet_grid( ~ CHROM, scales = "free") +
-  ylim(0,10) +
-  xlab("") + ylab("abs Z-score") +
-      theme(legend.position = "bottom") +
-
-  scale_color_manual(values = c("black", "purple")) -> pb
+  ggplot(aes(x = Rel, y = zscore, color = Coefficient)) + 
+  geom_point(aes(size = Rel == 0, shape = Rel == 0, alpha = Rel == 0), stroke = 1) + 
+  geom_line(alpha = 0.4) + 
+  geom_hline(yintercept = 0) +
+  facet_grid( ~ CHROM, scales = "free", space = "free_x") +
+  #ylim(-10,10) + #xlim(-chromwidth, chromwidth) +
+  xlab(paste("Peak Position +/-",chromwidth/1000,"kb")) + ylab("Z-score") +
+  
+  scale_size_manual(values = c(0,2)) +
+  scale_shape_manual(values = c(0,2)) +
+  scale_alpha_manual(values = c(0, 0.8)) +
+  scale_color_manual(values = c("black", "purple")) + 
+  theme(legend.position = "none") 
 
 #plot_grid(pa, pb, ncol = 1, rel_heights = c(2,1))
 
+AllCuSO4_glmer_1byRep %>% merge(IntRange2) %>%
+  filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
+  mutate(Coefficient = label) %>%
+  ggplot(aes(x = Rel, y = zscore, color = Coefficient)) + 
+  geom_point(aes(size = Rel == 0, shape = Rel == 0, alpha = Rel == 0), stroke = 1) + 
+  geom_line(alpha = 0.4) + 
+  geom_hline(yintercept = 0) +
+  facet_grid( ~ CHROM, scales = "free") +
+  #ylim(-10,10) + #xlim(-chromwidth, chromwidth) +
+  xlab(paste("Peak Position +/-",chromwidth/1000,"kb")) + ylab("Z-score") +
+  
+  scale_size_manual(values = c(0,2)) +
+  scale_shape_manual(values = c(0,2)) +
+  scale_alpha_manual(values = c(0, 0.8)) +
+  scale_color_manual(values = c("black", "#7a0c86")) + 
+  theme_bw() +
+  theme(legend.position = "none",
+        strip.background.x = element_rect(fill = c("gray"),color = c("gray")),
+        strip.background.y = element_rect(fill = c("black"),color = c("gray")),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"),
+        panel.spacing = unit(0.1, "lines"),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(color = "gray")) -> pb
 ```
+
 ```{r}
+rd_factor %>% filter(POS %in% IntPeaks2$POS) -> IntCounts
+
+# AllCuSO4_glmer_1byRep %>%
+#   filter(CSS == "I") %>%
+#   merge(q5_all) %>%
+#   filter(label %in% c("Bulk", "Interaction")) %>%
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) +
+#   geom_line() +
+#   xlab("") +
+#   ylab("abs Z-score") +
+#   geom_hline(aes(yintercept = q5)) +
+#   #labs(linetype = NULL, color = NULL) +
+#   scale_color_manual(values = c("black", "purple")) +
+#   theme(strip.background.y = element_rect(fill = c("#6aa0c7", "#f8923a"),color = c("#6aa0c7", "#f8923a")),
+#         strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "none") +
+#   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS1
+
+# AllCuSO4_glmer_1byRep %>%
+#   filter(CSS == "VIII") %>%
+#   merge(q5_all) %>%
+#   filter(label %in% c("Bulk", "Interaction")) %>%
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) +
+#   geom_line() +
+#   geom_vline(data = IntPeaks,
+#              aes(xintercept = POS),
+#              color = "red", linetype = "dashed", size = 1, alpha = 0.4)+
+#   xlab("") +
+#   ylab("abs Z-score") +
+#   geom_hline(aes(yintercept = q5)) +
+#   #labs(linetype = NULL, color = NULL) +
+#   scale_color_manual(values = c("black", "purple")) +
+#   theme(strip.background.y = element_rect(fill = c( "#f8923a"),color = c("#f8923a")),
+#         strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "none") +
+#   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS8
 
 AllCuSO4_glmer_1byRep %>%
-  filter(CSS == "I") %>%
   merge(q5_all) %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = label)) +
-  geom_line() +
-  xlab("") +
-  ylab("abs Z-score") +
+
+  geom_vline(data = IntPeaks,
+             aes(xintercept = POS),
+             color = "red", linetype = "dashed", 
+             size = 1, alpha = 0.4)+
+    geom_line() +
+  xlab("") + ylab("abs Z-score") +
   geom_hline(aes(yintercept = q5)) +
-  #labs(linetype = NULL, color = NULL) +
-  scale_color_manual(values = c("black", "purple")) +
-  theme(strip.background.y = element_rect(fill = c("#6aa0c7", "#f8923a"),color = c("#6aa0c7", "#f8923a")),
-        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
-  facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none") +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS1
+  scale_color_manual(values = c("black","cyan3","orange","hotpink","violet", "#7a0c86")) +
+    facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  ylim(0,11) +
+  #theme_bw() +
+  theme(strip.background.x = element_rect(fill = c("gray"),color = c("gray")),
+        strip.background.y = element_rect(fill = c("black"),color = c("black")),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"),
+        panel.spacing = unit(0.1, "lines"),
+        legend.position = "none", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) #-> pc
 
 AllCuSO4_glmer_1byRep %>%
-  filter(CSS == "VIII") %>%
   merge(q5_all) %>%
   filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = label)) +
   geom_line() +
   geom_vline(data = IntPeaks,
              aes(xintercept = POS),
-             color = "red", linetype = "dashed", size = 1, alpha = 0.4)+
-  xlab("") +
-  ylab("abs Z-score") +
+             color = "darkorange", linetype = "dashed", size = 1, alpha = 0.4)+
+  xlab("") + ylab("abs Z-score") +
   geom_hline(aes(yintercept = q5)) +
-  #labs(linetype = NULL, color = NULL) +
   scale_color_manual(values = c("black", "purple")) +
-  theme(strip.background.y = element_rect(fill = c( "#f8923a"),color = c("#f8923a")),
-        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
-  facet_grid(CSS~CHROM, scales = "free", space = "free") +
-  theme(legend.position = "none") +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) -> pCSS8
+    facet_grid(CSS~CHROM, scales = "free", space = "free") +
+  theme_bw() +
+  theme(strip.background.x = element_rect(fill = c("gray"),color = c("gray")),
+        strip.background.y = element_rect(fill = c("black"),color = c("black")),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"),
+        panel.spacing = unit(0.1, "lines"),
+        panel.border = element_rect(color = "gray"),
+        legend.position = "none", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) -> pc
+```
 
+```{r, fig.height=10, fig.width=8}
+plot_grid(pc, pa, pb, ncol = 1, rel_heights = c(3,2,1.5))
+
+```
+```{r, fig.width=5, fig.height=1}
+pb
+```
+
+### Adjusting 4B
+
+```{r}
+
+rd_factor %>% filter(POS %in% IntPeaks2$POS) -> IntCounts
+  
+IntCounts %>% group_by(Dataset, CHROM, POS) %>%
+  summarize(sumCount = sum(SmoothCount)) %>%
+  merge(IntCounts) %>%
+  mutate(Freq = SmoothCount/sumCount) %>%
+  mutate(Background = gsub("Oak", 0, Background),
+         Background = gsub("Wine", 1, Background)) %>%
+  mutate(Bulk = gsub("Dilute", "Unselected", Bulk)) %>%
+  ggplot(aes(x = as.numeric(Background), y = Freq, color = Allele)) + 
+  geom_point(shape = 1, size = 2, stroke = 1, alpha = 0.8) + 
+  geom_smooth(method = "lm", alpha = 0.2) +
+  scale_color_manual(values = c("palegreen3", "firebrick3")) +
+    xlab("Parental Background") +
+  ylab("Allele Frequency") +
+    theme(legend.position = "none") +
+
+    geom_hline(yintercept = Inf, color = "white", size = 4) +
+    theme(strip.background.y = element_rect(fill = c("black", "darkturquoise" )),
+        strip.text.y = element_text(color = "white", size = 10, face = "bold"))+
+  facet_grid(Bulk ~ paste(CHROM, POS)) -> pa
+```
+
+### Playing around with 4C
+
+```{r, fig.width=6, fig.height=2}
+chromwidth = 100000
+IntPeaks2 %>% group_by(CHROM, POS) %>%
+  summarize(POSNew = seq(POS - chromwidth, POS + chromwidth, length.out = 1+chromwidth*2)) %>%
+  mutate(POS_rel = POSNew - POS) %>%
+  select(CHROM, POS = POSNew, Rel = POS_rel) -> IntRange
+  
+AllCuSO4_glmer_1byRep %>% merge(IntRange) %>%
+  filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
+  mutate(Coefficient = label) %>%
+  #filter(abs(zscore) > 1.1) %>%
+  ggplot(aes(x = Rel, y = abs(zscore), color = Coefficient, size = Rel == 0, shape = Rel == 0, alpha = Rel == 0)) + 
+  geom_point(stroke = 1) + 
+  #geom_vline(data = IntPeaks2, aes(xintercept = 0, linetype = factor(POS)), color = "red", linetype = "dashed", size = 1, alpha = 0.4) +
+  facet_grid( ~ CHROM, scales = "free") +
+  ylim(0,10) +
+  xlim(-chromwidth, chromwidth) +
+  xlab("") + ylab("abs Z-score") +
+  scale_size_manual(values = c(0.1,2)) +
+  scale_shape_manual(values = c(0,2)) +
+  scale_alpha_manual(values = c(0.01, 0.8)) +
+  scale_color_manual(values = c("black", "purple")) +
+  theme(legend.position = "bottom") +
+  ggtitle(paste("Interaction peaks +/-", chromwidth/1000, "kb"))
+
+############################################# FOR COMBINATION #################
+AllCuSO4_glmer_1byRep %>% merge(IntRange) %>%
+  filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
+  mutate(Coefficient = label) %>%
+  ggplot(aes(x = Rel, y = abs(zscore), color = Coefficient, size = Rel == 0, shape = Rel == 0, alpha = Rel == 0)) + 
+  geom_point(stroke = 1) + 
+  facet_grid( ~ CHROM, scales = "free") +
+  ylim(0,10) + xlim(-chromwidth, chromwidth) +
+  xlab("Peak Position +/- 100 kb") + ylab("abs Z-score") +
+  
+  scale_size_manual(values = c(0.1,2)) +
+  scale_shape_manual(values = c(0,2)) +
+  scale_alpha_manual(values = c(0.01, 0.8)) +
+  scale_color_manual(values = c("black", "purple")) + 
+  theme(legend.position = "none") -> pb
+
+chromwidth = 500000
+IntPeaks2 %>% group_by(CHROM, POS) %>%
+  summarize(POSNew = seq(POS - chromwidth, POS + chromwidth, length.out = 1+chromwidth*2)) %>%
+  mutate(POS_rel = POSNew - POS) %>%
+  select(CHROM, POS = POSNew, Rel = POS_rel) -> IntRange2
+
+AllCuSO4_glmer_1byRep %>% merge(IntRange2) %>%
+  filter(label %in% c("Bulk", "Interaction"), CSS == "VIII") %>%
+  mutate(Coefficient = label) %>%
+  ggplot(aes(x = Rel, y = zscore, color = Coefficient)) + 
+  geom_point(aes(size = Rel == 0, shape = Rel == 0, alpha = Rel == 0), stroke = 1) + 
+  geom_line(alpha = 0.4) + 
+  geom_hline(yintercept = 0) +
+  facet_grid( ~ CHROM, scales = "free", space = "free_x") +
+  #ylim(-10,10) + #xlim(-chromwidth, chromwidth) +
+  xlab("Peak Position +/- 500 kb") + ylab("Z-score") +
+  
+  scale_size_manual(values = c(0,2)) +
+  scale_shape_manual(values = c(0,2)) +
+  scale_alpha_manual(values = c(0, 0.8)) +
+  scale_color_manual(values = c("black", "purple")) + 
+  theme(legend.position = "none")
 ```
 
 ```{r, fig.height=12, fig.width=8}
@@ -793,11 +1209,69 @@ plot_grid(pCSS1, pCSS8, pa, pb, ncol = 1, rel_heights = c(1,1,2,1))
 
 ## Figure 5
 
-Not sure if I'll even keep this one, so not necessarily putting it in here
+New version of the intercrosses
 
-## Figure 6
+```{r, eval = FALSE}
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "VII", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> a
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "VII", label == "Interaction")  %>% filter(POS > 204728) %>% arrange(desc(abs(zscore))) %>% head(1) -> b
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "VII", label == "Interaction")  %>% filter(POS > 4e05) %>% arrange(desc(abs(zscore))) %>% head(1) -> c2
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "VII", label == "Interaction")  %>% filter(POS > 4e05 & POS < 5e05) %>% arrange(desc(abs(zscore))) %>% head(1) -> b2
 
-Also not sure if keeping this one
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "XV", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> c
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "XIV", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> d
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "XII", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> e
+
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "XI", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> f
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "XI", label == "Interaction")  %>% filter(POS < 500000) %>% arrange(desc(abs(zscore))) %>% head(1) -> g
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "X", label == "Interaction")  %>% arrange(desc(abs(zscore))) %>% head(1) -> h
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "X", label == "Interaction")  %>% filter(POS > 224728) %>% arrange(desc(abs(zscore))) %>% head(1) -> i
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "X", label == "Interaction")  %>% filter(POS > 360000) %>% arrange(desc(abs(zscore))) %>% head(1) -> j
+
+rbind(a,b,c,d,e,f,g,h,i,j) %>%
+  rbind(c2, b2) %>%
+  ungroup() %>%
+  select(-CSS) %>%
+  mutate(Sig = abs(zscore) > 1.1) %>%
+  mutate(Sig = abs(as.numeric(Sig)-1)) -> IntPeaksAIG
+
+################################################################################
+
+addtoplot %>% mutate(label = "Bulk", CSS = "F12_mp", sdz = NA, CHROM = as.character(as.roman(CHROM))) %>%
+  select(CHROM = CHROM, label = label, CSS = CSS, POS = POS, zscore = LOD, sdz = sdz) -> AIGs_combine
+
+Cu_MP %>% mutate(label = "Bulk", CSS = "F2_mp", sdz = NA, CHROM = as.character(as.roman(CHROM))) %>%
+  select(CHROM = CHROM, label = label, CSS = CSS, POS = Bin.start..bp., zscore = LOD.score, sdz = sdz) %>%
+  rbind(AllCuSO4_glmer_1byRep) %>%
+  rbind(AIGs_combine) %>%
+  filter(CHROM %in% c("XI", "VII", "XII", "X", "XV", "XIV"), 
+         CSS != "I", zscore < 10, label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = paste(label,CSS))) + geom_line() +
+  geom_vline(data = IntPeaksAIG, aes(xintercept = POS, linetype = factor(Sig)), color = "purple", alpha = 0.4) +
+  facet_grid(CSS ~ CHROM, scales = "free", space = "free") +
+  ylim(0,10) + ylab(" ") + xlab("Chromosomal Position") +
+  scale_color_manual(values = c("salmon","salmon","black", "purple", "gray"))+
+  theme(legend.position = "none")  -> aig1
+
+Cu_MP %>% mutate(label = "Bulk", CSS = "F2_mp", sdz = NA, CHROM = as.character(as.roman(CHROM))) %>%
+  select(CHROM = CHROM, label = label, CSS = CSS, POS = Bin.start..bp., zscore = LOD.score, sdz = sdz) %>%
+  rbind(AllCuSO4_glmer_1byRep) %>%
+  rbind(AIGs_combine) %>%
+  filter(CHROM %in% c("VII"), 
+         CSS != "I", zscore < 10, label %in% c("Bulk", "Interaction")) %>%
+  filter(CSS != "F2_mp") %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = paste(label,CSS))) + geom_line() +
+  geom_vline(data = IntPeaksAIG[IntPeaksAIG$CHROM == "VII",], aes(xintercept = POS, linetype = factor(Sig)), color = "purple", alpha = 0.2, size = 2) +
+  facet_grid( ~ CHROM, scales = "free", space = "free") +
+  #ylim(0,10) + 
+  ylab(" ") + xlab("Chr VII Position (bp)") +
+  scale_color_manual(values = c("salmon","black", "purple", "gray"))+
+    theme_bw() +   scale_x_continuous( breaks=pretty_breaks()) +
+  theme(legend.position = "none")  -> aig2
+
+plot_grid(aig2, aig1, ncol = 1)
+
+```
+
 
 # All Code
 
@@ -823,6 +1297,52 @@ AllCuSO4_glmer_1byRep %>% filter(label %in% c("Bulk", "Interaction")) %>%
   theme(legend.position = "bottom") +
     scale_size_manual(values = c(0.1, 2)) +
   scale_alpha_manual(values = c(0.4, 0))
+```
+
+# 8/14/24 Tests
+
+```{r}
+#QQ Plot
+
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "III") %>%
+  select(-sdz) %>%
+  pivot_wider(names_from = CSS, values_from = zscore) %>%
+  ggplot(aes(x = I, y = VIII, color = label)) + geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme_classic() 
+
+AllCuSO4_glmer_1byRep %>% filter(CHROM == "III", label != "cept") %>%
+  select(-sdz) %>%
+  pivot_wider(names_from = CSS, values_from = zscore) %>%
+  ggplot(aes(x = I, y = VIII, color = label)) + geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme_classic() 
+
+AllCuSO4_glmer_1byRep %>% filter(label == "Bulk", CHROM %in% c("I", "VIII") == FALSE) %>%
+  select(-sdz) %>%
+  pivot_wider(names_from = CSS, values_from = zscore) %>%
+  ggplot(aes(x = abs(I), y = abs(VIII), color = abs(I) > 1.1 & abs(VIII) > 1.1)) + geom_point(alpha = 0.08) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  xlim(0,8) + ylim(0,8) +
+  theme_classic() +
+  scale_color_manual(values = c("gray", "black")) +
+  #facet_wrap("CHROM", nrow = 2) +
+  theme(legend.position = "none")
+
+AllCuSO4_glmer_1byRep %>% filter(label == "Bulk", CHROM %in% c("I", "VIII") == FALSE) %>%
+  select(-sdz) %>%
+  pivot_wider(names_from = CSS, values_from = zscore) %>%
+  ggplot(aes(x = I, y = VIII, color = abs(I) > 1.1 & abs(VIII) > 1.1)) + geom_point(alpha = 0.08) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+   xlab("Fixed Chr I additive coefficient Z-score") + ylab("Fixed Chr VIII additive coefficient Z-score") +
+  #xlim(0,8) + ylim(0,8) +
+  theme_classic() +
+  scale_color_manual(values = c("gray", "black")) +
+  #facet_wrap("CHROM", nrow = 2) +
+  theme(legend.position = "none")
 ```
 
 # Final Plotting
@@ -2124,6 +2644,219 @@ plot_grid(pmultipool, pglm, nrow = 2, rel_heights = c(1,1.2))
 
 ```
 
+Comparing other interaction peaks
+
+```{r}
+#CHROMOSOME VII
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "VII", label == "Bulk", CSS == "VIII") -> glm7data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "VII", label == "Interaction", CSS == "VIII") -> glm7data_i
+
+glm7data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+glm7data_i %>% filter(POS > 204728) %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp2
+
+Cu_MP %>% filter(CHROM == "VII") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm7data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm7data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "VII",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+  geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+  geom_vline(xintercept = peaktemp2$POS, alpha = 0.4, size = 1, color = "purple") +
+  geom_hline(yintercept = 1.1) +
+  ylab("") + xlab("")+ ggtitle("") +
+  theme(legend.position = "none")
+
+
+
+#CHROMOSOME X
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "X", label == "Bulk", CSS == "VIII") -> glm10data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "X", label == "Interaction", CSS == "VIII") -> glm10data_i
+
+glm10data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+glm10data_i %>% filter(POS > 224728) %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp2
+glm10data_i %>% filter(POS > 360000) %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp3
+
+Cu_MP %>% filter(CHROM == "X") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm10data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm10data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  # geom_vline(data = peaks[peaks$CHROM == "X" & peaks$label == "Interaction",], aes(Xntercept = peakPOS), linetype = "dashed") +
+  ylim(0, 10) +
+  geom_hline(yintercept = 1.1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "X",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+    geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+    geom_vline(xintercept = peaktemp2$POS, alpha = 0.4, size = 1, color = "purple") +
+    geom_vline(xintercept = peaktemp3$POS, alpha = 0.4, size = 1, color = "purple") +
+  ylab("") + xlab("")+ ggtitle("") +
+theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+
+#CHROMOSOME XI
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XI", label == "Bulk", CSS == "VIII") -> glm11data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XI", label == "Interaction", CSS == "VIII") -> glm11data_i
+
+glm11data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+glm11data_i %>% filter(POS < 500000) %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp2
+
+Cu_MP %>% filter(CHROM == "XI") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm11data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm11data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  # geom_vline(data = peaks[peaks$CHROM == "XI" & peaks$label == "Interaction",], aes(xintercept = peakPOS), linetype = "dashed") +
+  # geom_vline(data = peaks[peaks$CHROM == "XI" & peaks$label == "Bulk",], aes(xintercept = peakPOS)) +
+  geom_hline(yintercept = 1.1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "XI",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+    geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+    geom_vline(xintercept = peaktemp2$POS, alpha = 0.4, size = 1, color = "purple") +
+  ylab("") + xlab("")+ ggtitle("") +
+theme_minimal() +
+  theme(legend.position = "none")
+
+
+#CHROMOSOME XII
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XII", label == "Bulk", CSS == "VIII") -> glm12data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XII", label == "Interaction", CSS == "VIII") -> glm12data_i
+
+glm12data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+
+
+Cu_MP %>% filter(CHROM == "XII") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm12data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm12data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  # geom_vline(data = peaks[peaks$CHROM == "XII" & peaks$label == "Interaction",], aes(XIIntercept = peakPOS), linetype = "dashed") +
+  # geom_vline(data = peaks[peaks$CHROM == "XII" & peaks$label == "Bulk",], aes(XIIntercept = peakPOS)) +
+  geom_hline(yintercept = 1.1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "XII",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+    geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+  ylab("") + xlab("")+ ggtitle("") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+#CHROMOSOME XIV
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XIV", label == "Bulk", CSS == "VIII") -> glm14data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XIV", label == "Interaction", CSS == "VIII") -> glm14data_i
+
+glm14data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+
+Cu_MP %>% filter(CHROM == "XIV") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm14data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm14data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  # geom_vline(data = peaks[peaks$CHROM == "XIV" & peaks$label == "Interaction",], aes(XIVntercept = peakPOS), linetype = "dashed") +
+  # geom_vline(data = peaks[peaks$CHROM == "XIV" & peaks$label == "Bulk",], aes(XIVntercept = peakPOS)) +
+  geom_hline(yintercept = 1.1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "XIV",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+    geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+  ylab("") + xlab("")+ ggtitle("") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+#CHROMOSOME XV
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XV", label == "Bulk", CSS == "VIII") -> glm15data
+
+AllCuSO4_glmer_1byRep %>%
+  filter(CHROM == "XV", label == "Interaction", CSS == "VIII") -> glm15data_i
+
+glm15data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> peaktemp
+
+
+Cu_MP %>% filter(CHROM == "XV") %>% 
+  ggplot(aes(x = Bin.start..bp., y = LOD.score, color = CHROM)) + geom_line() + 
+  geom_line(data = glm15data, aes(x = POS, y = abs(zscore), linetype = CSS), color = "black") +
+  geom_line(data = glm15data_i, aes(x = POS, y = abs(zscore), linetype = CSS), color = "purple", size = 1) +
+  # geom_vline(data = peaks[peaks$CHROM == "XV" & peaks$label == "Interaction",], aes(XVntercept = peakPOS), linetype = "dashed") +
+  # geom_vline(data = peaks[peaks$CHROM == "XV" & peaks$label == "Bulk",], aes(XVntercept = peakPOS)) +
+  geom_hline(yintercept = 1.1) +
+  facet_grid(~CHROM, scales = "free", space = "free")  +
+    geom_line(data = addtoplot[addtoplot$CHROM == "XV",], aes(x = POS, y = LOD), color = "red", size = 1, alpha = 0.5) +
+    geom_vline(xintercept = peaktemp$POS, alpha = 0.4, size = 1, color = "purple") +
+  ylab("") + xlab("")+ ggtitle("") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+### Trying to make this more streamlined?
+
+```{r}
+glm7data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> a
+glm7data_i %>% filter(POS > 204728) %>% arrange(desc(abs(zscore))) %>% head(1) -> b
+glm15data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> c
+glm14data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> d
+glm12data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> e
+
+glm11data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> f
+glm11data_i %>% filter(POS < 500000) %>% arrange(desc(abs(zscore))) %>% head(1) -> g
+glm10data_i %>% arrange(desc(abs(zscore))) %>% head(1) -> h
+glm10data_i %>% filter(POS > 224728) %>% arrange(desc(abs(zscore))) %>% head(1) -> i
+glm10data_i %>% filter(POS > 360000) %>% arrange(desc(abs(zscore))) %>% head(1) -> j
+
+rbind(a,b,c,d,e,f,g,h,i,j) %>%
+  ungroup() %>%
+  select(-CSS) -> IntPeaks
+```
+
+```{r, fig.width=8, fig.height=3}
+
+# AllCuSO4_glmer_1byRep %>%
+#   filter(label == "Interaction", CSS == "VIII") %>%
+#   group_by(CHROM) %>%
+#   summarize(zscore = max(abs(zscore))) %>%
+#   filter(zscore > 1.1) %>%
+#   merge(AllCuSO4_glmer_1byRep) -> IntPeaks
+# 
+# AllCuSO4_glmer_1byRep %>%
+#   filter(label == "Interaction", CSS == "VIII") %>%
+#   group_by(CHROM) %>%
+#   summarize(zscore = min(zscore)) %>%
+#   filter(zscore < -1.1) %>%
+#   merge(AllCuSO4_glmer_1byRep) %>%
+#   rbind(IntPeaks)  %>% select(-CSS) -> IntPeaks
+
+addtoplot %>% mutate(label = "Bulk", CSS = "F12_mp", sdz = NA, CHROM = as.character(as.roman(CHROM))) %>%
+  select(CHROM = CHROM, label = label, CSS = CSS, POS = POS, zscore = LOD, sdz = sdz) -> AIGs_combine
+
+Cu_MP %>% mutate(label = "Bulk", CSS = "F2_mp", sdz = NA, CHROM = as.character(as.roman(CHROM))) %>%
+  select(CHROM = CHROM, label = label, CSS = CSS, POS = Bin.start..bp., zscore = LOD.score, sdz = sdz) %>%
+  rbind(AllCuSO4_glmer_1byRep) %>%
+  rbind(AIGs_combine) %>%
+  filter(CHROM %in% c("XI", "VII", "XII", "X", "XV", "XIV"), 
+         CSS != "I", zscore < 10, label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = paste(label,CSS))) + geom_line() +
+  geom_vline(data = IntPeaks, aes(xintercept = POS), color = "purple", alpha = 0.4) +
+  facet_grid(CSS ~ CHROM, scales = "free", space = "free") +
+  ylim(0,10) +
+  scale_color_manual(values = c("salmon","salmon","black", "purple", "gray"))+
+  theme(legend.position = "none")  
+```
+
+## Combinations
+
 ```{r}
 AllCuSO4_glmer_1byRep %>% filter(label == "Interaction", CSS == "VIII",
                                  CHROM %in% c("VII", "X", "XI", "XII", "XIV", "XV")) %>%
@@ -2285,5 +3018,242 @@ genotypephenotype %>%
   geom_abline(slope = 1,intercept = 0) +  ylim(0,20) +
   ggtitle("Overall Effect of A1 with and without selection > 10")
 
+```
+
+# Ehrenreich Supplemental
+
+https://figshare.com/articles/dataset/Genetic_Architecture_of_Highly_Complex_Chemical_Resistance_Traits_across_Four_Yeast_Strains/127753?file=6678852
+
+```{r, fig.width=12, fig.height=4}
+RM_YPS <- read.table(url("https://storage.googleapis.com/plos-corpus-prod/10.1371/journal.pgen.1002570/1/pgen.1002570.s009.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=wombat-sa%40plos-prod.iam.gserviceaccount.com%2F20240814%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20240814T205418Z&X-Goog-Expires=86400&X-Goog-SignedHeaders=host&X-Goog-Signature=14cd67e53a771b28d877303cfdea19d4ce59fddb80f1cc2452457061574f7aa0faddd65f32838c8a909280ea7ef0c003697357b615e01cd6dfd6b1f0c133fed0fe9460f17510bd9f0df34cf246b3c3117c529472abe59397bc33c5a012113b59cb0f62e66fd6d75791301ae625fb3cddac0a8a4089e1f35207bff23df68fa34e360eec94e49196775a6daa87325f4e0d0bbe44d3d2206ca4b7d943644c5ee677b5fad2b8c545b4bfac9c0a8add5982c9423ddf88e5f7f7ca5147c6e0fa5c1572adab4431d425dd897fb41ee05c5044df2c141cd32a6679e8d4e5e66986f640b46181b87f2fcfe03675a978c2a39ac754ea0655c456c3b1c41340a073c191a7db"), header = TRUE)
+
+RM_YPS %>% ggplot(aes(x = Position, y = Copper.sulfate)) + geom_point(alpha = 0.1) + facet_grid(~Chromosome, space = "free", scales = "free")
+
+RM_YPS %>% group_by(Chromosome) %>%
+  summarize(Copper.sulfate = max(abs(Copper.sulfate))) %>%
+  merge(RM_YPS) %>%
+  select(Chromosome, Copper.sulfate, Position) -> RM_YPS_Peaks
+
+AllCuSO4_glmer_1byRep %>%
+  mutate(Chromosome = as.numeric(CHROM)) %>%
+  filter(label == "Bulk") -> Compare_AllCuSO4_Bulk
+
+RM_YPS %>% ggplot(aes(x = Position, y = abs(Copper.sulfate))) + geom_point(alpha = 0.08) + 
+  geom_line(data = Compare_AllCuSO4_Bulk, aes(x = POS, y = abs(zscore/10), color = CSS), size = 1) +
+  facet_grid(~Chromosome, space = "free", scales = "free") +
+  ggtitle("Ehrenreich YPS/RM cross (black) compared to Buzby Oak/Wine Bulk results (color)") +
+  scale_color_manual(values = c("#6aa0c7", "#f8923a"))
+
+```
+
+# MULTIPOOL but for real
+
+
+```{r, eval = FALSE}
+#THIS HAS NOT BEEN RUN BECAUSE IT ISN'T NEEDED REALLY
+
+rawdata_called_ex <- readRDS("rawdata_called_ex.rds")
+rawdata_called_ex %>% pivot_wider(names_from = Allele, values_from = Reads) %>%
+  select(CHROM, POS, Wine, Oak, Dataset) -> CuSO4_mpsetup
+
+expnames <- read.csv("experiment_names_524.csv")
+
+CuSO4_mpsetup %>% mutate(Dataset = gsub("n01_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
+  separate(Dataset, into = c("Pool", "Dataset"), sep = "_", extra = "merge") %>%
+  merge(expnames) %>% unnest() %>% select(CHROM, POS, Bulk, Wine, Oak)-> CuSO4_mpsetup_final
+
+CuSO4_mpsetup_final %>% na.omit() -> CuSO4_mpsetup_final
+
+CuSO4_mpsetup_final %>% filter(Bulk != "Fluconazole") -> CuSO4_mpsetup_final
+
+for(d in unique(CuSO4_mpsetup_final$Bulk)){
+  for(c in unique(CuSO4_mpsetup_final$CHROM)){
+   CuSO4_mpsetup_final %>% filter(CHROM == c, Bulk == d) %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+    filename = paste("MultiPool_Inputs/CUSO4all", d,"_", c,"Aug1524.txt", sep = "")
+    write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+  }
+}
+
+```
+
+```{r, eval = FALSE}
+CB_AIGs_called <- readRDS("CB_AIGs_called.rds")
+
+
+CB_AIGs_called %>% 
+  filter(grepl("_C_", Dataset)) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  na.omit() -> AIG_C_final
+
+CB_AIGs_called %>% 
+  filter(grepl("_U_", Dataset)) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  na.omit() -> AIG_D_final
+
+################################################################################
+
+for(c in unique(AIG_C_final$CHROM)){
+   AIG_C_final %>% filter(CHROM == c) %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  d <- "Copper"
+    filename = paste("MultiPool_Inputs/AIG", d,"_", c,"Aug1524.txt", sep = "")
+    write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+}
+
+for(c in unique(AIG_D_final$CHROM)){
+   AIG_C_final %>% filter(CHROM == c) %>%
+      arrange(POS) %>% ungroup() %>%
+      select(POS, Wine, Oak) -> temp
+  d <- "Dilute"
+    filename = paste("MultiPool_Inputs/AIG", d,"_", c,"Aug1524.txt", sep = "")
+    write.table(temp, file = filename, col.names = FALSE, row.names = FALSE)
+}
+
+```
+
+```{r}
+#Load in all CuSO4 F12 data for r = 2000
+AIG_MP <- head(Cu_MP,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/AIG_AUG1524_r2000_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AIG_MP <- rbind(AIG_MP, tempfile)
+}
+
+AIG_MP %>% ggplot(aes(x = Bin.start..bp., y = MLE.allele.freq.)) + geom_line() + 
+  #ylim(0, 0.5) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+AIG_MP %>% ggplot(aes(x = LOD.score)) + geom_density() +
+  theme_classic()
+```
+
+```{r}
+#Load in all CuSO4 F12 data for r = 200
+AIG_MP <- head(Cu_MP,1)
+for(i in as.character(as.roman(1:16))){
+  filename <- paste("MultiPool_Inputs/AIG_AUG1524_r200_", i, ".txt", sep = "")
+  tempfile <- read.table(filename, sep = "\t", header = TRUE) %>% mutate(CHROM = i)
+  
+  AIG_MP <- rbind(AIG_MP, tempfile)
+}
+
+AIG_MP %>% ggplot(aes(x = Bin.start..bp., y = LOD.score)) + geom_line() + 
+  ylim(0, 0.5) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+AIG_MP %>% ggplot(aes(x = Bin.start..bp., y = MLE.allele.freq.)) + geom_line() + 
+  #ylim(0, 0.5) +
+  facet_grid(~CHROM, scales = "free", space = "free")
+
+AIG_MP %>% ggplot(aes(x = LOD.score)) + geom_density() +
+  theme_classic()
+```
+
+# Colors
+
+```{r}
+> colors()
+  [1] "white"                "aliceblue"            "antiquewhite"         "antiquewhite1"        "antiquewhite2"        "antiquewhite3"        "antiquewhite4"       
+  [8] "aquamarine"           "aquamarine1"          "aquamarine2"          "aquamarine3"          "aquamarine4"          "azure"                "azure1"              
+ [15] "azure2"               "azure3"               "azure4"               "beige"                "bisque"               "bisque1"              "bisque2"             
+ [22] "bisque3"              "bisque4"              "black"                "blanchedalmond"       "blue"                 "blue1"                "blue2"               
+ [29] "blue3"                "blue4"                "blueviolet"           "brown"                "brown1"               "brown2"               "brown3"              
+ [36] "brown4"               "burlywood"            "burlywood1"           "burlywood2"           "burlywood3"           "burlywood4"           "cadetblue"           
+ [43] "cadetblue1"           "cadetblue2"           "cadetblue3"           "cadetblue4"           "chartreuse"           "chartreuse1"          "chartreuse2"         
+ [50] "chartreuse3"          "chartreuse4"          "chocolate"            "chocolate1"           "chocolate2"           "chocolate3"           "chocolate4"          
+ [57] "coral"                "coral1"               "coral2"               "coral3"               "coral4"               "cornflowerblue"       "cornsilk"            
+ [64] "cornsilk1"            "cornsilk2"            "cornsilk3"            "cornsilk4"            "cyan"                 "cyan1"                "cyan2"               
+ [71] "cyan3"                "cyan4"                "darkblue"             "darkcyan"             "darkgoldenrod"        "darkgoldenrod1"       "darkgoldenrod2"      
+ [78] "darkgoldenrod3"       "darkgoldenrod4"       "darkgray"             "darkgreen"            "darkgrey"             "darkkhaki"            "darkmagenta"         
+ [85] "darkolivegreen"       "darkolivegreen1"      "darkolivegreen2"      "darkolivegreen3"      "darkolivegreen4"      "darkorange"           "darkorange1"         
+ [92] "darkorange2"          "darkorange3"          "darkorange4"          "darkorchid"           "darkorchid1"          "darkorchid2"          "darkorchid3"         
+ [99] "darkorchid4"          "darkred"              "darksalmon"           "darkseagreen"         "darkseagreen1"        "darkseagreen2"        "darkseagreen3"       
+[106] "darkseagreen4"        "darkslateblue"        "darkslategray"        "darkslategray1"       "darkslategray2"       "darkslategray3"       "darkslategray4"      
+[113] "darkslategrey"        "darkturquoise"        "darkviolet"           "deeppink"             "deeppink1"            "deeppink2"            "deeppink3"           
+[120] "deeppink4"            "deepskyblue"          "deepskyblue1"         "deepskyblue2"         "deepskyblue3"         "deepskyblue4"         "dimgray"             
+[127] "dimgrey"              "dodgerblue"           "dodgerblue1"          "dodgerblue2"          "dodgerblue3"          "dodgerblue4"          "firebrick"           
+[134] "firebrick1"           "firebrick2"           "firebrick3"           "firebrick4"           "floralwhite"          "forestgreen"          "gainsboro"           
+[141] "ghostwhite"           "gold"                 "gold1"                "gold2"                "gold3"                "gold4"                "goldenrod"           
+[148] "goldenrod1"           "goldenrod2"           "goldenrod3"           "goldenrod4"           "gray"                 "gray0"                "gray1"               
+[155] "gray2"                "gray3"                "gray4"                "gray5"                "gray6"                "gray7"                "gray8"               
+[162] "gray9"                "gray10"               "gray11"               "gray12"               "gray13"               "gray14"               "gray15"              
+[169] "gray16"               "gray17"               "gray18"               "gray19"               "gray20"               "gray21"               "gray22"              
+[176] "gray23"               "gray24"               "gray25"               "gray26"               "gray27"               "gray28"               "gray29"              
+[183] "gray30"               "gray31"               "gray32"               "gray33"               "gray34"               "gray35"               "gray36"              
+[190] "gray37"               "gray38"               "gray39"               "gray40"               "gray41"               "gray42"               "gray43"              
+[197] "gray44"               "gray45"               "gray46"               "gray47"               "gray48"               "gray49"               "gray50"              
+[204] "gray51"               "gray52"               "gray53"               "gray54"               "gray55"               "gray56"               "gray57"              
+[211] "gray58"               "gray59"               "gray60"               "gray61"               "gray62"               "gray63"               "gray64"              
+[218] "gray65"               "gray66"               "gray67"               "gray68"               "gray69"               "gray70"               "gray71"              
+[225] "gray72"               "gray73"               "gray74"               "gray75"               "gray76"               "gray77"               "gray78"              
+[232] "gray79"               "gray80"               "gray81"               "gray82"               "gray83"               "gray84"               "gray85"              
+[239] "gray86"               "gray87"               "gray88"               "gray89"               "gray90"               "gray91"               "gray92"              
+[246] "gray93"               "gray94"               "gray95"               "gray96"               "gray97"               "gray98"               "gray99"              
+[253] "gray100"              "green"                "green1"               "green2"               "green3"               "green4"               "greenyellow"         
+[260] "grey"                 "grey0"                "grey1"                "grey2"                "grey3"                "grey4"                "grey5"               
+[267] "grey6"                "grey7"                "grey8"                "grey9"                "grey10"               "grey11"               "grey12"              
+[274] "grey13"               "grey14"               "grey15"               "grey16"               "grey17"               "grey18"               "grey19"              
+[281] "grey20"               "grey21"               "grey22"               "grey23"               "grey24"               "grey25"               "grey26"              
+[288] "grey27"               "grey28"               "grey29"               "grey30"               "grey31"               "grey32"               "grey33"              
+[295] "grey34"               "grey35"               "grey36"               "grey37"               "grey38"               "grey39"               "grey40"              
+[302] "grey41"               "grey42"               "grey43"               "grey44"               "grey45"               "grey46"               "grey47"              
+[309] "grey48"               "grey49"               "grey50"               "grey51"               "grey52"               "grey53"               "grey54"              
+[316] "grey55"               "grey56"               "grey57"               "grey58"               "grey59"               "grey60"               "grey61"              
+[323] "grey62"               "grey63"               "grey64"               "grey65"               "grey66"               "grey67"               "grey68"              
+[330] "grey69"               "grey70"               "grey71"               "grey72"               "grey73"               "grey74"               "grey75"              
+[337] "grey76"               "grey77"               "grey78"               "grey79"               "grey80"               "grey81"               "grey82"              
+[344] "grey83"               "grey84"               "grey85"               "grey86"               "grey87"               "grey88"               "grey89"              
+[351] "grey90"               "grey91"               "grey92"               "grey93"               "grey94"               "grey95"               "grey96"              
+[358] "grey97"               "grey98"               "grey99"               "grey100"              "honeydew"             "honeydew1"            "honeydew2"           
+[365] "honeydew3"            "honeydew4"            "hotpink"              "hotpink1"             "hotpink2"             "hotpink3"             "hotpink4"            
+[372] "indianred"            "indianred1"           "indianred2"           "indianred3"           "indianred4"           "ivory"                "ivory1"              
+[379] "ivory2"               "ivory3"               "ivory4"               "khaki"                "khaki1"               "khaki2"               "khaki3"              
+[386] "khaki4"               "lavender"             "lavenderblush"        "lavenderblush1"       "lavenderblush2"       "lavenderblush3"       "lavenderblush4"      
+[393] "lawngreen"            "lemonchiffon"         "lemonchiffon1"        "lemonchiffon2"        "lemonchiffon3"        "lemonchiffon4"        "lightblue"           
+[400] "lightblue1"           "lightblue2"           "lightblue3"           "lightblue4"           "lightcoral"           "lightcyan"            "lightcyan1"          
+[407] "lightcyan2"           "lightcyan3"           "lightcyan4"           "lightgoldenrod"       "lightgoldenrod1"      "lightgoldenrod2"      "lightgoldenrod3"     
+[414] "lightgoldenrod4"      "lightgoldenrodyellow" "lightgray"            "lightgreen"           "lightgrey"            "lightpink"            "lightpink1"          
+[421] "lightpink2"           "lightpink3"           "lightpink4"           "lightsalmon"          "lightsalmon1"         "lightsalmon2"         "lightsalmon3"        
+[428] "lightsalmon4"         "lightseagreen"        "lightskyblue"         "lightskyblue1"        "lightskyblue2"        "lightskyblue3"        "lightskyblue4"       
+[435] "lightslateblue"       "lightslategray"       "lightslategrey"       "lightsteelblue"       "lightsteelblue1"      "lightsteelblue2"      "lightsteelblue3"     
+[442] "lightsteelblue4"      "lightyellow"          "lightyellow1"         "lightyellow2"         "lightyellow3"         "lightyellow4"         "limegreen"           
+[449] "linen"                "magenta"              "magenta1"             "magenta2"             "magenta3"             "magenta4"             "maroon"              
+[456] "maroon1"              "maroon2"              "maroon3"              "maroon4"              "mediumaquamarine"     "mediumblue"           "mediumorchid"        
+[463] "mediumorchid1"        "mediumorchid2"        "mediumorchid3"        "mediumorchid4"        "mediumpurple"         "mediumpurple1"        "mediumpurple2"       
+[470] "mediumpurple3"        "mediumpurple4"        "mediumseagreen"       "mediumslateblue"      "mediumspringgreen"    "mediumturquoise"      "mediumvioletred"     
+[477] "midnightblue"         "mintcream"            "mistyrose"            "mistyrose1"           "mistyrose2"           "mistyrose3"           "mistyrose4"          
+[484] "moccasin"             "navajowhite"          "navajowhite1"         "navajowhite2"         "navajowhite3"         "navajowhite4"         "navy"                
+[491] "navyblue"             "oldlace"              "olivedrab"            "olivedrab1"           "olivedrab2"           "olivedrab3"           "olivedrab4"          
+[498] "orange"               "orange1"              "orange2"              "orange3"              "orange4"              "orangered"            "orangered1"          
+[505] "orangered2"           "orangered3"           "orangered4"           "orchid"               "orchid1"              "orchid2"              "orchid3"             
+[512] "orchid4"              "palegoldenrod"        "palegreen"            "palegreen1"           "palegreen2"           "palegreen3"           "palegreen4"          
+[519] "paleturquoise"        "paleturquoise1"       "paleturquoise2"       "paleturquoise3"       "paleturquoise4"       "palevioletred"        "palevioletred1"      
+[526] "palevioletred2"       "palevioletred3"       "palevioletred4"       "papayawhip"           "peachpuff"            "peachpuff1"           "peachpuff2"          
+[533] "peachpuff3"           "peachpuff4"           "peru"                 "pink"                 "pink1"                "pink2"                "pink3"               
+[540] "pink4"                "plum"                 "plum1"                "plum2"                "plum3"                "plum4"                "powderblue"          
+[547] "purple"               "purple1"              "purple2"              "purple3"              "purple4"              "red"                  "red1"                
+[554] "red2"                 "red3"                 "red4"                 "rosybrown"            "rosybrown1"           "rosybrown2"           "rosybrown3"          
+[561] "rosybrown4"           "royalblue"            "royalblue1"           "royalblue2"           "royalblue3"           "royalblue4"           "saddlebrown"         
+[568] "salmon"               "salmon1"              "salmon2"              "salmon3"              "salmon4"              "sandybrown"           "seagreen"            
+[575] "seagreen1"            "seagreen2"            "seagreen3"            "seagreen4"            "seashell"             "seashell1"            "seashell2"           
+[582] "seashell3"            "seashell4"            "sienna"               "sienna1"              "sienna2"              "sienna3"              "sienna4"             
+[589] "skyblue"              "skyblue1"             "skyblue2"             "skyblue3"             "skyblue4"             "slateblue"            "slateblue1"          
+[596] "slateblue2"           "slateblue3"           "slateblue4"           "slategray"            "slategray1"           "slategray2"           "slategray3"          
+[603] "slategray4"           "slategrey"            "snow"                 "snow1"                "snow2"                "snow3"                "snow4"               
+[610] "springgreen"          "springgreen1"         "springgreen2"         "springgreen3"         "springgreen4"         "steelblue"            "steelblue1"          
+[617] "steelblue2"           "steelblue3"           "steelblue4"           "tan"                  "tan1"                 "tan2"                 "tan3"                
+[624] "tan4"                 "thistle"              "thistle1"             "thistle2"             "thistle3"             "thistle4"             "tomato"              
+[631] "tomato1"              "tomato2"              "tomato3"              "tomato4"              "turquoise"            "turquoise1"           "turquoise2"          
+[638] "turquoise3"           "turquoise4"           "violet"               "violetred"            "violetred1"           "violetred2"           "violetred3"          
+[645] "violetred4"           "wheat"                "wheat1"               "wheat2"               "wheat3"               "wheat4"               "whitesmoke"          
+[652] "yellow"               "yellow1"              "yellow2"              "yellow3"              "yellow4"              "yellowgreen"     
 ```
 
