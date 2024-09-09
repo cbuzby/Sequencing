@@ -848,10 +848,17 @@ AllCuSO4_glmer_1byRep %>%
   geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
   geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
   geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
+  geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
   
-  geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "I",], aes(x = POS, y = -1, width = 1, height = 1), color = "red") +
-  geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "VIII",], aes(x = POS, y = -2, width = 1, height = 1), color = "red") +
-
+  
+  # geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
+  #           aes(x = POS, y = -1, width = 1, height = 1,
+  #               color = abs(zscore))) +
+  # geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,], 
+  #           aes(x = POS, y = -2, width = 1, height = 1, 
+  #               color = abs(zscore))) +
+geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "cyan") +
+  geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "cyan") +
   facet_grid(~CHROM, space = "free", scales = "free") +
   theme_bw() +
   ylim(-3, 13)+
@@ -1074,8 +1081,56 @@ AllCuSO4_glmer_1byRep %>%
 
 rbind(C1, C2, C3, C4, C5, C6, C7, C8,
       C9, C10, C11, C12, C13, C14, C15, C16) -> AllBulkPeaks
+
+AllBulkPeaks %>% mutate(POS = POS+10) %>% rbind(AllBulkPeaks)%>%
+  mutate(POS = POS-10) %>% rbind(AllBulkPeaks) -> AllBulkPeaks_wide
 ```
 
+```{r, fig.width=8, fig.height=3}
+#Manhattan Plot WITH bars
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  geom_line() +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
+  geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
+  #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
+  
+  
+  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
+            aes(x = POS, y = -1, width = 1, height = 1,
+                color = abs(zscore))) +
+  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,],
+            aes(x = POS, y = -2, width = 1, height = 1,
+                color = abs(zscore))) +
+geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "cyan") +
+  geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "cyan") +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme_bw() +
+  ylim(-3, 13)+
+  scale_color_gradient2(low = "gray", high = "black") +
+  scale_alpha_manual(values = c(0,1)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  xlab("Chromosomal Position") + ylab("| z-score |") +
+  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
+        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
+    strip.background.x = element_rect(color = "gray"),
+        legend.position = "none", 
+        panel.grid = element_blank(),
+        panel.spacing = unit(0.1, "lines"),
+        panel.border = element_rect(color = "gray"),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  theme(panel.spacing = unit(0.2, "lines")) -> Fig3
+
+Fig3
+
+ggsave("Fig3.tif", plot = Fig3, dpi = 300, width = 8, height = 3)
+ggsave("Fig3.png", plot = Fig3, dpi = 300, width = 8, height = 3)
+```
 
 ## Figure 4
 
