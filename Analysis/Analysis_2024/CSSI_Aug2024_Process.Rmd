@@ -442,13 +442,26 @@ unique(smoothdata_named$Day)
 ## Change into factors
 
 ```{r}
-smoothdata_named %>% na.omit() %>%
-  mutate_if(is.character, as.factor) -> rd_factor
 
-contrasts(rd_factor$Parent) <- matrix(c(0.5, -0.5))
-contrasts(rd_factor$Bulk) <- matrix(c(1, 0))
+smoothdata_named %>% filter(Day == "r") %>% mutate(Bulk = gsub("D", "A", Bulk))  %>% na.omit() %>%
+  mutate_if(is.character, as.factor) -> rd_factor_cyclohex
+smoothdata_named %>% filter(Day == "p") %>% mutate(Bulk = gsub("D", "A", Bulk))  %>% na.omit() %>%
+  mutate_if(is.character, as.factor) -> rd_factor_ethanol
+smoothdata_named %>% filter(Day == "q") %>% mutate(Bulk = gsub("D", "A", Bulk))  %>% na.omit() %>%
+  mutate_if(is.character, as.factor) -> rd_factor_H2O2
 
-saveRDS(rd_factor, "CSSI_A24_rd_factorG200.rds")
+contrasts(rd_factor_cyclohex$Parent) <- matrix(c(0.5, -0.5))
+contrasts(rd_factor_ethanol$Parent) <- matrix(c(0.5, -0.5))
+contrasts(rd_factor_H2O2$Parent) <- matrix(c(0.5, -0.5))
+
+contrasts(rd_factor_cyclohex$Bulk) <- matrix(c(1, 0))
+contrasts(rd_factor_ethanol$Bulk) <- matrix(c(1, 0))
+contrasts(rd_factor_H2O2$Bulk) <- matrix(c(1, 0))
+
+saveRDS(rd_factor_cyclohex, "CSSI_A24_rd_factor_cyclohex.rds")
+saveRDS(rd_factor_ethanol, "CSSI_A24_rd_factor_ethanol.rds")
+saveRDS(rd_factor_H2O2, "CSSI_A24_rd_factor_H2O2.rds")
+
 ```
 
 ################################################################################
@@ -456,9 +469,9 @@ saveRDS(rd_factor, "CSSI_A24_rd_factorG200.rds")
 # Running GLMs
 
 ```{r}
-rd_factor <- readRDS("CSSI_A24_rd_factorG200.rds")
-
-rd_factor %>% mutate(SmoothCount = floor(SmoothCount)) -> rd_factor
+rd_factor_cyclohex <- readRDS("CSSI_A24_rd_factor_cyclohex.rds") 
+rd_factor_ethanol <- readRDS("CSSI_A24_rd_factor_ethanol.rds")
+rd_factor_H2O2 <- readRDS("CSSI_A24_rd_factor_H2O2.rds")
 ```
 
 ## Make function to run glmer
@@ -519,111 +532,351 @@ saveRDS(Aug24_CSS1_glmer_1byRep, file = "Aug24_CSS1_glmer_1byRep.rds")
 ### GLM for a quick look
 
 ```{r}
-rd_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+
+rd_factor_cyclohex %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   group_by(CHROM, POS, Day) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
                                                             Background = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Background"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_1byRep
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_cyclohex
 
-saveRDS(Aug24_CSS1_glm_1byRep, file = "Aug24_CSS1_glm_1byRep.rds")
+saveRDS(Aug24_CSS1_glm_cyclohex, file = "Aug24_CSS1_glm_cyclohex.rds")
 
-Aug24_CSS1_glm_1byRep %>% na.omit()
+rd_factor_ethanol %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  group_by(CHROM, POS, Day) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Background = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_ethanol
+
+saveRDS(Aug24_CSS1_glm_ethanol, file = "Aug24_CSS1_glm_ethanol.rds")
+
+rd_factor_H2O2 %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  group_by(CHROM, POS, Day) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Background = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_H2O2
+
+saveRDS(Aug24_CSS1_glm_H2O2, file = "Aug24_CSS1_glm_H2O2.rds")
+
 ```
 
+```{r, fig.width=12, fig.height=4}
+Aug24_CSS1_glm_H2O2 %>% filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") +
+  ggtitle("H2O2")
+
+Aug24_CSS1_glm_ethanol %>% filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")+
+  ggtitle("EtOH")
+
+Aug24_CSS1_glm_cyclohex %>% filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")+
+  ggtitle("Cyc")
+
+Aug24_CSS1_glm_H2O2 %>% mutate(Selection = "H2O2") -> temp1
+Aug24_CSS1_glm_ethanol %>% mutate(Selection = "EtOH") -> temp2
+Aug24_CSS1_glm_cyclohex %>% mutate(Selection = "Cycloheximide") %>%
+  rbind(temp1) %>%
+  rbind(temp2) -> CSSI_Aug2024_glm
+
+rm(temp1)
+rm(temp2)
+
+CSSI_Aug2024_glm %>% filter(label == "Bulk") %>% ggplot(aes(x = POS, y = zscore, color = Selection)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free")
+
+```
+
+# Load previous glms
+
+```{r}
+
+#With 2 replicates included
+Fluc_CSS1_glm <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HGVMVDRX2_CSS1_glm_alld.rds")
+
+#With no replicates
+Fluc_CSS1_glm <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HGVMVDRX2norep_CSS1_glm_all.rds") %>% 
+  mutate(zscore = Summary, label = Factor, Selection = "Fluconazole") %>%
+  select(-Summary, -Factor) %>%
+  na.omit() 
+
+CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
+Aug24_CSS1_glm_H2O2 <- readRDS("Aug24_CSS1_glm_H2O2.rds")
+Aug24_CSS1_glm_cyclohex <- readRDS("Aug24_CSS1_glm_cyclohex.rds")
+Aug24_CSS1_glm_ethanol <- readRDS("Aug24_CSS1_glm_ethanol.rds")
+
+Aug24_CSS1_glm_H2O2 %>% mutate(Selection = "H2O2") -> temp1
+Aug24_CSS1_glm_ethanol %>% mutate(Selection = "EtOH") -> temp2
+Aug24_CSS1_glm_cyclohex %>% mutate(Selection = "Cycloheximide") %>%
+  rbind(temp1) %>%
+  rbind(temp2) -> CSSI_Aug2024_glm
+
+rm(temp1)
+rm(temp2)
+
+```
 
 # Load in post glm/glmer
-```{r}
-Aug24_CSS1_glmer_1byRep <- readRDS("Aug24_CSS1_glmer_1byRep.rds")
-Aug24_CSS1_glm_1byRep <- readRDS("Aug24_CSS1_glm_1byRep.rds")
+
+```{r, fig.width=12, fig.height=4}
+
+CuSO4_CSS1_glmer_1byRep %>% 
+  mutate(Selection = "CuSO4") %>%
+  rbind(CSSI_Aug2024_glm) %>%
+  rbind(Fluc_CSS1_glm) %>%
+  filter(label == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection)) + geom_line() + facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("CSS I Bulk Effects") +
+  theme(legend.position = "bottom")
 
 ```
 
+```{r}
+CuSO4_CSS1_glmer_1byRep %>% 
+  mutate(Selection = "CuSO4") %>%
+  rbind(CSSI_Aug2024_glm) %>%
+    rbind(Fluc_CSS1_glm) %>%
+  filter(label == "Interaction") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection)) + geom_point(size = 0.5, alpha = 0.5) + 
+  geom_hline(yintercept = 1.1)+
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS I Interaction Effects")+ ylim(0,2) +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+CuSO4_CSS1_glmer_1byRep %>% 
+  mutate(Selection = "CuSO4") %>%
+  rbind(CSSI_Aug2024_glm) %>%
+    rbind(Fluc_CSS1_glm) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+  geom_hline(yintercept = 1.1)+
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS I Interaction Effects")+ #ylim(0,2) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("black", "violet"))
+```
+```{r}
+ #IRA2
+CSSI_Aug2024_glm %>% filter(Selection == "EtOH", CHROM == "XV") %>%
+  ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  geom_vline(xintercept = c(171070,180309)) +
+  geom_hline(yintercept = c(-1.1, 0, 1.1))
+
+CSSI_Aug2024_glm %>% filter(Selection == "EtOH", label == "Bulk") %>%
+    ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+  geom_hline(yintercept = 1.1)+
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  ylim(0, 3)
+```
+
+```{r}
+CSSI_Aug2024_glm %>% filter(label == "Interaction", abs(zscore) > 2.5) %>%
+  merge(rd_factor) -> maybeweirdones
+
+maybeweirdones %>% ggplot(aes(x = as.factor(POS), y = SmoothCount, color = Allele, shape = Bulk == "D")) + geom_point()
+
+table(maybeweirdones$POS, maybeweirdones$Bulk)
+```
+
+```{r, fig.width=12, fig.height=5}
+maybeweirdones %>% ggplot(aes(x = as.numeric(Allele), y = SmoothCount, color = Bulk, fill = Bulk, )) + geom_point() +
+  geom_smooth(method = "lm") +
+  facet_grid(Parent~paste(POS, Day)) +
+  scale_color_manual(values = c("violet", "black", "red", "purple")) +
+  scale_fill_manual(values =  c("violet", "black", "red", "purple"))
+
+```
 
 ## Permutations for significance
 
 Actually running a permutation on this
 
 ```{r}
-rd_factor %>% filter(Bulk == "Dilute",
+#unique(rd_factor_cyclohex$Bulk)
+rd_factor_cyclohex %>% filter(Bulk == "A",
                      CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
   mutate(label = paste(CHROM, POS, sep = "_")) %>%
-  group_by(Pool, Dataset) %>%
+  #group_by(Pool, Dataset) %>%
   summarize(NewPOS = sample(label),
             Oak = Oak,
             Wine = Wine,
-            Background = Background) %>%
+            Background = Parent) %>%
   separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
-  mutate(Bulk = "Selected") -> rd_shuffled_selected
+  mutate(Bulk = "Selected") -> rd_shuffled_selectedc
 
-rd_factor %>% filter(Bulk == "Dilute",
+rd_factor_cyclohex %>% filter(Bulk == "A",
                      CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
   pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
   mutate(label = paste(CHROM, POS, sep = "_")) %>%
-  group_by(Pool, Dataset) %>%
+  #group_by(Pool, Dataset) %>%
   summarize(NewPOS = sample(label),
             Oak = Oak,
             Wine = Wine,
-            Background = Background) %>%
+            Background = Parent) %>%
   separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
   mutate(Bulk = "Dilute") %>%
-  rbind(rd_shuffled_selected) -> Perm1
+  rbind(rd_shuffled_selectedc) -> Perm1c
 
-Perm1 %>% ungroup() %>%
+Perm1c %>% ungroup() %>%
   pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
   mutate(POS = as.numeric(POS)) %>%
-  mutate_if(is.character, as.factor) -> Perm1contrasts
+  mutate_if(is.character, as.factor) -> Perm1contrasts_c
 
-contrasts(Perm1contrasts$Background) <- matrix(c(-0.5, 0.5))
-contrasts(Perm1contrasts$Bulk)
+contrasts(Perm1contrasts_c$Background) <- matrix(c(-0.5, 0.5))
+contrasts(Perm1contrasts_c$Bulk)
 
-```
 
-```{r}
-
-Perm1contrasts %>%  filter(Pool %in% c("HNGLVDRXY", "HKTFTDRX2")) %>% distinct() %>% 
-  
-  group_by(CHROM, POS) %>% reframe(zscore = glmer_cb2_short(Bulk = Bulk,  
+Perm1contrasts_c %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
                                                             Background = Background,
-                                                            Rep = Dataset,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
-                                                            formula = "Allele ~ Bulk*Background +  (1 | Rep)"),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> CuSO4_CSS1_glmer_1byRep_PERM
+                                                            formula = "Allele ~ Bulk*Background"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_cyclohex_PERM
 
-saveRDS(CuSO4_CSS1_glmer_1byRep_PERM, "CuSO4_CSS1_glmer_1byRep_PERMG.rds")
+Aug24_CSS1_glm_cyclohex_PERM %>% mutate(Selection = "Cyclohex") -> Aug24_CSS1_glm_cyclohex_PERM
 
-
-CuSO4_CSS8_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "VIII") -> q5_css8
-
-CuSO4_CSS1_glmer_1byRep_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(CSS = "I") %>% rbind(q5_css8) -> q5_CuSO4_CSS
-
-saveRDS(q5_CuSO4_CSS, file = "q5_CuSO4_CSS.rds")
+saveRDS(Aug24_CSS1_glm_cyclohex_PERM, file = "Aug24_CSS1_glm_cyclohex_PERM.rds")
 
 ```
 
 ```{r}
-q5_CuSO4_CSS <- readRDS("q5_CuSO4_CSS.rds")
-CuSO4_CSS1_glmer_1byRep <- readRDS("CuSO4_CSS1_glmer_1byRepG.rds")
-CuSO4_CSS8_glmer_1byRep <- readRDS("CuSO4_CSS8_glmer_1byRepG.rds")
+rd_factor_ethanol %>% filter(Bulk == "A",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  #group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected_e
 
-CuSO4_CSS1_glmer_1byRep %>% mutate(CSS = "I") -> temp
-CuSO4_CSS8_glmer_1byRep %>% mutate(CSS = "VIII") %>%
-  rbind(temp) %>%
-  merge(q5_CuSO4_CSS) -> AllCuSO4_g200
+rd_factor_ethanol %>% filter(Bulk == "A",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  #group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected_e) -> Perm1_e
 
-AllCuSO4_g200 %>% filter(label %in% c("Bulk", "Interaction")) %>%
-  ggplot(aes(x = POS, y = zscore, color = CSS)) + geom_line() +
-  geom_hline(aes(yintercept = q5, color = CSS)) +
-  geom_hline(aes(yintercept = -q5, color = CSS)) +
-  facet_grid(label~CHROM, scales = "free", space = "free")
+Perm1_e %>% ungroup() %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) -> Perm1contrasts_e
 
-AllCuSO4_g200 %>% filter(label %in% c("Bulk"), CHROM == "VIII") %>%
-  ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
-  geom_hline(aes(yintercept = q5, color = CSS))
+contrasts(Perm1contrasts_e$Background) <- matrix(c(-0.5, 0.5))
+contrasts(Perm1contrasts_e$Bulk)
 
 
+Perm1contrasts_e %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_ethanol_PERM
+
+Aug24_CSS1_glm_ethanol_PERM %>% mutate(Selection = "Ethanol") -> Aug24_CSS1_glm_ethanol_PERM
+
+saveRDS(Aug24_CSS1_glm_ethanol_PERM, file = "Aug24_CSS1_glm_ethanol_PERM.rds")
+
+```
+
+```{r}
+
+
+rd_factor_H2O2 %>% filter(Bulk == "A",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  #group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected_h
+
+rd_factor_H2O2 %>% filter(Bulk == "A",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  #group_by(Pool, Dataset) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Background = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected_h) -> Perm1_h
+
+Perm1_h %>% ungroup() %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount") %>% unnest() %>%
+  mutate(POS = as.numeric(POS)) %>%
+  mutate_if(is.character, as.factor) -> Perm1contrasts_h
+
+contrasts(Perm1contrasts_h$Background) <- matrix(c(-0.5, 0.5))
+contrasts(Perm1contrasts_h$Bulk)
+
+
+Perm1contrasts_h %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Background = Background,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Background"),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Aug24_CSS1_glm_H2O2_PERM
+
+Aug24_CSS1_glm_H2O2_PERM %>% mutate(Selection = "H2O2") %>% ungroup() %>% select(-Day) -> Aug24_CSS1_glm_H2O2_PERM
+
+saveRDS(Aug24_CSS1_glm_H2O2_PERM, file = "Aug24_CSS1_glm_H2O2_PERM.rds")
+```
+
+```{r}
+rbind(Aug24_CSS1_glm_ethanol_PERM, Aug24_CSS1_glm_cyclohex_PERM, Aug24_CSS1_glm_H2O2_PERM) %>% 
+  na.omit() %>%
+  ungroup() %>%
+  filter(abs(zscore) < 10) %>%
+  group_by(Selection, label) %>%
+  summarize(q5 = quantile(abs(zscore), 0.95)) -> q5_CSSI_Aug24
+
+# Aug24_CSS1_glm_H2O2_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(Selection = "H2O2") -> q5_h
+# Aug24_CSS1_glm_ethanol_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(Selection = "EtOH") -> q5_e
+# Aug24_CSS1_glm_cyclohex_PERM %>% na.omit() %>% group_by(label) %>% summarize(q5 = quantile(abs(zscore), 0.95)) %>% mutate(Selection = "Cycloheximide") -> q5_c
+# 
+# rbind(q5_h,q5_e,q5_c) -> q5_CSSI_Aug24
+
+saveRDS(q5_CSSI_Aug24, file = "q5_CSSI_Aug24.rds")
+
+rbind(Aug24_CSS1_glm_H2O2_PERM, Aug24_CSS1_glm_ethanol_PERM, Aug24_CSS1_glm_cyclohex_PERM) %>% 
+  ggplot(aes(x = abs(zscore), color = Selection, linetype = label)) + geom_density() +
+  theme_bw() + xlim(0, 10)
+
+```
+
+```{r, fig.width=12, fig.height=5}
+unique(CSSI_Aug2024_glm$Selection)
+
+CSSI_Aug2024_glm %>% merge(q5_CSSI_Aug24) %>%
+  filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+  geom_hline(aes(yintercept = q5, color = label, linetype = label), alpha = 0.8)+
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS I Interaction Effects")+ #ylim(0,2) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("black", "maroon")) +
+  scale_linetype_manual(values = c(2,4))
+  
 ```
 
