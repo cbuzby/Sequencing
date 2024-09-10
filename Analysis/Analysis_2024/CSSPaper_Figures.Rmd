@@ -839,7 +839,7 @@ AllCuSO4_glmer_1byRep %>%
 #plot_grid(Fig3, Fig3Panel, nrow = 2, rel_heights = c(4,2))
 ```
 
-```{r, fig.width=8, fig.height=3}
+```{r, eval = FALSE}
 #Manhattan Plot WITH bars
 AllCuSO4_glmer_1byRep %>%
   filter(label == "Bulk") %>%
@@ -1084,6 +1084,11 @@ rbind(C1, C2, C3, C4, C5, C6, C7, C8,
 
 AllBulkPeaks %>% mutate(POS = POS+10) %>% rbind(AllBulkPeaks)%>%
   mutate(POS = POS-10) %>% rbind(AllBulkPeaks) -> AllBulkPeaks_wide
+
+AllBulkPeaks_wide %>% arrange(CSS, CHROM, POS, zscore) -> Additive_Peaks
+write.csv(Additive_Peaks, file = "Additive_Peaks.csv", row.names = FALSE)
+
+head(Additive_Peaks)
 ```
 
 ```{r, fig.width=8, fig.height=3}
@@ -1191,6 +1196,15 @@ SecondaryPeaks <- data.frame(CHROM = c("XI", "VII"),
 SecondaryPeaks %>% mutate(CHROM = factor(CHROM),
                           levels = as.character(as.roman(c(7,11)))) -> SecondaryPeaks
 
+rbind(IntPeaks, SecondaryPeaks) %>% select(CHROM, POS) %>% 
+  mutate(label = "Interaction", CSS = "VIII") %>%
+  merge(AllCuSO4_glmer_1byRep) %>%
+  select(CSS, CHROM, POS, zscore) %>%
+  arrange(CSS, CHROM, POS, zscore) -> Interaction_Peaks
+
+write.csv(Interaction_Peaks, file = "Interaction_Peaks.csv", row.names = FALSE)
+
+################################################################################
 AllCuSO4_glmer_1byRep %>%
   merge(q5_all) %>%
   mutate(CSS = paste("Fixed Chr", CSS)) %>%
@@ -1398,7 +1412,7 @@ save_plot(filename = "Fig4.tif", plot = Fig4, base_height = 9, base_width = 8)
 
 https://figshare.com/articles/dataset/Genetic_Architecture_of_Highly_Complex_Chemical_Resistance_Traits_across_Four_Yeast_Strains/127753?file=6678852
 
-```{r, fig.width=12, fig.height=4, eval = FALSE}
+```{r, fig.width=12, fig.height=4}
 BY_YJ <- read.table("C:/Users/Cassandra/Downloads/FileS3.TXT", header = TRUE) %>% select(Chromosome, Position, Cross, Copper.sulfate)
 RM_BY <- read.table("C:/Users/Cassandra/Downloads/FileS2.TXT", header = TRUE)%>% select(Chromosome, Position, Cross, Copper.sulfate)
 BY_YPS <- read.table("C:/Users/Cassandra/Downloads/FileS4.TXT", header = TRUE)%>% select(Chromosome, Position, Cross = cross, Copper.sulfate)
@@ -1417,31 +1431,9 @@ SmoothEh %>%
 
 Fig2Genes %>% mutate(Chromosome = as.numeric(as.roman(gsub("chr", "", Gene.chromosome.primaryIdentifier)))) -> EhGenes
 
-AllEhCrosses %>% filter(Chromosome %in% c(8,12)) %>%
-  mutate(OakWine = Cross == "RMxYPS") %>%
-  ggplot(aes(x = Position, y = abs(Copper.sulfate))) + 
-  geom_point(aes(color = Cross), alpha = 0.3) + 
-    geom_line(data = Compare_AllCuSO4_Bulk[Compare_AllCuSO4_Bulk$Chromosome %in% c(8,12),], 
-              aes(x = POS, y = abs(zscore/10), linetype = CSS), size = 1) +
-  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.start)) +
-  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.end)) +
-  theme_bw() +
-  scale_size_manual(values = c(0.2, 1)) +
-  facet_grid(OakWine~Chromosome, space = "free", scales = "free")
-
-SmoothEh %>% 
-  mutate(OakWine = Cross == "RMxYPS") %>%
-  ggplot(aes(x = Position, y = abs(Smoothed))) + 
-  geom_line(aes(color = Cross)) + 
-  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.start)) +
-  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.end)) +
-  theme_bw() +
-  scale_size_manual(values = c(0.2, 1)) +
-  facet_grid(OakWine~Chromosome, space = "free", scales = "free")
-
 ```
 
-```{r, fig.width=12, fig.height=4, eval = FALSE}
+```{r, fig.width=12, fig.height=4}
 RM_YPS %>% group_by(Chromosome) %>%
   summarize(Copper.sulfate = max(abs(Copper.sulfate))) %>%
   merge(RM_YPS) %>%
@@ -1469,6 +1461,32 @@ AllEhCrosses  %>%
   ggtitle("Ehrenreich crosses (black) compared to Buzby Oak/Wine Bulk results (color)") +
   scale_color_manual(values = c("#6aa0c7", "#f8923a"))
 ```
+```{r}
+AllEhCrosses %>% filter(Chromosome %in% c(8,12)) %>%
+  mutate(OakWine = Cross == "RMxYPS") %>%
+  ggplot(aes(x = Position, y = abs(Copper.sulfate))) + 
+  geom_point(aes(color = Cross), alpha = 0.3) + 
+    geom_line(data = Compare_AllCuSO4_Bulk[Compare_AllCuSO4_Bulk$Chromosome %in% c(8,12),], 
+              aes(x = POS, y = abs(zscore/10), linetype = CSS), size = 1) +
+  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.start)) +
+  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.end)) +
+  theme_bw() +
+  scale_size_manual(values = c(0.2, 1)) +
+  facet_grid(OakWine~Chromosome, space = "free", scales = "free")
+
+SmoothEh %>% 
+  mutate(OakWine = Cross == "RMxYPS") %>%
+  ggplot(aes(x = Position, y = abs(Smoothed))) + 
+  geom_line(aes(color = Cross)) + 
+  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.start)) +
+  geom_vline(data = EhGenes, aes(xintercept = Gene.chromosomeLocation.end)) +
+  theme_bw() +
+  scale_size_manual(values = c(0.2, 1)) +
+  facet_grid(OakWine~Chromosome, space = "free", scales = "free")
+
+```
+
+
 
 
 # Correlations in interaction hubs
