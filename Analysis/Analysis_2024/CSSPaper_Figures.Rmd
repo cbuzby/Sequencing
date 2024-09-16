@@ -699,26 +699,36 @@ sgd_copper %>% filter(Gene.symbol %in% c("CUP1-1", "FRE1")) -> Fig2Genes
 ```
 
 ```{r, fig.width=8, fig.height=4}
+
+dat_text <- data.frame(label = c("CUP1", "FRE1"),
+                      CHROM   = c("VIII", "XII"),
+                      x     = c(2.75e5, 6.5e5),
+                      y     = c(12.5, 7))
+
+
 AllCuSO4_glmer_1byRep %>% filter(CHROM %in% c("VIII", "XII")) %>%
   filter(label %in% c("Bulk")) %>%
   ggplot(aes(x = POS, y = abs(zscore))) + 
-  geom_vline(data = Fig2Genes, aes(xintercept = c(Gene.chromosomeLocation.start), color = Gene.symbol),
-             size = 2, alpha = 0.5) +  
+  geom_vline(data = Fig2Genes, aes(xintercept = c(Gene.chromosomeLocation.start)),
+             size = 2, alpha = 0.5, color = "turquoise3") +  
   geom_line(aes(linetype = CSS)) +
   geom_hline(data = q5_all[q5_all$label %in% c("Bulk"),], aes(yintercept = q5, linetype = CSS)) +
   facet_grid(~CHROM, space = "free", scales = "free") +
   labs(color = NULL, linetype = NULL, alpha = NULL) +
   theme_bw() +
   theme(legend.position = "bottom") + 
-  ylab("| z-score |") + ylim(0, NA) + 
+  ylab("| z-score |") + 
+  ylim(0, 13) + 
+  geom_text(data = dat_text, mapping = aes(x =x, y = y, label = label)) +
+  #annotate(data = CUP1annotate, geom = "text") + 
   xlab("Chromosomal Position") +
-  scale_y_continuous( breaks=pretty_breaks()) +
+  #scale_y_continuous( breaks=pretty_breaks()) +
   scale_x_continuous( breaks=pretty_breaks()) +
   scale_size_manual(values = c(0.1, 2)) +
-  scale_color_manual(values = c("hotpink", "darkorange")) +
+  scale_color_manual(values = c("turquoise3", "turquoise3")) +
   scale_linetype_manual(values = c(2,1)) -> Fig2
 
-Fig2
+Fig2 
 
 ggsave("Fig2.tif", Fig2, dpi = 300, width = 8, height = 4)
 ```
@@ -1090,18 +1100,163 @@ write.csv(Additive_Peaks, file = "Additive_Peaks.csv", row.names = FALSE)
 
 head(Additive_Peaks)
 ```
+Non-manual peak-calling
 
-```{r, fig.width=8, fig.height=3}
+```{r, eval = FALSE}
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  merge(q5_all) %>%
+  mutate(abs_zscore = abs(zscore)) -> temppc
+
+temppc$abs_zscore[temppc$abs_zscore < temppc$q5] <- 0
+
+temppc %>% filter(CHROM == "XV") %>%
+  arrange(POS) %>%
+  group_by(CSS, CHROM) %>%
+  summarize(POS = POS,
+            abs_zscore = abs_zscore, 
+            smooth_abs_z = frollapply(abs_zscore, mean, n = 200, align = "center")) -> temp2
+
+temp2 %>%
+  ggplot(aes(x = POS, y = smooth_abs_z)) + geom_point(alpha = 0.4) +
+  geom_line(aes(y = abs_zscore, color = CSS), size = 1) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")
+
+slope_change <- function(x){
+  df = data.frame(x = x, index = 1:length(x))
+  slope = lm(x ~ index, df)$coefficients[2]
+  return(slope)
+}
+
+temp2 %>% na.omit() %>% group_by(CHROM, CSS) %>% arrange(POS) %>%
+  summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z,
+            slope = frollapply(smooth_abs_z, FUN = slope_change, n = 200, align = "center")) -> temp3
+
+subtract2 <- function(POS){
+  return(POS[1] - POS[2])
+}
+
+temp3 %>% mutate(negative = slope < 0) %>% na.omit() %>%
+  summarize(POS = POS, crossover = frollapply(negative, FUN = subtract2, n = 2)) %>%
+  filter(crossover == 1) -> temp4
+
+temp3 %>%
+  ggplot(aes(x = POS, y = slope)) + geom_point(aes(color = slope < 0)) +
+  geom_line(aes(y = smooth_abs_z/500, color = CSS), alpha = 0.4) +
+  geom_vline(data = temp4, aes(xintercept = POS)) +
+  facet_grid("CSS")
+
+
+
+```
+
+```{r, warning = FALSE, message=FALSE}
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  merge(q5_all) %>%
+  mutate(abs_zscore = abs(zscore)) -> temppc
+
+temppc$abs_zscore[temppc$abs_zscore < temppc$q5] <- -2
+
+
+# Doing this for all of them
+temppc %>% 
+  arrange(POS) %>%
+  group_by(CSS, CHROM) %>%
+  summarize(POS = POS,
+            abs_zscore = abs_zscore, 
+            smooth_abs_z = frollapply(abs_zscore, mean, n = 200, align = "center")) %>%
+  na.omit() %>% 
+  group_by(CHROM, CSS) %>% arrange(POS) %>%
+  summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z,
+            slope = frollapply(smooth_abs_z, FUN = slope_change, n = 300, align = "center")) %>%
+  mutate(negative = slope < 0) %>% na.omit() %>%
+  summarize(POSc = POS, crossover = frollapply(negative, FUN = subtract2, n = 2)) %>%
+  filter(crossover == 1) -> CrossoverPoints
+
+
+data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% merge(data.frame(CSS = c("VIII", "I"))) %>%
+  mutate(POSc = 1, crossover = 0) %>%
+  rbind(CrossoverPoints) %>% 
+  group_by(CHROM, CSS) %>%
+  arrange(POSc) %>%
+  mutate(order = paste("A", row_number(POSc), sep = "_")) %>%
+  select(-crossover) %>%
+  pivot_wider(names_from = order, values_from = POSc) -> tempstack
+
+```
+
+```{r}
+tempstack %>% select(CHROM, CSS, Start = A_1, End = A_2) -> A12
+tempstack %>% select(CHROM, CSS, Start = A_2, End = A_3) -> A23
+tempstack %>% select(CHROM, CSS, Start = A_3, End = A_4) -> A34
+tempstack %>% select(CHROM, CSS, Start = A_4, End = A_5) -> A45
+#tempstack %>% select(CHROM, CSS, Start = A_5, End = A_6) -> A56
+tempstack %>% select(CHROM, CSS, Start = A_5) %>% mutate(End = Inf) -> A56
+#tempstack %>% select(CHROM, CSS, Start = A_6) %>% mutate(End = Inf) -> A67
+
+rbind(A12, A23, A34, A45, A56) %>%
+#rbind(A12, A23, A34, A45, A56, A67) %>%
+  ungroup() %>%
+  distinct() -> tempStartEnd
+
+#tempStartEnd %>% filter(CHROM == "XV") %>% arrange(CSS)
+
+peakdata <- data.frame(CHROM = NA, CSS = NA, zscore = NA)
+for(i in unique(tempStartEnd$CHROM)){
+  for(c in unique(tempStartEnd$CSS)){
+    tempStartEnd %>% filter(CHROM == i, CSS == c) -> newtemp
+    
+    newtemp$End[is.na(newtemp$End)] <- Inf
+    newtemp$End[is.na(newtemp$Start)] <- Inf
+    
+    for(k in 1:length(newtemp$Start)){
+      AllCuSO4_glmer_1byRep %>% filter(CHROM == i, CSS == c, label == "Bulk") %>%
+      filter(POS > newtemp$Start[k], POS < newtemp$End[k]) %>%
+      ungroup() %>%
+      group_by(CHROM, CSS) %>%
+      summarize(zscore = max(abs(zscore))) -> something
+    
+      peakdata <- rbind(peakdata, something)
+    }
+    
+    rm(newtemp)
+    
+  }
+}
+
+
+
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  mutate(zscore = abs(zscore)) -> tempAll
+
+tempAll %>% merge(peakdata) %>% merge(q5_all) %>%
+  filter(zscore > q5) -> peaks
+
+# AllCuSO4_glmer_1byRep %>%
+#   filter(label == "Bulk") %>%
+#   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
+#   geom_point(data = peaks, aes(x = POS, y = zscore)) + 
+#   # geom_vline(data = tempStartEnd, aes(xintercept = Start), color = "black") +
+#   # geom_vline(data = tempStartEnd, aes(xintercept = End), linetype = "dashed", color = "gray") +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
+#   theme(legend.position = "none")
+
+```
+
+
+```{r, fig.width=8, fig.height=3.5}
 #Manhattan Plot WITH bars
 AllCuSO4_glmer_1byRep %>%
   filter(label == "Bulk") %>%
   ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
   geom_line() +
   geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
-  geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
+  #geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
   geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
   #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
-  
+
   
   geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
             aes(x = POS, y = -1, width = 1, height = 1,
@@ -1131,10 +1286,54 @@ geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "I",], aes(x = POS, 
   scale_linetype_manual(values = c(2,1)) +
   theme(panel.spacing = unit(0.2, "lines")) -> Fig3
 
+
+```
+
+```{r, fig.width=8, fig.height=3.5}
+#Manhattan Plot WITH bars
+AllCuSO4_glmer_1byRep %>%
+  filter(label == "Bulk") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  geom_line(aes(linetype = CSS)) +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  #geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
+  geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
+  #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
+  geom_point(data = peaks[peaks$CSS == "I",], aes(x = POS, y = zscore), color = "darkturquoise", alpha = 0.5) + 
+  geom_point(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = zscore), color = "blue", alpha = 0.5) + 
+
+  
+  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
+            aes(x = POS, y = -1, width = 1, height = 1,
+                color = abs(zscore))) +
+  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,],
+            aes(x = POS, y = -2, width = 1, height = 1,
+                color = abs(zscore))) +
+geom_tile(data = peaks[peaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "darkturquoise") +
+  geom_tile(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "blue") +
+  facet_grid(~CHROM, space = "free", scales = "free") +
+  theme_bw() +
+  scale_color_gradient2(low = "gray80", high = "gray40") +
+  scale_alpha_manual(values = c(0,1)) +
+  scale_y_continuous(expand = c(0,0), limits = c(-2.5,13)) +
+  scale_x_continuous(expand = c(0.1, 0.1)) +
+  xlab("Chromosomal Position") + ylab("| z-score |") +
+  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
+        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
+    strip.background.x = element_rect(color = "gray"),
+        legend.position = "none", 
+        panel.grid = element_blank(),
+        panel.spacing = unit(0.1, "lines"),
+        panel.border = element_rect(color = "gray"),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_linetype_manual(values = c(2,1)) +
+  theme(panel.spacing = unit(0.2, "lines")) -> Fig3
+
 Fig3
 
-ggsave("Fig3.tif", plot = Fig3, dpi = 300, width = 8, height = 3)
-ggsave("Fig3.png", plot = Fig3, dpi = 300, width = 8, height = 3)
+ggsave("Fig3.tif", plot = Fig3, dpi = 300, width = 8, height = 3.5)
+ggsave("Fig3.png", plot = Fig3, dpi = 300, width = 8, height = 3.5)
 ```
 
 ## Figure 4
@@ -1406,6 +1605,7 @@ C4
 plot_grid(A4, B4, C4, ncol = 1, rel_heights = c(1.7,1,1)) -> Fig4
 
 save_plot(filename = "Fig4.tif", plot = Fig4, base_height = 9, base_width = 8)
+save_plot(filename = "Fig4.png", plot = Fig4, base_height = 9, base_width = 8)
 ```
 
 # Ehrenreich Supplemental
@@ -1593,16 +1793,24 @@ AlbertHotspotMap %>%
 ## Oak vs Wine NCYCs
 
 ```{r}
-read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/CuSO4_Phenotyping_2024.csv") %>% filter(Dilution == 1, Rep != "B_100") %>% 
-  ggplot(aes(x = paste(Dose, Strain), y = Survival_Percent, color = Strain)) + 
-  #ggplot(aes(x = factor(Dose), y = Survival_Percent, color = Strain)) + 
-  geom_boxplot(size = 1, alpha = 0) + ggtitle("CuSO4 Survival by Strain") +
-  geom_jitter(aes(shape = Rep), size = 4, alpha = 0.6, width = 0.4) + 
-  #geom_jitter(aes(shape = Rep), size = 4, alpha = 0.6, position = position_jitterdodge(jitter.width = 0.01)) + 
+read.csv("C:/Users/Cassandra/Documents/R_FileTransfer/CuSO4_Phenotyping_2024.csv") %>% filter(Dilution == 1, Rep != "B_100") %>%
+  mutate(Dose = paste(Dose, "mM")) %>%
+  #ggplot(aes(x = paste(Dose, Strain), y = Survival_Percent, color = Strain)) + 
+  ggplot(aes(x = factor(Strain), y = Survival_Percent, color = Strain)) + 
+  geom_boxplot(size = 1, alpha = 0) + 
+  ggtitle("CuSO4 Survival by Strain") +
+  #geom_jitter(aes(shape = Rep), size = 4, alpha = 0.6, width = 0.4) + 
+  geom_jitter(aes(shape = Rep), size = 4, alpha = 0.6, position = position_jitterdodge(jitter.width = 0.01)) + 
+  ylab("Survival Percentage") +
   scale_y_log10() +
-  scale_color_manual(values = c("darkorange", "maroon4")) + xlab("mM CuSO4") + 
+  facet_grid(~Dose) +
+  scale_color_manual(values = c("darkorange", "maroon4")) + 
+  xlab("") + 
+  theme_bw()+
   theme(axis.text.x = element_text(), 
-        panel.grid = element_blank())
+        panel.grid = element_blank(), axis.text = element_text(size = 14),
+        text = element_text(size = 16),
+        legend.position = "none")
 
 ```
 ## Where is there "sign" epistasis?
@@ -1740,4 +1948,6 @@ rawdata_unsmoothed %>% na.omit() %>%
 [645] "violetred4"           "wheat"                "wheat1"               "wheat2"               "wheat3"               "wheat4"               "whitesmoke"          
 [652] "yellow"               "yellow1"              "yellow2"              "yellow3"              "yellow4"              "yellowgreen"     
 ```
+
+
 
