@@ -1164,12 +1164,12 @@ temppc %>%
   arrange(POS) %>%
   group_by(CSS, CHROM) %>%
   summarize(POS = POS,
-            abs_zscore = abs_zscore, 
-            smooth_abs_z = frollapply(abs_zscore, mean, n = 200, align = "center")) %>%
+            abs_zscore = abs_zscore,
+            smooth_abs_z = frollapply(abs_zscore, mean, n = 1, align = "center")) %>%
   na.omit() %>% 
   group_by(CHROM, CSS) %>% arrange(POS) %>%
   summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z,
-            slope = frollapply(smooth_abs_z, FUN = slope_change, n = 300, align = "center")) %>%
+            slope = frollapply(smooth_abs_z, FUN = slope_change, n = 700, align = "center")) %>%
   mutate(negative = slope < 0) %>% na.omit() %>%
   summarize(POSc = POS, crossover = frollapply(negative, FUN = subtract2, n = 2)) %>%
   filter(crossover == 1) -> CrossoverPoints
@@ -1186,7 +1186,7 @@ data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% merge(data.frame
 
 ```
 
-```{r}
+```{r, message = FALSE, warning=FALSE, error=FALSE, fig.width=12, fig.height=6}
 tempstack %>% select(CHROM, CSS, Start = A_1, End = A_2) -> A12
 tempstack %>% select(CHROM, CSS, Start = A_2, End = A_3) -> A23
 tempstack %>% select(CHROM, CSS, Start = A_3, End = A_4) -> A34
@@ -1234,45 +1234,23 @@ AllCuSO4_glmer_1byRep %>%
 tempAll %>% merge(peakdata) %>% merge(q5_all) %>%
   filter(zscore > q5) -> peaks
 
-# AllCuSO4_glmer_1byRep %>%
-#   filter(label == "Bulk") %>%
-#   ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
-#   geom_point(data = peaks, aes(x = POS, y = zscore)) + 
-#   # geom_vline(data = tempStartEnd, aes(xintercept = Start), color = "black") +
-#   # geom_vline(data = tempStartEnd, aes(xintercept = End), linetype = "dashed", color = "gray") +
-#   facet_grid(CSS~CHROM, scales = "free", space = "free") +
-#   theme(legend.position = "none")
-
-```
-
-
-```{r, fig.width=8, fig.height=3.5}
+################################################################################
 #Manhattan Plot WITH bars
 AllCuSO4_glmer_1byRep %>%
   filter(label == "Bulk") %>%
-  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
+  ggplot(aes(x = POS, y = abs(zscore))) + 
   geom_line() +
-  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
+  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5), size = 0.5) +
   #geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
   geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
   #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
+  geom_point(data = peaks[peaks$CSS == "I",], aes(x = POS, y = zscore), color = "red", alpha = 0.4, size = 3) + 
+  geom_point(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = zscore), color = "red", alpha = 0.4, size = 3) + 
 
-  
-  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
-            aes(x = POS, y = -1, width = 1, height = 1,
-                color = abs(zscore))) +
-  geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,],
-            aes(x = POS, y = -2, width = 1, height = 1,
-                color = abs(zscore))) +
-geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "cyan") +
-  geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "cyan") +
-  facet_grid(~CHROM, space = "free", scales = "free") +
+
+  facet_grid(CSS~CHROM, space = "free", scales = "free") +
   theme_bw() +
-  ylim(-3, 13)+
-  scale_color_gradient2(low = "gray", high = "black") +
-  scale_alpha_manual(values = c(0,1)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0, 0)) +
+  scale_color_gradient2(low = "gray80", high = "gray40") +
   xlab("Chromosomal Position") + ylab("| z-score |") +
   theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
         #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
@@ -1284,10 +1262,9 @@ geom_tile(data = AllBulkPeaks_wide[AllBulkPeaks_wide$CSS == "I",], aes(x = POS, 
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
   scale_linetype_manual(values = c(2,1)) +
-  theme(panel.spacing = unit(0.2, "lines")) -> Fig3
-
-
+  theme(panel.spacing = unit(0.2, "lines"))
 ```
+
 
 ```{r, fig.width=8, fig.height=3.5}
 #Manhattan Plot WITH bars
