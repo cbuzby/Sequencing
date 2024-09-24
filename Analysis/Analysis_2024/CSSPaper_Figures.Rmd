@@ -578,6 +578,12 @@ fmt_dcimals <- function(decimals=0){
    function(x) as.character(round(x,decimals))
 }
 
+slope_change <- function(x){
+  df = data.frame(x = x, index = 1:length(x))
+  slope = lm(x ~ index, df)$coefficients[2]
+  return(slope)
+}
+
 ```
 
 # Load in data
@@ -805,301 +811,6 @@ AllCuSO4_glmer_1byRep %>%
   ggtitle("CUP2 homolog HAA1")
 ```
 
-
-```{r, fig.width=8, fig.height=3}
-#Make a band for underneath
-AllCuSO4_glmer_1byRep %>%
-  #filter(abs(zscore) > 1.1) %>%
-  filter(label == "Bulk") %>%
-  ggplot(aes(x = POS)) + 
-  geom_vline(aes(xintercept = POS, color = zscore, alpha = abs(zscore) > 1.1)) +
-  facet_grid(CSS~CHROM, space = "free", scales = "free") +
-  scale_color_gradient2(low = "red", mid = "white", high = "blue") +
-  scale_alpha_manual(values = c(0,1)) +
-  theme(legend.position = "none", panel.grid = element_blank()) -> Fig3Panel
-
-#Manhattan Plot
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk") %>%
-  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
-  geom_line() +
-  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
-  geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
-  facet_grid(~CHROM, space = "free", scales = "free") +
-  theme_bw() +
-  ylim(0, 13)+
-  xlab("Chromosomal Position") + ylab("| z-score |") +
-  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
-        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
-    strip.background.x = element_rect(color = "gray"),
-        legend.position = "none", 
-        panel.grid = element_blank(),
-        panel.spacing = unit(0.1, "lines"),
-        panel.border = element_rect(color = "gray"),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  scale_linetype_manual(values = c(2,1)) #+
-#   theme(panel.spacing = unit(0.2, "lines")) -> Fig3
-# 
-# Fig3
-# 
-# ggsave("Fig3.tif", plot = Fig3, dpi = 300, width = 8, height = 3)
-# ggsave("Fig3.png", plot = Fig3, dpi = 300, width = 8, height = 3)
-
-#plot_grid(Fig3, Fig3Panel, nrow = 2, rel_heights = c(4,2))
-```
-
-```{r, eval = FALSE}
-#Manhattan Plot WITH bars
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk") %>%
-  ggplot(aes(x = POS, y = abs(zscore), linetype = CSS)) + 
-  geom_line() +
-  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
-  geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
-  geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
-  geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
-  
-  
-  # geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
-  #           aes(x = POS, y = -1, width = 1, height = 1,
-  #               color = abs(zscore))) +
-  # geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,], 
-  #           aes(x = POS, y = -2, width = 1, height = 1, 
-  #               color = abs(zscore))) +
-geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "cyan") +
-  geom_tile(data = AllBulkPeaks[AllBulkPeaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "cyan") +
-  facet_grid(~CHROM, space = "free", scales = "free") +
-  theme_bw() +
-  ylim(-3, 13)+
-  scale_color_gradient2(low = "gray", high = "black") +
-  scale_alpha_manual(values = c(0,1)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0, 0)) +
-  xlab("Chromosomal Position") + ylab("| z-score |") +
-  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
-        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
-    strip.background.x = element_rect(color = "gray"),
-        legend.position = "none", 
-        panel.grid = element_blank(),
-        panel.spacing = unit(0.1, "lines"),
-        panel.border = element_rect(color = "gray"),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  scale_linetype_manual(values = c(2,1)) +
-  theme(panel.spacing = unit(0.2, "lines")) -> Fig3
-
-Fig3
-
-ggsave("Fig3.tif", plot = Fig3, dpi = 300, width = 8, height = 3)
-ggsave("Fig3.png", plot = Fig3, dpi = 300, width = 8, height = 3)
-```
-
-Trying this with an actual peak caller
-
-```{r}
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk") %>%
-  merge(q5_all) %>%
-  na.omit() %>%
-  arrange(CHROM, POS) %>%
-  mutate(threshold = abs(zscore) > q5) -> testwhatever
-
-equivalent <- function(x){
-  x[1] == x[2]
-}
-
-testwhatever %>% group_by(CHROM, CSS) %>%
-  summarize(POS, zscore, threshold, change = frollapply(threshold, FUN = equivalent, align = "left", n = 2)) -> anothertest
-
-for(i in unique(AllCuSO4_glmer_1byRep$CHROM)){
-  AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == i) %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  ggplot(aes(x = POS, y = zscore, color = CSS)) + geom_point() +
-    ggtitle(i) +
-    theme_bw() -> testplot
-  
-  print(testplot)
-}
-
-```
-
-```{r}
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "I") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "I") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS) -> C1
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "II") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 2e05) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max)%>%
-  mutate(CHROM = "II") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS) -> C2
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "III") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "III") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C3
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "IV") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 400000, POS > 1000000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "IV")%>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS) -> C4
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "IX") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "IX") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C9
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "V") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 400000, POS > 1000000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "V")%>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS) -> C5
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "VI") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 150000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "VI") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C6
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "VII") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 650000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "VII") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C7
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "VIII") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "VIII") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C8
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "X") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 650000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "X") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C10
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XI") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 400000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XI") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C11
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XII") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 500000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XII") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C12
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XIII") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 200000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XIII")%>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS) -> C13
-
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XIV") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 300000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XIV") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C14
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XV") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 300000, POS > 750000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XV") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C15
-
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk", CHROM == "XVI") %>%
-  merge(q5_all) %>%
-  filter(abs(zscore) > q5) %>%
-  group_by(CSS, POS > 700000) %>%
-  summarize( POS, zscore, max = max(abs(zscore))) %>%
-  filter(abs(zscore) == max) %>%
-  mutate(CHROM = "XVI") %>%
-  ungroup() %>% select(CHROM, POS, zscore, CSS)-> C16
-
-
-rbind(C1, C2, C3, C4, C5, C6, C7, C8,
-      C9, C10, C11, C12, C13, C14, C15, C16) -> AllBulkPeaks
-
-AllBulkPeaks %>% mutate(POS = POS+10) %>% rbind(AllBulkPeaks)%>%
-  mutate(POS = POS-10) %>% rbind(AllBulkPeaks) -> AllBulkPeaks_wide
-
-AllBulkPeaks_wide %>% arrange(CSS, CHROM, POS, zscore) -> Additive_Peaks
-write.csv(Additive_Peaks, file = "Additive_Peaks.csv", row.names = FALSE)
-
-head(Additive_Peaks)
-```
 Non-manual peak-calling
 
 ```{r, eval = FALSE}
@@ -1234,39 +945,19 @@ AllCuSO4_glmer_1byRep %>%
 tempAll %>% merge(peakdata) %>% merge(q5_all) %>%
   filter(zscore > q5) -> peaks
 
-################################################################################
-#Manhattan Plot WITH bars
-AllCuSO4_glmer_1byRep %>%
-  filter(label == "Bulk") %>%
-  ggplot(aes(x = POS, y = abs(zscore))) + 
-  geom_line() +
-  geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5), size = 0.5) +
-  #geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
-  geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
-  #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
-  geom_point(data = peaks[peaks$CSS == "I",], aes(x = POS, y = zscore), color = "red", alpha = 0.4, size = 3) + 
-  geom_point(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = zscore), color = "red", alpha = 0.4, size = 3) + 
-
-
-  facet_grid(CSS~CHROM, space = "free", scales = "free") +
-  theme_bw() +
-  scale_color_gradient2(low = "gray80", high = "gray40") +
-  xlab("Chromosomal Position") + ylab("| z-score |") +
-  theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
-        #strip.text.x = element_text(color = "white", size = 10, face = "bold"),
-    strip.background.x = element_rect(color = "gray"),
-        legend.position = "none", 
-        panel.grid = element_blank(),
-        panel.spacing = unit(0.1, "lines"),
-        panel.border = element_rect(color = "gray"),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  scale_linetype_manual(values = c(2,1)) +
-  theme(panel.spacing = unit(0.2, "lines"))
 ```
 
 
 ```{r, fig.width=8, fig.height=3.5}
+# c1 = "#253BE5"
+# c2 = "#7CC6FE"
+# 
+# c1 = "#157A6D"
+# c2 = "#5ED989"
+
+c1 = "turquoise"
+c2 = "#4197b5"
+
 #Manhattan Plot WITH bars
 AllCuSO4_glmer_1byRep %>%
   filter(label == "Bulk") %>%
@@ -1275,9 +966,8 @@ AllCuSO4_glmer_1byRep %>%
   geom_hline(data = q5_Bulk, aes(yintercept = Bulkq5, linetype = CSS), size = 0.5) +
   #geom_vline(data = peaks_rainbow, aes(xintercept = POS, linetype = CSS), alpha = 0.4, size = 1, color = "turquoise3") + 
   geom_ribbon(aes(ymin = -Inf, ymax = -0.25), fill = "white") +
-  #geom_ribbon(aes(ymin = -Inf, ymax = -0.5), fill = "black") +
-  geom_point(data = peaks[peaks$CSS == "I",], aes(x = POS, y = zscore), color = "darkturquoise", alpha = 0.5) + 
-  geom_point(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = zscore), color = "blue", alpha = 0.5) + 
+  geom_point(data = peaks[peaks$CSS == "I",], aes(x = POS, y = zscore), color = c1, alpha = 0.8, size = 2) + 
+  geom_point(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = zscore), color = c2, alpha = 0.8, size = 2) + 
 
   
   geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "I" & AllCuSO4_glmer_1byRep$label == "Bulk" & abs(AllCuSO4_glmer_1byRep$zscore) > 1.049899,],
@@ -1286,14 +976,18 @@ AllCuSO4_glmer_1byRep %>%
   geom_tile(data = AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CSS == "VIII" & AllCuSO4_glmer_1byRep$label == "Bulk"& abs(AllCuSO4_glmer_1byRep$zscore) > 1.116373,],
             aes(x = POS, y = -2, width = 1, height = 1,
                 color = abs(zscore))) +
-geom_tile(data = peaks[peaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "darkturquoise") +
-  geom_tile(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "blue") +
+  # geom_tile(data = peaks[peaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), color = "darkturquoise") +
+  # geom_tile(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), color = "blue") +
+  geom_tile(data = peaks[peaks$CSS == "I",], aes(x = POS, y = -1, width = 2, height = 1), 
+            color = c1, linewidth = 1) +  
+  geom_tile(data = peaks[peaks$CSS == "VIII",], aes(x = POS, y = -2, width = 2, height = 1), 
+            color = c2, linewidth = 1) +
   facet_grid(~CHROM, space = "free", scales = "free") +
   theme_bw() +
-  scale_color_gradient2(low = "gray80", high = "gray40") +
+  scale_color_gradient2(low = "gray90", high = "gray60") +
   scale_alpha_manual(values = c(0,1)) +
   scale_y_continuous(expand = c(0,0), limits = c(-2.5,13)) +
-  scale_x_continuous(expand = c(0.1, 0.1)) +
+  scale_x_continuous(expand = c(0.05, 0.05)) +
   xlab("Chromosomal Position") + ylab("| z-score |") +
   theme(#strip.background.x = element_rect(color = "black", fill = c("black", "gray" )),
         #strip.text.x = element_text(color = "white", size = 10, face = "bold"),

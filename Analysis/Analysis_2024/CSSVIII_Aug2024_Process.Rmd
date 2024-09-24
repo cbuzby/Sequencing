@@ -898,3 +898,55 @@ CSSVIII_Aug2024_glm %>% merge(q5_CSSVIII_Aug24) %>%
   
 ```
 
+# Sanity Check
+
+If you have 3 things that could all interact, you have to check every pairwise combination, so A/a, B/b, and C/c:
+
+1. Ab
+2. aB
+3. AB
+4. ab
+5. bC
+6. Bc
+7. BC
+8. bc
+9. Ac
+10. aC
+11. AC
+12. ac
+
+But that's not how it works, since we actually want to know how those two genes change anything based on just those two. So it would be:
+
+1. AxB
+2. BxC
+3. AxC
+
+Okay instead, you have 26 letter, so each one can pair with another for an effect. You have:
+
+A x B..Z (25 chances)
+B x A..Z (25 -1 chances)
+C x A..Z (25 - A and B)
+D x A..Z (25 - A and B and C)
+
+Or if we make it simpler, out of 5, it's this:
+
+A x B..E (4 chances)
+B x A..E (4 -1 chances)
+C x A..E (4 - A and B)
+D x A..E (4 - A and B and C)
+E x A..D (4 - A and B and C and D)
+
+So that's 4 + 3 + 2 + 1 = 10
+```{r}
+#not this
+factorial(4)
+
+#Sum? But it would have to be n-1...
+4*(4+1)/2
+
+((5-1)*(5-1+1))/2
+
+5*(5-1)/2
+
+```
+
