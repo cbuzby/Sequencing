@@ -860,6 +860,7 @@ temp3 %>%
 
 
 ```
+## Peak Calling for Actual Paper!!!!
 
 ```{r, warning = FALSE, message=FALSE}
 AllCuSO4_glmer_1byRep %>%
@@ -895,6 +896,78 @@ data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% merge(data.frame
   select(-crossover) %>%
   pivot_wider(names_from = order, values_from = POSc) -> tempstack
 
+```
+```{r}
+#Turning the scripts above and below into a function
+
+cybr_lmpeaks <- function(Data, cutoff = 2, width = 700){
+  require(dplyr)
+  
+  Data %>% mutate(abs_zscore = abs(zscore)) %>%
+     mutate_at(vars(abs_zscore), funs(replace(., .< cutoff, -2))) %>%
+    arrange(POS) %>%
+    group_by(CSS, CHROM) %>%
+    summarize(POS = POS,
+              abs_zscore = abs_zscore,
+              smooth_abs_z = frollapply(abs_zscore, mean, n = 1, align = "center")) %>%
+    na.omit() %>% 
+    group_by(CHROM, CSS) %>% arrange(POS) %>%
+    summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z,
+              slope = frollapply(smooth_abs_z, FUN = slope_change, n = width, align = "center")) %>%
+    mutate(negative = slope < 0) %>% na.omit() %>%
+    summarize(POSc = POS, crossover = frollapply(negative, FUN = subtract2, n = 2)) %>%
+    filter(crossover == 1) -> CrossoverPoints
+  
+  data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% 
+    merge(data.frame(CSS = c("VIII", "I"))) %>%
+    mutate(POSc = 1, crossover = 0) %>%
+    rbind(CrossoverPoints) %>% 
+    group_by(CHROM, CSS) %>%
+    arrange(POSc) %>%
+    mutate(order = paste("A", row_number(POSc), sep = "_")) %>%
+    select(-crossover) %>%
+    pivot_wider(names_from = order, values_from = POSc) %>%
+    pivot_longer(cols = starts_with("A"), names_to = "segment", values_to = "value") %>%
+    filter(!is.na(value)) %>%
+    arrange(CHROM, CSS, value) %>%
+    group_by(CHROM, CSS) %>%
+    mutate(End = lead(value, default = Inf)) %>%
+    ungroup() %>%
+    rename(Start = value) %>%
+    select(CHROM, CSS, Start, End) -> tempStartEnd
+    
+    peakdata <- data.frame(CHROM = NA, CSS = NA, zscore = NA)
+    
+  for(i in unique(tempStartEnd$CHROM)){
+    for(c in unique(tempStartEnd$CSS)){
+      tempStartEnd %>% filter(CHROM == i, CSS == c) -> newtemp
+      
+      # newtemp$End[is.na(newtemp$End)] <- Inf
+      # newtemp$End[is.na(newtemp$Start)] <- Inf
+      
+      for(k in 1:length(newtemp$Start)){
+        Data %>% filter(CHROM == i, CSS == c, label == "Bulk") %>%
+        filter(POS > newtemp$Start[k], POS < newtemp$End[k]) %>%
+        ungroup() %>%
+        group_by(CHROM, CSS) %>%
+        summarize(zscore = max(abs(zscore))) -> something
+      
+        peakdata <- rbind(peakdata, something)
+      }
+      
+      rm(newtemp)
+      
+    }
+  }
+    Data %>%
+    mutate(zscore = abs(zscore)) %>% merge(peakdata) %>% 
+      filter(zscore > cutoff) -> peaks
+    
+    return(peaks)
+
+}
+
+cybr_lmpeaks(AllCuSO4_glmer_1byRep[AllCuSO4_glmer_1byRep$CHROM == "XI" & AllCuSO4_glmer_1byRep$label == "Bulk",])
 ```
 
 ```{r, message = FALSE, warning=FALSE, error=FALSE, fig.width=12, fig.height=6}
