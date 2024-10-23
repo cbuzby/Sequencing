@@ -639,6 +639,10 @@ Aug24_CSS1_glm_cyclohex %>% mutate(Selection = "Cycloheximide") %>%
   rbind(temp2) %>%
   mutate(CSS = 1) -> CSS1_Aug2024_glm
 
+Aug24_CSS8_glm_H2O2 <- readRDS("Aug24_CSS8_glm_H2O2.rds")
+Aug24_CSS8_glm_ethanol <- readRDS("Aug24_CSS8_glm_ethanol.rds")
+Aug24_CSS8_glm_cyclohex <- readRDS("Aug24_CSS8_glm_cyclohex.rds")
+
 Aug24_CSS8_glm_H2O2 %>% mutate(Selection = "H2O2") -> temp1
 Aug24_CSS8_glm_ethanol %>% mutate(Selection = "EtOH") -> temp2
 Aug24_CSS8_glm_cyclohex %>% mutate(Selection = "Cycloheximide") %>%
@@ -688,25 +692,53 @@ CuSO4_CSS1_glmer_1byRep %>%
   mutate(Selection = "CuSO4") %>%
   rbind(CSS1_Aug2024_glm) %>%
     rbind(Fluc_CSS1_glm) %>%
-  filter(label %in% c("Bulk", "Interaction")) %>% 
-  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+  filter(label %in% c("Interaction")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection)) + geom_line(size = 0.5, alpha = 0.8) + 
   geom_hline(yintercept = 1.1)+
   facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS I Interaction Effects")+ #ylim(0,2) +
   theme(legend.position = "bottom") +
-  scale_color_manual(values = c("black", "firebrick3"))
+  ylim(0,2) 
 
-CuSO4_CSS8_glmer_1byRep %>% 
+CuSO4_CSS1_glmer_1byRep %>% 
   mutate(Selection = "CuSO4") %>%
-  rbind(CSSVIII_Aug2024_glm) %>%
-  filter(label %in% c("Bulk", "Interaction")) %>% 
-  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+  rbind(CSS1_Aug2024_glm) %>%
+    rbind(Fluc_CSS1_glm) %>%
+  filter(label %in% c("Bulk")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection)) + geom_line(size = 0.5, alpha = 0.8) + 
   geom_hline(yintercept = 1.1)+
-  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS VIII Interaction Effects")+ #ylim(0,2) +
-  theme(legend.position = "bottom") +
-  scale_color_manual(values = c("black", "firebrick3"))
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS I Interaction Effects")+ #ylim(0,2) +
+  theme(legend.position = "bottom") 
+
+# CuSO4_CSS8_glmer_1byRep %>% 
+#   mutate(Selection = "CuSO4") %>%
+#   rbind(CSSVIII_Aug2024_glm) %>%
+#   filter(label %in% c("Bulk", "Interaction")) %>% 
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line(size = 0.5, alpha = 0.8) + 
+#   geom_hline(yintercept = 1.1)+
+#   facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("CSS VIII Interaction Effects")+ #ylim(0,2) +
+#   theme(legend.position = "bottom") +
+#   scale_color_manual(values = c("black", "firebrick3"))
 ```
 
 
+Loading in previous cyclohex and zeocin data to compare
+
+```{r, fig.height=3, fig.width=10}
+Cyclohex_CSSI_prev <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HKTMWDRX2_Cyc_CSS1_glm_all_noreps.rds") %>% mutate(Selection = "Cyclohex")
+Zeocin_CSSI_prev <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HKTMWDRX2_Zeo_CSS1_glm_all_noreps.rds") %>% mutate(Selection = "Zeo")
+
+CSS1_Aug2024_glm %>% ungroup() %>%
+  select(CHROM, POS, Summary = zscore, Factor = label, Selection) %>% 
+  filter(Selection == "Cycloheximide") %>%
+  rbind(Cyclohex_CSSI_prev) %>%
+  rbind(Zeocin_CSSI_prev) -> cyclo_comp
+
+cyclo_comp %>% filter(Factor %in% c("Background", "Parent")) %>% ggplot(aes(x = POS, y = Summary, color = Selection), alpha = 0.5) +
+  geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+```
 
 
 ## Permutations for significance
@@ -896,57 +928,5 @@ CSSVIII_Aug2024_glm %>% merge(q5_CSSVIII_Aug24) %>%
   scale_color_manual(values = c("black", "maroon")) +
   scale_linetype_manual(values = c(2,4))
   
-```
-
-# Sanity Check
-
-If you have 3 things that could all interact, you have to check every pairwise combination, so A/a, B/b, and C/c:
-
-1. Ab
-2. aB
-3. AB
-4. ab
-5. bC
-6. Bc
-7. BC
-8. bc
-9. Ac
-10. aC
-11. AC
-12. ac
-
-But that's not how it works, since we actually want to know how those two genes change anything based on just those two. So it would be:
-
-1. AxB
-2. BxC
-3. AxC
-
-Okay instead, you have 26 letter, so each one can pair with another for an effect. You have:
-
-A x B..Z (25 chances)
-B x A..Z (25 -1 chances)
-C x A..Z (25 - A and B)
-D x A..Z (25 - A and B and C)
-
-Or if we make it simpler, out of 5, it's this:
-
-A x B..E (4 chances)
-B x A..E (4 -1 chances)
-C x A..E (4 - A and B)
-D x A..E (4 - A and B and C)
-E x A..D (4 - A and B and C and D)
-
-So that's 4 + 3 + 2 + 1 = 10
-```{r}
-#not this
-factorial(4)
-
-#Sum? But it would have to be n-1...
-4*(4+1)/2
-
-((5-1)*(5-1+1))/2
-
-5*(5-1)/2
-
 ```
 
