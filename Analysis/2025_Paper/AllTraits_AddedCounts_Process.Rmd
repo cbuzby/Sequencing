@@ -1,0 +1,720 @@
+---
+title: "All Traits Figures"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+## Load in data
+
+```{r}
+parentSNPids <- cybrConvertParentalAlleles(Truncate = FALSE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+
+merge(pSNPs, parentSNPids) %>% filter(Unique == 1) %>% select(-Unique) -> parentSNPids
+
+unique(pSNPs$Unique)
+```
+
+## Process each file as entire sequencing run
+
+```{r}
+MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+
+unique(MQC$Pool)
+```
+
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HWMMFDMXY.SortedCat.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HWMMFDMXY_rawdataG.rds")
+
+rawdata %>% filter(POS == 801680, CHROM == "IV")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HWMMFDMXY_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+rm(rawdata_called)
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HGVMVDRX2.SortedCat.vcf.output.table" #1
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HGVMVDRX2_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HGVMVDRX2_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HJ5HKDRX3b.SortedCat.vcf.output.table" #2
+
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HJ5HKDRX3b_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HJ5HKDRX3b_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HKTFTDRX2.SortedCat.vcf.output.table" #3
+
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HKTFTDRX2_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HKTFTDRX2_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HKTMZDRX2.SortedCat.vcf.output.table" #4
+
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HKTMZDRX2_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HKTMZDRX2_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HVYTYDRX2.SortedCat.vcf.output.table" #5
+
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HVYTYDRX2_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HVYTYDRX2_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/HWTCNDMXY.SortedCat.vcf.output.table" #7
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "HWTCNDMXY_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "HWTCNDMXY_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/TelTrimmed_mergedCuSO4.REF.SortedCat.vcf.output.table" #8
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "TelTrimmed_mergedCuSO4_rawdataG.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "TelTrimmed_mergedCuSO4_rawdata_called_ex.rds")
+
+rm(rawdata)
+rm(rawdata_called_ex)
+rm(testrawdata)
+rm(myfile)
+
+
+```
+
+## Reorganize by Selection Type
+
+```{r}
+
+HKTFTDRX2_rawdata_called_ex <- readRDS("HKTFTDRX2_rawdata_called_ex.rds")
+HWMMFDMXY_rawdata_called_ex <- readRDS("HWMMFDMXY_rawdata_called_ex.rds")
+HWTCNDMXY_rawdata_called_ex <- readRDS("HWTCNDMXY_rawdata_called_ex.rds") 
+HGVMVDRX2_rawdata_called_ex <- readRDS("HGVMVDRX2_rawdata_called_ex.rds")
+# HJ5HKDRX3b_rawdata_called_ex <- readRDS("HJ5HKDRX3b_rawdata_called_ex.rds")
+HKTMZDRX2_rawdata_called_ex <- readRDS("HKTMZDRX2_rawdata_called_ex.rds")
+HVYTYDRX2_rawdata_called_ex <- readRDS("HVYTYDRX2_rawdata_called_ex.rds")
+TelTrimmed_mergedCuSO4_rawdata_called_ex <- readRDS("TelTrimmed_mergedCuSO4_rawdata_called_ex.rds")
+
+```
+
+```{r}
+
+MQC %>% select(Pool, PoolID, Dataset = Library, Parent, Bulk, Rep) %>%
+  mutate(Dataset = gsub("HNGLVDRXY_n01_CuSO4_CSSI_", "", Dataset)) -> MQC_Key
+
+# unique(MQC_Key$Dataset)
+# 
+# unique(HKTFTDRX2_rawdata_called_ex$Dataset)
+
+HKTFTDRX2_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HKTFTDRX2
+HWMMFDMXY_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HWMMFDMXY
+HWTCNDMXY_rawdata_called_ex%>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HWTCNDMXY
+HGVMVDRX2_rawdata_called_ex%>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HGVMVDRX2
+HJ5HKDRX3b_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HJ5HKDRX3b
+HKTMZDRX2_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HKTMZDRX2
+HVYTYDRX2_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HVYTYDRX2
+TelTrimmed_mergedCuSO4_rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> TelTrimmed_mergedCuSO4
+
+#table(HKTFTDRX2$Bulk, HKTFTDRX2$Parent)
+table(HWMMFDMXY$Bulk, HWMMFDMXY$Parent)
+#table(HWTCNDMXY$Bulk, HWTCNDMXY$Parent)
+#table(HGVMVDRX2$Bulk, HGVMVDRX2$Parent)
+#table(HJ5HKDRX3b$Bulk, HJ5HKDRX3b$Parent) #this one is mislabeled
+#table(HKTMZDRX2$Bulk, HKTMZDRX2$Parent)
+#table(HVYTYDRX2$Bulk, HVYTYDRX2$Parent)
+table(TelTrimmed_mergedCuSO4$Bulk, TelTrimmed_mergedCuSO4$Parent)
+
+unique(TelTrimmed_mergedCuSO4$Pool)
+```
+
+### Fluconazole
+
+```{r}
+table(HGVMVDRX2$Bulk, HGVMVDRX2$Parent)
+table(HVYTYDRX2$Bulk, HVYTYDRX2$Parent)
+
+HVYTYDRX2 %>% filter(Parent %in% c("Oak8", "Wine8"),
+                     Bulk != "CuSO4") %>%
+  rbind(HGVMVDRX2) -> Fluconazole_Unsmoothed
+
+Fluconazole_Unsmoothed %>% group_by(CHROM, POS, Allele, Pool, Parent, Bulk) %>%
+  summarize(TotalReads = sum(Reads, na.rm = TRUE)) -> Fluconazole_Summed
+
+saveRDS(Fluconazole_Summed, file = "Fluconazole_Summed.rds")
+
+Fluconazole_Summed %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  filter(CHROM != "M") %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(size = 0.3, alpha = 0.3) +
+  facet_grid(Parent ~ CHROM, scales = "free", space = "free")
+
+```
+
+### Hydrogen Peroxide
+
+```{r}
+table(HWMMFDMXY$Bulk, HWMMFDMXY$Parent)
+table(HWTCNDMXY$Bulk, HWTCNDMXY$Parent)
+
+rbind(HWTCNDMXY, HWMMFDMXY) %>% filter(Bulk %in% c("Dilute", "H2O2")) %>%
+  group_by(CHROM, POS, Allele, Pool, Parent, Bulk) %>%
+  summarize(TotalReads = sum(Reads, na.rm = TRUE)) -> H2O2_Summed
+
+saveRDS(H2O2_Summed, file = "H2O2_Summed.rds")
+
+H2O2_Summed %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  filter(CHROM != "M") %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(size = 0.3, alpha = 0.3) +
+  facet_grid(Parent ~ CHROM, scales = "free", space = "free")
+```
+### Ethanol
+
+```{r}
+table(HWMMFDMXY$Bulk, HWMMFDMXY$Parent)
+table(HWTCNDMXY$Bulk, HWTCNDMXY$Parent)
+
+rbind(HWTCNDMXY, HWMMFDMXY) %>% filter(Bulk %in% c("Dilute", "Ethanol")) %>%
+  group_by(CHROM, POS, Allele, Pool, Parent, Bulk) %>%
+  summarize(TotalReads = sum(Reads, na.rm = TRUE)) -> Ethanol_Summed
+
+saveRDS(Ethanol_Summed, file = "Ethanol_Summed.rds")
+
+Ethanol_Summed %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  filter(CHROM != "M") %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(size = 0.3, alpha = 0.3) +
+  facet_grid(Parent ~ CHROM, scales = "free", space = "free")
+```
+
+### Cycloheximide
+
+Switching oak and wine css 1 because their log odds are reversed; fix this in the MQC sheet later
+
+```{r, fig.width=10, fig.height=6}
+table(HKTMZDRX2$Bulk, HKTMZDRX2$Parent)
+table(HWMMFDMXY$Bulk, HWMMFDMXY$Parent)
+table(HWTCNDMXY$Bulk, HWTCNDMXY$Parent)
+
+rbind(HWTCNDMXY, HWMMFDMXY) %>% filter(Bulk %in% c("Dilute", "Cycloheximide")) %>%
+  # mutate(Parent = gsub("Oak1", "W1", Parent)) %>%
+  # mutate(Parent = gsub("Wine1", "O1", Parent)) %>%
+  #rbind(HKTMZDRX2) %>% filter(Bulk != "Zeocin") %>%
+  group_by(CHROM, POS, Allele, Pool, Parent, Bulk) %>%
+  summarize(TotalReads = sum(Reads, na.rm = TRUE)) -> Cycloheximide_Summed
+
+saveRDS(Cycloheximide_Summed, "Cycloheximide_Summed.rds")
+
+Cycloheximide_Summed %>% pivot_wider(names_from = Allele, values_from = TotalReads) -> logCyc
+
+logCyc %>% filter(CHROM != "M") %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(size = 0.3, alpha = 0.3) +
+  facet_grid(Parent ~ CHROM, scales = "free", space = "free")
+```
+Justification for excluding Cyclohex: wrong selection amount
+
+```{r, fig.width=10, fig.height=3, eval = FALSE}
+#Just the first experiment
+HKTMZDRX2 %>% filter(Bulk != "Zeocin") %>%
+  group_by(CHROM, POS, Allele, Pool, Parent, Bulk) %>%
+  summarize(TotalReads = sum(Reads, na.rm = TRUE)) %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  filter(CHROM != "M") %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk)) + geom_point(size = 0.3, alpha = 0.3) +
+  facet_grid(Parent ~ CHROM, scales = "free", space = "free")
+
+```
+# How much do dilute bulks benefit from addition vs replicates?
+
+```{r}
+H2O2_Summed %>% filter(Bulk == "Dilute", CHROM %in% c("I", "VIII", "M", "III") == FALSE) %>%
+  mutate(TotalReads = TotalReads + 1) %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  mutate(Diff = abs(log(Wine/Oak))) %>%
+  group_by(Pool, Parent, CHROM) %>%
+  arrange(POS) %>%
+  summarize(POS = POS, 
+            SD = frollapply(Diff, 200, FUN = sd, align = "center")) %>%
+  na.omit() %>% mutate(Type = "Total") -> Total_SD
+
+HWMMFDMXY %>% filter(Bulk == "Dilute", grepl("AIG", Dataset) == FALSE, CHROM %in% c("I", "VIII", "M", "III") == FALSE) %>%
+  mutate(Reads = Reads + 1) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(Diff = abs(log(Wine/Oak))) %>%
+  group_by(Pool, Parent, CHROM) %>%
+  arrange(POS) %>%
+  summarize(POS = POS, 
+            SD = frollapply(Diff, 200, FUN = sd, align = "center")) %>%
+  na.omit() %>% mutate(Type = "Individual") -> HWMMFDMXY_SD
+
+
+HWTCNDMXY %>% filter(Bulk == "Dilute", grepl("AIG", Dataset) == FALSE, CHROM %in% c("I", "VIII", "M", "III") == FALSE) %>%
+  mutate(Reads = Reads + 1) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(Diff = abs(log(Wine/Oak))) %>%
+  group_by(Pool, Parent, CHROM) %>%
+  arrange(POS) %>%
+  summarize(POS = POS,
+            SD = frollapply(Diff, 200, FUN = sd, align = "center")) %>%
+  na.omit() %>% mutate(Type = "Individual") -> HWTCNDMXY_SD
+
+###########################
+
+rbind(Total_SD, HWMMFDMXY_SD, HWTCNDMXY_SD) %>%
+  ggplot(aes(x = SD, color = Type, linetype = Parent)) + geom_boxplot()
+
+Total_SD %>% ggplot(aes(x = POS, y = SD, color = Parent)) + geom_point() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") + ylim(0,3.5)
+
+HWMMFDMXY_SD %>% ggplot(aes(x = POS, y = SD, color = Parent)) + geom_point() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+ ylim(0,3.5)
+
+HWTCNDMXY_SD %>% ggplot(aes(x = POS, y = SD, color = Parent)) + geom_point() +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")+ ylim(0,3.5)
+
+
+rbind(Total_SD, HWMMFDMXY_SD, HWTCNDMXY_SD) %>%
+  pivot_wider(names_from = Type, values_from = SD) -> Comb_New
+
+Comb_New %>% unnest() -> Comb_Unnest
+
+Comb_Unnest %>%
+  ggplot(aes(x = Total, y = Individual)) + geom_point(alpha = 0.2, size = 0.3)
+
+Comb_Unnest %>% filter(Individual < 0.3, Total > 1.5) %>%
+    ggplot(aes(x = Total, y = Individual)) + geom_point(alpha = 0.2, size = 0.5, color = "red") +
+  geom_point(data = Comb_Unnest, alpha = 0.2, size = 0.3) +
+  theme_bw()
+
+Comb_Unnest %>% filter(Individual < 0.3, Total > 1.5) %>%
+  ungroup() %>%
+  group_by(Pool, Parent, CHROM) %>%
+  summarize(POS = unique(POS)) -> SuspectSites
+
+H2O2_Summed %>%
+  pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = POS %in% SuspectSites$POS, size = POS %in% SuspectSites$POS)) +
+  geom_point(alpha = 0.2) + 
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("gray", "red")) + 
+  scale_size_manual(values = c(0.2, 1)) +
+  theme(legend.position = "bottom")
+  
+```
+
+Simulate what should happen instead
+
+```{r}
+simdata <- data.frame(group = rep(1:20), value = rnorm(n = 100, mean = 10, sd = 3))
+
+
+simdata %>% group_by(group) %>%
+  summarize(sum = sum(value)) -> summed_data
+
+simdata %>% group_by(group) %>%
+  summarize(mean = mean(value)) -> avg_data
+
+plot(summed_data$group, (summed_data$sum), col = "red", ylim = c(0, 130))
+points(simdata$group, (simdata$value), col = "gray")
+points(avg_data$group, (avg_data$mean), col = "blue")
+points(summed_data$group, (summed_data$sum), col = "red")
+abline(h = 10)
+abline(h = 100)
+
+```
+```{r}
+# table(sample(c("a","b"), size = 100, replace = TRUE))
+# table(sample(c("a","b"), size = 1000, replace = TRUE))
+
+df <- data.frame(table(sample(c("a","b"), size = 100, replace = TRUE)), Trial = 0)
+for(i in 1:9){
+  df <- rbind(df, data.frame(table(sample(c("a","b"), size = 100, replace = TRUE)), Trial = i))
+}
+
+df %>% pivot_wider(names_from = Var1, values_from = Freq) %>% summarize(A = sum(a), B = sum(b))
+table(sample(c("a","b"), size = 1000, replace = TRUE))
+
+```
+
+Really we want to know if the allele frequency differences reduces in the summed samples rather than the total or variance
+
+```{r}
+H2O2_Summed %>% pivot_wider(names_from = Allele, values_from = TotalReads) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  filter(Bulk == "Dilute", CHROM %in% c("I", "VIII", "III", "M") == FALSE) -> Tot_LogOdds
+
+Tot_LogOdds %>% ggplot(aes(x = logOdds, color = Parent)) + geom_density()
+
+rbind(HWTCNDMXY, HWMMFDMXY) %>% pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  filter(Bulk == "Dilute", CHROM %in% c("I", "VIII", "III", "M") == FALSE) -> Ind_LogOdds
+
+Tot_LogOdds %>% ggplot(aes(x = logOdds, color = Parent)) + 
+  geom_boxplot(aes(y = "Total"), outliers = FALSE) +
+  geom_boxplot(data = Ind_LogOdds, aes(y = "Individual"), outliers = FALSE) +
+  geom_vline(aes(xintercept = 0))
+
+Tot_LogOdds %>% ggplot(aes(x = logOdds, color = Parent)) + 
+  geom_boxplot(aes(y = "Total")) +
+  geom_boxplot(data = Ind_LogOdds, aes(y = "Individual")) +
+  geom_vline(aes(xintercept = 0))+
+  theme_bw()
+
+Tot_LogOdds %>% ggplot(aes(x = logOdds)) + 
+  geom_boxplot(aes(y = "Total")) +
+  geom_boxplot(data = Ind_LogOdds, aes(y = "Individual")) +
+  geom_vline(aes(xintercept = 0)) +
+  theme_bw()
+
+
+Tot_LogOdds %>% filter(abs(logOdds) > 6) %>% ggplot(aes(x = POS, color = Parent)) + 
+  geom_point(aes(y = Oak)) + geom_point(aes(y = Wine), shape = 2) + 
+  facet_grid(CHROM~Parent, scales = "free", space = "free")
+
+min(Ind_LogOdds$logOdds, na.rm = TRUE)
+
+```
+

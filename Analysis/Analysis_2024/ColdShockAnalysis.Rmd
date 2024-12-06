@@ -1,0 +1,378 @@
+---
+title: "Comparing Cold Stored Asci"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+## Load in data for all experiments
+
+```{r}
+# CSS1_Aug24_called <- readRDS("CSSI_A24_rawdata_called_ex.rds") #CSS1 others
+# CSS8_Aug24_called <- readRDS("CSSVIII_A24_rawdata_called_exx.rds") #CSS8 others
+# Cu_all_called <- readRDS("C:/Users/Cassandra/Documents/GitHub/CSS_Paper/ChromosomeFixation/BSA_Analysis/Output/rawdata_called_ex.rds") #All CUSO4
+
+#Only look at smoothed data
+
+CycZeo_smoothed <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HKTFTDRX2_smoothed.rds") 
+CSS1_Aug24_called <- readRDS("CSSI_A24_rawdata_smoothed_G200x.rds") #CSS1 others
+CSS8_Aug24_called <- readRDS("CSSVIII_A24_rawdata_smoothed_G200x.rds") #CSS8 others
+Cu_all_called <- readRDS("C:/Users/Cassandra/Documents/GitHub/CSS_Paper/ChromosomeFixation/BSA_Analysis/Output/rawdata_called_ex_G200.rds") #All CUSO4
+```
+
+```{r}
+CSS1_Aug24_called %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% mutate(Cold = TRUE) -> CSS1_Aug24_pivot
+
+CSS8_Aug24_called %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% mutate(Cold = TRUE) -> CSS8_Aug24_pivot
+
+Cu_all_called %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% mutate(Cold = FALSE) %>% unnest() -> Cu_pivot
+
+CycZeo_smoothed %>% pivot_wider(names_from = Allele, values_from = SmoothCount) %>% mutate(Cold = FALSE) %>% unnest() %>% select(-End) -> CycZeo_pivot
+```
+
+```{r}
+rbind(CSS1_Aug24_pivot,CSS8_Aug24_pivot,Cu_pivot) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  select(CHROM, POS, Dataset, Oak, Wine, logOdds, Cold) -> rawdata_logodds
+
+CycZeo_pivot %>%
+  mutate(logOdds = log(Wine/Oak)) %>% select(CHROM, POS, Dataset, Oak, Wine, logOdds, Cold) %>%
+  rbind(rawdata_logodds) -> Actuallyalldata_logodds
+
+unselected_datasets <- c("WDb" ,"ODb" ,"ODa" , "WDa", "HWMMFDMXY_n01_D_W_A_q.fastq",  
+ "HWMMFDMXY_n01_D_W_A_p.fastq",  "HWMMFDMXY_n01_D_O_A_p.fastq",   "HWMMFDMXY_n01_D_O_B_p.fastq",  "HWMMFDMXY_n01_D_O_A_q.fastq",  
+ "HWMMFDMXY_n01_D_O_B_r.fastq",   "HWMMFDMXY_n01_D_W_A_r.fastq",  "HWMMFDMXY_n01_D_W_B_r.fastq",  
+"HWMMFDMXY_n01_D_O_A_r.fastq",  
+ "HWMMFDMXY_n01_D_O_B_q.fastq",   "HWMMFDMXY_n01_D_W_B_p.fastq",   "HWTCNDMXY_n01_D_O_B_z.fastq",  
+ "HWTCNDMXY_n01_D_O_A_z.fastq",  "HWTCNDMXY_n01_D_O_A_x.fastq",   
+ "HWTCNDMXY_n01_D_W_B_z.fastq",  
+ "HWTCNDMXY_n01_D_O_B_x.fastq",   "HWTCNDMXY_n01_D_W_A_x.fastq",  
+ "HWTCNDMXY_n01_D_W_A_z.fastq",  
+ "HWTCNDMXY_n01_D_W_B_x.fastq", 
+ "HVYTYDRX2_n01_W8_aD.fastq",   
+ "HVYTYDRX2_n01_W1_aD.fastq",   
+"HTG3TDMXY_n01_W8_D1_C_2.fastq",
+ "HVYTYDRX2_n01_O8_bD.fastq",    
+ "HTG3TDMXY_n01_O8_D2_E_2.fastq", "HTG3TDMXY_n01_W8_D2_B_2.fastq", 
+ "HTG3TDMXY_n01_W8_D2_E_2.fastq", "HTG3TDMXY_n01_O8_D1_C_2.fastq", "HKTFTDRX2_n01_WDb.fastq", "HTG3TDMXY_n01_W8_D2_C_2.fastq",
+ "HKTFTDRX2_n01_ODb.fastq", "HTG3TDMXY_n01_O8_D2_C_2.fastq", "HVYTYDRX2_n01_O8_aD.fastq",    
+"HTG3TDMXY_n01_O8_D1_B_2.fastq", "HKTFTDRX2_n01_WDa.fastq",      
+ "HTG3TDMXY_n01_W8_D1_B_2.fastq", "HVYTYDRX2_n01_O1_aD.fastq","HTG3TDMXY_n01_W8_D1_E_2.fastq",
+ "HTG3TDMXY_n01_O8_D1_E_2.fastq",  "HKTFTDRX2_n01_ODa.fastq",
+ "HTG3TDMXY_n01_O8_D2_B_2.fastq", "HNGLVDRXY_n01_CuSO4_CSSI_UnselectedA.fastq",
+ "HNGLVDRXY_n01_CuSO4_CSSI_UnselectedC.fastq")
+```
+
+```{r, fig.width=10, fig.height=5}
+Actuallyalldata_logodds %>% filter(Dataset %in% unselected_datasets) -> Unselected_logOdds
+
+Unselected_logOdds %>% filter(CHROM %in% c("I", "III", "VIII", "M") == FALSE) %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = Cold)) + geom_line(alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+```
+
+Not including the CycZeo trials
+
+```{r, fig.width=10, fig.height=6}
+rawdata_logodds %>% filter(Dataset %in% unselected_datasets) -> Unselected_logOdds_scz
+
+Unselected_logOdds_scz %>% filter(CHROM %in% c("I", "III", "VIII", "M") == FALSE) %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = Cold)) + geom_line(alpha = 0.4) +
+  facet_grid(~CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+
+Unselected_logOdds_scz %>% separate(Dataset, into = c("MQC", "Dataset"), sep = "_n01_") -> Datasets_sep
+
+Datasets_sep %>% mutate(WineParent = Dataset, CSS8 = Dataset) %>%
+  mutate(WineParent = grepl("W", Dataset) | grepl("UnselectedA", Dataset),
+         CSS8 = grepl("8", Dataset)) -> Datasets_sep
+
+Datasets_sep %>% filter(CHROM == "VIII") %>% ggplot(aes(x = POS, y = logOdds, color = MQC, group = Dataset)) + geom_line()
+
+Datasets_sep$CSS8[Datasets_sep$MQC == "HWTCNDMXY"] <- TRUE
+
+# table(Datasets_sep$Dataset,Datasets_sep$CSS8)
+# table(Datasets_sep$Dataset, Datasets_sep$WineParent)
+
+Datasets_sep %>%
+  filter(CHROM %in% c("I", "III", "VIII", "M") == FALSE) %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = paste(CSS8,WineParent), linetype = Cold)) + geom_line(alpha = 0.4) +
+  facet_grid(MQC~CHROM, scales = "free", space = "free") +
+  ylim(0,1) +scale_color_manual(values = c("blue4", "darkorange", "firebrick", "purple4")) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+Datasets_sep %>% mutate(WineParent = gsub("FALSE", "Oak", WineParent),
+                        WineParent = gsub("TRUE", "Wine", WineParent),
+                        CSS8 = gsub("TRUE", "8", CSS8),
+                        CSS8 = gsub("FALSE", "1", CSS8)) -> Datasets_sep
+
+Datasets_sep %>%
+  filter(CHROM  == "IV") %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = MQC)) + geom_line(alpha = 0.4, size = 1) +
+  facet_grid( ~ paste(CSS8,WineParent), scales = "free") +
+  ylim(0,1) +
+  theme(legend.position = "bottom") +
+  ggtitle("Chr IV by Parent") +
+  scale_color_manual(values = c("#E69F00", "seagreen2", "pink", "#0072B2", "black","black", "#D55E00"))
+
+Datasets_sep %>%
+  filter(CHROM  == "IV") %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = paste(CSS8,WineParent))) + geom_line(alpha = 0.4, size = 1) +
+  facet_wrap("MQC", scales = "free") +
+  ylim(0,1) +
+  theme(legend.position = "bottom") +
+  ggtitle("Chr IV by Sequencing Run") +
+  scale_color_manual(values = c("blue4", "darkorange", "firebrick", "purple4"))
+```
+```{r}
+Datasets_sep %>% filter(MQC == "HVYTYDRX2") %>% summarize(unique(Dataset))
+
+Datasets_sep %>% filter(MQC == "HWMMFDMXY") %>% filter(CHROM  == "IV") %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = paste(CSS8,WineParent))) + geom_line(alpha = 0.4, size = 1) +
+  facet_wrap("MQC", scales = "free") +
+  geom_vline(xintercept = c(300000, 450000), size =1, linetype = "dashed") +
+  theme(legend.position = "bottom") +
+  ggtitle("Chr IV by Sequencing Run") +
+  scale_color_manual(values = c("blue4", "darkorange", "firebrick", "purple4"))
+
+```
+
+### What's the peak that's consistently on Chr IV? 
+
+**EHD3**: 3-hydroxyisobutyryl-CoA hydrolase; member of a family of enoyl-CoA hydratase/isomerases; non-tagged protein is detected in highly purified mitochondria in high-throughput studies; phosphorylated; mutation affects fluid-phase endocytosis
+
+```{r}
+Datasets_sep %>% filter(MQC == "HNGLVDRXY") %>% filter(CHROM == "IV") %>% arrange(desc(abs(logOdds))) #523505
+
+Datasets_sep %>% filter(MQC == "HNGLVDRXY") %>% filter(CHROM  == "IV") %>% 
+  ggplot(aes(x = POS, y = abs(logOdds), group = Dataset, color = paste(CSS8,WineParent))) + geom_line(alpha = 0.4, size = 1) +
+  facet_wrap("MQC", scales = "free") +
+  geom_vline(xintercept = 523505, size =1, linetype = "dashed") +
+  theme(legend.position = "bottom") +
+  ggtitle("Chr IV by Sequencing Run") +
+  scale_color_manual(values = c("blue4", "darkorange", "firebrick", "purple4"))
+
+
+
+```
+# Adding additional MQCs in
+
+```{r}
+HWMM <- readRDS("CSSI_A24_rawdata_smoothed_G200x.rds") #CSS1 others
+HWTC <- readRDS("CSSVIII_A24_rawdata_smoothed_G200x.rds") #CSS8 others
+
+HWMM %>% separate(Dataset, into = c("Pool", "Dataset"), sep = "_n01_") -> HWMM
+HWTC %>% separate(Dataset, into = c("Pool", "Dataset"), sep = "_n01_") -> HWTC
+
+HKTF <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HKTFTDRX2_smoothed.rds") 
+HGVM <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HGVMVDRX2_smoothed.rds") 
+HJ5H <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HJ5HKDRX3_smoothed.rds") 
+HKTM <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HKTMWDRX2_smoothed.rds") 
+HTG3 <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HTG3TDMXY_smoothed.rds") %>% mutate(Dataset = paste(Dataset, "_2", sep = ""))
+HNGL <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HNGLVDRXY_smoothed.rds") %>% mutate(Dataset = paste("CuSO4_CSSI_", Dataset, sep = ""))
+HVYT <- readRDS("C:/Users/Cassandra/Documents/R_FileTransfer/StandardGLM/HVYTYDRX2_smoothed.rds")
+
+MQC_Annotated <- read.csv("C:\\Users\\Cassandra\\Documents\\Data_NYU\\Sequencing\\MQC_Annotated.csv")
+
+MQC_Annotated %>% filter(grepl("undetermined", Library) == FALSE) %>% 
+  separate(Library, into = c("Pool2", "Dataset"), sep = "_n01_") %>%
+  select(-ShortName, -name, -Barcodes, -PercUndetermined, -VCF_Table) -> MQC_Annotated2
+
+
+```
+
+```{r}
+rbind(HWMM,HWTC) %>% select(CHROM, Pool, Dataset, Allele, POS, SmoothCount) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset)) -> NewAdds
+
+rbind(HKTF, HGVM, HJ5H, HKTM, HTG3, HNGL, HVYT) %>% select(CHROM, Pool, Dataset, Allele, POS, SmoothCount)  -> OldRuns
+
+rbind(NewAdds, OldRuns) %>% merge(MQC_Annotated2) -> Everything
+
+unique(Everything$PoolID)
+
+#HNGL %>% merge(MQC_Annotated2)
+
+# unique(HNGL$Dataset)
+# unique(MQC_Annotated2$Dataset)
+
+Everything %>% filter(CHROM %in% c("I", "VIII")) %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> CSS_Check
+
+Everything %>% filter(CHROM %in% c("I", "VIII", "III", "M") == FALSE) %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> logOdds_All
+
+CSS_Check %>%
+  ggplot(aes(x = POS, y = logOdds, color = Parent, group = Dataset)) + geom_line() +
+  facet_grid(~CHROM, space = "free", scales = "free")
+
+```
+
+```{r, fig.width=8, fig.height=4}
+
+# unique(logOdds_All$Bulk)
+# unique(logOdds_All$Dataset)
+
+logOdds_All %>% filter(Bulk == "Dilute") %>%
+  ggplot(aes(x = POS, y = logOdds, color = PoolID, group = Dataset)) + geom_line() +
+  facet_grid(Parent~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Dilute Bulks")
+
+logOdds_All %>% filter(Bulk == "Dilute") %>%
+  ggplot(aes(x = abs(logOdds), color = PoolID, group = PoolID, y = PoolID)) + geom_boxplot() +
+  # facet_grid(Parent~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Dilute Bulks by Sequencing Order")
+
+```
+
+```{r, fig.width=10, fig.height=7}
+
+logOdds_All %>% filter(Bulk == "Dilute") %>%
+  ggplot(aes(y = logOdds, color = Parent, group = Dataset, x = POS)) + geom_line() +
+  facet_grid(PoolID~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Dilute Bulks by Sequencing Order")
+
+logOdds_All %>% filter(Bulk == "Dilute") %>% select(logOdds, Dataset, CHROM, POS) -> logOdds_smooshed
+
+logOdds_All %>% filter(Bulk == "Dilute") %>%
+  ggplot(aes(y = logOdds, group = Dataset, x = POS)) + 
+  geom_line(data = logOdds_smooshed, aes(x = POS, y = logOdds, group = Dataset), color = "gray", alpha = 0.3) + geom_line() +
+  facet_grid(PoolID~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Dilute Bulks by Sequencing Order")
+
+```
+
+```{r, fig.width=10, fig.height=7}
+logOdds_All %>% filter(grepl("AIG", Parent) == FALSE) %>%
+  ggplot(aes(y = logOdds, group = Dataset, x = POS, color = Parent)) + 
+  geom_line() +
+  facet_grid(Bulk~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Allele Ratios by Selection")
+
+logOdds_All %>% filter(grepl("AIG", Parent) == FALSE) %>%
+  ggplot(aes(y = logOdds, group = Dataset, x = POS, color = Bulk)) + 
+  geom_line(size = 0.4, alpha = 0.8) +
+  facet_grid(Parent~CHROM, space = "free", scales = "free") +
+  theme(legend.position = "bottom") +
+  ggtitle("Allele Ratios by Parent") +
+  scale_color_manual(values = c("darkturquoise", #CuSO4
+                                "goldenrod", #Cyclohex
+                                "black", #Dilute
+                                "blue3", #Ethanol
+                                "firebrick", #Fluconazole
+                                "skyblue", #H2O2
+                                "purple3")) #Zeocin
+```
+
+
+```{r, fig.width=10, fig.height=5}
+logOdds_All %>% filter(grepl("AIG", Parent)) %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.4, alpha = 0.4) +
+  facet_grid(Dataset~CHROM, scales= "free", space = "free")
+
+
+logOdds_All %>% filter(grepl("AIG", Parent)) %>%
+  mutate(estHT = round(logOdds, 0)) -> testingbreakpoints
+
+testingbreakpoints %>%
+  ggplot(aes(x = POS, y = estHT, color = Dataset)) + geom_point(size = 0.4, alpha = 0.4) +
+  facet_grid(Dataset~CHROM, scales= "free", space = "free")
+
+testingbreakpoints %>%
+  ggplot(aes(x = estHT)) + geom_bar() +
+  theme_bw() +
+  ggtitle("Distribution of rounded logOdds for AIG clones")
+
+```
+
+```{r}
+testingbreakpoints %>% group_by(Dataset, CHROM) %>% 
+  mutate(estHT = gsub("3", "4", estHT),
+         estHT = gsub("2", "4", estHT),
+         estHT = gsub("-1", "0", estHT),
+         estHT = gsub("-3", "-4", estHT),
+         estHT = gsub("-2", "-4", estHT),
+         estHT = gsub("1", "0", estHT)) -> bp_rounded
+
+unique(bp_rounded$estHT)
+
+bp_rounded %>% ggplot(aes(x = POS, y = estHT, color = Dataset)) + geom_point(size = 0.4, alpha = 0.4) +
+  facet_grid(Dataset~CHROM, scales= "free", space = "free")
+
+bp_rounded %>%
+  arrange(POS) %>% 
+  mutate(
+    stretch_id = c(cumsum(estHT != lag(estHT, default = first(estHT)))) # Identify changes in estHT
+  ) %>%
+  group_by(Dataset, CHROM, stretch_id) %>%
+  summarize(
+    start_pos = first(POS),  # Start position of the stretch
+    end_pos = last(POS),     # End position of the stretch
+    length = n(),            # Length of the stretch
+    estHT_value = first(estHT)  # The estHT value for the stretch
+  ) %>%
+  ungroup()  -> Breakpoints
+
+Breakpoints %>% ggplot(aes(x = length, color = Dataset)) + geom_density() + theme_bw() + xlim(0,1000)
+
+Breakpoints %>% filter(length < 100) %>% ggplot() + 
+  geom_linerange(aes(xmin = start_pos, xmax = end_pos, color = Dataset, y = Dataset, linewidth = 2)) +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("< 100 bp")
+
+Breakpoints %>% filter(length <= 500, length >= 100) %>% ggplot() + 
+  geom_linerange(aes(xmin = start_pos, xmax = end_pos, color = Dataset, y = Dataset, linewidth = 2))  +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("100-500")
+
+Breakpoints %>% filter(length >= 500) %>% ggplot() + 
+  geom_linerange(aes(xmin = start_pos, xmax = end_pos, color = Dataset, y = Dataset, linewidth = 2))  +
+  facet_grid(~CHROM, space = "free", scales = "free") + ggtitle("> 500 bp")
+
+unique(Breakpoints$CHROM)
+
+Breakpoints %>% filter(CHROM %in% c("V", "II", "X")) %>% 
+  ggplot() + 
+  geom_linerange(aes(xmin = start_pos, xmax = end_pos, y = length, color = estHT_value), alpha = 0.5, linewidth = 2)  +
+  facet_grid(CHROM~Dataset, space = "free", scales = "free") + ggtitle("Chr V") +
+  theme_bw() + theme(legend.position = "bottom")
+
+```
+
