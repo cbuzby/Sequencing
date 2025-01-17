@@ -1,0 +1,332 @@
+---
+title: "Chr XV Investigation"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+
+```{r}
+Copper_CSS1_glm <- readRDS("J25/Copper_CSS1_glm_J25.rds")  
+Copper_CSS8_glm <- readRDS("J25/Copper_CSS8_glm_J25.rds")  
+
+Fluconazole_CSS1_glm <- readRDS("J25/Fluconazole_CSS1_glm_J25.rds") 
+Fluconazole_CSS8_glm <- readRDS("J25/Fluconazole_CSS8_glm_J25.rds") 
+
+Cyc_CSS1_glm <- readRDS("J25/Cyc_CSS1_glm_J25.rds") 
+Cyc_CSS8_glm <- readRDS("J25/Cyc_CSS8_glm_J25.rds") 
+
+H2O2_CSS1_glm <- readRDS("J25/H2O2_CSS1_glm_J25.rds")
+H2O2_CSS8_glm <- readRDS("J25/H2O2_CSS8_glm_J25.rds") 
+
+Ethanol_CSS1_glm <- readRDS("J25/Ethanol_CSS1_glm_J25.rds") 
+Ethanol_CSS8_glm <- readRDS("J25/Ethanol_CSS8_glm_J25.rds") 
+
+Zeocin_CSS1_glm <- readRDS("J25/Zeocin_CSS1_glm_J25.rds") 
+Zeocin_CSS8_glm <- readRDS("J25/Zeocin_CSS8_glm_J25.rds") 
+
+PQ_CSS1_glm <- readRDS("J25/PQ_CSS1_glm_J25.rds") 
+PQ_CSS8_glm <- readRDS("J25/PQ_CSS8_glm_J25.rds")
+
+rbind(Copper_CSS1_glm,Copper_CSS8_glm,Fluconazole_CSS1_glm,Fluconazole_CSS8_glm,
+      Cyc_CSS1_glm,Cyc_CSS8_glm,H2O2_CSS1_glm,H2O2_CSS8_glm,Ethanol_CSS1_glm, Ethanol_CSS8_glm,
+      Zeocin_CSS1_glm,PQ_CSS1_glm,
+      Zeocin_CSS8_glm,PQ_CSS8_glm) -> glms
+
+########################
+
+Copper_CSS1_q5 <- readRDS("J25/Copper_CSS1_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5 <- readRDS("J25/Copper_CSS8_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+
+Fluconazole_CSS1_q5 <- readRDS("J25/Fluconazole_CSS1_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5 <- readRDS("J25/Fluconazole_CSS8_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+
+Cyc_CSS1_q5 <- readRDS("J25/Cyc_CSS1_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5 <- readRDS("J25/Cyc_CSS8_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+
+H2O2_CSS1_q5 <- readRDS("J25/H2O2_CSS1_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5 <- readRDS("J25/H2O2_CSS8_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+
+Ethanol_CSS1_q5 <- readRDS("J25/Ethanol_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5 <- readRDS("J25/Ethanol_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+
+Zeocin_CSS8_q5 <- readRDS("J25/Zeocin_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5 <- readRDS("J25/Paraquat_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+
+Zeocin_CSS1_q5 <- readRDS("J25/Zeocin_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5 <- readRDS("J25/Paraquat_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+
+rbind(Copper_CSS1_q5,Copper_CSS8_q5,Fluconazole_CSS1_q5,Fluconazole_CSS8_q5,
+      Zeocin_CSS1_q5, Paraquat_CSS1_q5, Zeocin_CSS8_q5, Paraquat_CSS8_q5,
+      Cyc_CSS1_q5,Cyc_CSS8_q5,H2O2_CSS1_q5,H2O2_CSS8_q5,Ethanol_CSS1_q5, Ethanol_CSS8_q5) -> q5s
+
+glms %>% merge(q5s) -> AllTrait_glms
+```
+
+# What is weird on Chr XV?
+
+```{r, fig.width= 8, fig.height=8}
+AllTrait_glms %>% filter(CHROM == "XV", label == "cept") %>% ggplot(aes(x = POS, y = zscore, color = Selection)) + geom_point(alpha = 0.2) +
+  facet_grid(rows = "CSS")
+```
+```{r}
+HKTFTDRX2 <- readRDS("HKTFTDRX2.mqc.rds")
+HWMMFDMXY <- readRDS("HWMMFDMXY.mqc.rds")
+HWTCNDMXY <- readRDS("HWTCNDMXY.mqc.rds")
+HGVMVDRX2 <- readRDS("HGVMVDRX2.mqc.rds")
+HJ5HKDRX3b <- readRDS("HJ5HKDRX3b.mqc.rds")
+HKTMZDRX2 <- readRDS("HKTMZDRX2.mqc.rds")
+HVYTYDRX2 <- readRDS("HVYTYDRX2.mqc.rds")
+#CuSO4_2024 <- readRDS("CuSO4_2024.mqc.rds")
+```
+
+```{r}
+#file.choose()
+SGD_Genes <- read.csv("C:\\Users\\Cassandra\\Documents\\GitHub\\cybrBSA\\TestFiles\\SGD_ORFs.csv")
+
+SGD_Genes %>% filter(Gene.chromosome.primaryIdentifier == "chrXV") %>%
+  filter(Gene.chromosomeLocation.end > 8.47e05, Gene.chromosomeLocation.start < 8.53e05) %>%
+  mutate(id = row_number()) -> RegionGenes
+```
+
+```{r, fig.width=10, fig.height=6}
+HKTFTDRX2 %>% filter(CHROM == "XV") -> tempa
+HWMMFDMXY %>% filter(CHROM == "XV") -> tempb
+HWTCNDMXY %>% filter(CHROM == "XV") -> tempc
+HGVMVDRX2%>% filter(CHROM == "XV") -> tempd
+HJ5HKDRX3b %>% filter(CHROM == "XV") -> tempe
+HKTMZDRX2 %>% filter(CHROM == "XV") -> tempf
+HVYTYDRX2 %>% filter(CHROM == "XV") -> tempg
+# 
+rbind(tempa, tempb, tempc, tempd, tempe, tempf, tempg) -> hopefullyworks
+# 
+hopefullyworks %>% pivot_wider(names_from = Allele, values_from = Reads) -> works2
+
+works2 %>% filter(Bulk != "NA", Bulk != "UNDETERMINED") %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.2, alpha = 0.3) +
+  geom_hline(aes(yintercept = 0)) +
+  facet_grid(rows = "Bulk") +
+  theme(legend.position = "none")
+
+works2 %>% filter(Bulk != "NA", Bulk != "UNDETERMINED") %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.2, alpha = 0.3) +
+  geom_hline(aes(yintercept = 0)) +
+  theme(legend.position = "none")
+
+hopefullyworks %>% ungroup() %>%
+  group_by(CHROM, Pool, Parent, Bulk, Allele, Dataset) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) -> Smoothed_XV
+
+Smoothed_XV %>%  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  filter(Bulk != "NA", Bulk != "UNDETERMINED") %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.2, alpha = 0.3) +
+  geom_hline(aes(yintercept = 0)) +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+SGD_Genes %>% filter(Gene.symbol %in% c("IME1", "NDT80", "UME6", "HST1", "SUM1", "IME2", "DIT1", "NRG1", "RIM101", "DIT2", "GIS1", "CLB5", "CDC28", "IME4", 
+                                        "MER1", "MER2", "MER3", "SPO22", "AMA1", "SPC72", "SPO21", "MPC70", "MPC54", "SPO74",
+                                        "CNM67", "NUD1", "ADY4", "SEC4", "SNC1", "SNC2", "SSO1", "SPO14", "SPO20", "SSO2")) %>% #arrange(desc(Gene.chromosome.primaryIdentifier)) %>%
+  filter(Gene.chromosome.primaryIdentifier == "chrXV") -> SporulationCandidates
+
+SGD_Genes %>% filter(Gene.symbol %in% c("FLO5", "FLO1", "FLO11")) #%>% #arrange(desc(Gene.chromosome.primaryIdentifier)) %>%
+  filter(Gene.chromosome.primaryIdentifier == "chrXV") 
+
+SGD_Genes %>% mutate(Gene = toupper(Gene.symbol)) %>% 
+  filter(Gene %in% c("RIM15", "TPK2", "GLN3", "DIG1", "STE11", "STE7", "TEC1", "CLN1",
+                     "STE20", "HOG1", "FLO11", "STE12", "TPK3", "IRA2", "RAS2")) %>%
+  filter(Gene.chromosome.primaryIdentifier == "chrXV")
+```
+
+```{r, fig.width=10, fig.height=6}
+
+# # works2 %>% filter(Bulk != "NA", Bulk != "UNDETERMINED") %>%
+# #   mutate(logOdds_Reads = log(Wine/Oak)) %>% select(Dataset, POS, logOdds_Reads) -> readlog
+# 
+# # Smoothed_XV %>%  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+# #   filter(Bulk != "NA", Bulk != "UNDETERMINED") %>%
+# #   mutate(logOdds_Smooth = log(Wine/Oak)) %>%
+# #   merge(readlog) -> compChrXV
+
+
+compChrXV %>% filter(POS > 7e05, POS < 9e05) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(size = 0.2, alpha = 0.1) +
+  geom_line(aes(x = POS, y = logOdds_Smooth), color = "black") +
+  facet_grid(~Parent)
+
+compChrXV %>% filter(POS > 3.5e05, POS < 7e05) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(size = 0.2, alpha = 0.1) +
+  geom_line(aes(x = POS, y = logOdds_Smooth), color = "black") +
+  ylim(-2,2) +
+  facet_grid(~Parent)
+
+
+compChrXV %>% filter(POS > 3.5e05, POS < 7e05) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Bulk, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+  geom_hline(yintercept = 0) +
+  ylim(-2,2) +
+  facet_grid(Bulk == "Dilute"~Parent)
+
+compChrXV %>% filter(POS > 2.5e05, POS < 8.5e05, Bulk == "Dilute") %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+  geom_hline(yintercept = 0) +
+  ylim(-1.2,1.5) +
+  facet_grid()
+
+compChrXV %>% filter(Bulk == "Dilute", POS < 3e05) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+    geom_vline(xintercept = 171070) +
+
+  geom_hline(yintercept = 0) +
+  ylim(-1.2,1.5) +
+  facet_grid()
+
+compChrXV %>% filter(POS > 8.45e05, POS < 8.53e05, Bulk == "Dilute") %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+  geom_hline(yintercept = 0) +
+  facet_grid()
+
+hopefullyworks %>% filter(POS > 8.45e05, POS < 8.54e05, Bulk == "Dilute") %>%
+  ggplot() + geom_point(aes(x = POS, y = Reads, alpha = Allele, group = Dataset), size = 2) +
+  geom_segment(data = RegionGenes, 
+              aes(x = Gene.chromosomeLocation.start, xend = Gene.chromosomeLocation.end, 
+                  color = paste(id, Gene.symbol), 
+                  y= id*-20),linewidth = 3, alpha = 0.8)
+
+hopefullyworks %>% filter(POS > 8.45e05, POS < 8.54e05, Bulk == "Dilute") %>%
+  ggplot() + geom_point(aes(x = POS, y = Reads, alpha = Allele, group = Dataset), size = 2) +
+  geom_segment(data = RegionGenes, 
+              aes(x = Gene.chromosomeLocation.start, xend = Gene.chromosomeLocation.end, 
+                  color = paste(id, Gene.symbol), 
+                  y= id*-20),linewidth = 3, alpha = 0.8)
+
+
+hopefullyworks %>% filter(POS > 8.45e05, POS < 8.54e05, Bulk == "Dilute", Allele == "Oak") %>%
+  ggplot() + geom_line(aes(x = POS, y = Reads,  color = Dataset)) +
+  theme(legend.position = "none")
+
+hopefullyworks %>% filter(POS > 8.45e05, POS < 8.54e05, Bulk == "Dilute") %>%
+  ggplot() + geom_line(aes(x = POS, y = Reads,  color = Dataset)) +
+  facet_grid(rows = "Allele") +
+  theme(legend.position = "none")
+```
+
+```{r, fig.width=10, fig.height=6}
+
+hopefullyworks %>% filter(Bulk == "Dilute") %>%
+  group_by(Dataset, POS) %>% summarize(Coverage = sum(Reads)) %>% merge(hopefullyworks) -> CovXV_all
+
+CovXV %>% filter(Allele == "Oak") %>%
+  ggplot() + geom_line(aes(x = POS, y = Reads/Coverage,  color = Dataset)) +
+  ylim(0,1) +
+  theme(legend.position = "none")
+
+CovXV %>% filter(CHROM == "XV") %>%
+  ggplot() + geom_line(aes(x = POS, y = Reads/Coverage,  color = Dataset)) +
+  facet_grid(rows = "Allele") +
+  theme(legend.position = "none")
+
+CovXV_all  %>% filter(Allele == "Oak") %>%
+  #filter(POS > 190000, POS < 300000) %>%
+  ggplot() + geom_line(aes(x = POS, y = Reads/Coverage,  color = Dataset)) +
+  geom_vline(data = SporulationCandidates, aes(xintercept = Gene.chromosomeLocation.start)) +
+  geom_hline(aes(yintercept = .50)) +
+  facet_grid(rows = "Parent") +
+  #geom_vline(xintercept = c(30000, 1091000 - 30000)) +
+  theme(legend.position = "none")
+
+
+compChrXV %>% filter(Bulk == "Dilute", POS < 2e05, POS > 1.5e5) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+    geom_vline(aes(xintercept = c(171070)), linetype = "dashed") +
+    geom_vline(aes(xintercept = c(180309)), linetype = "dashed") +
+
+  geom_hline(yintercept = 0) +
+  ylim(-1.2,1.5) +
+  facet_grid()
+
+compChrXV %>% filter(Bulk == "Dilute", POS < 4e05) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(alpha = 0.1, color = "gray") +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+    geom_vline(aes(xintercept = c(171070)), linetype = "dashed") +
+    geom_vline(aes(xintercept = c(180309)), linetype = "dashed") +
+
+  geom_hline(yintercept = 0) +
+  ylim(-1.2,1.5) +
+  facet_grid()
+
+compChrXV %>% filter(Bulk == "Dilute", POS < 1.604e05, POS > 1.60e5) %>%
+  ggplot(aes(x = POS, y = logOdds_Reads, color = Parent, group = Dataset)) + geom_point(size = 3, alpha = 0.3) +
+  geom_line(aes(x = POS, y = logOdds_Smooth)) +
+  geom_hline(yintercept = 0) +
+  ylim(-1.2,1.5) +
+  facet_grid()
+
+hopefullyworks %>% filter(Bulk == "Dilute", POS < 180309, POS > 1.60e5) %>%
+  ggplot(aes(x = POS, y = Reads, color = Allele, group = Dataset, shape = Allele)) + geom_point(size = 3, alpha = 0.3) +
+  geom_hline(yintercept = 0) +
+  geom_vline(aes(xintercept = c(171070)), linetype = "dashed") +
+    geom_vline(aes(xintercept = c(180309)), linetype = "dashed") +
+
+  facet_grid(rows = "Parent")
+
+hopefullyworks %>% filter(Bulk == "Dilute", POS < 180309, POS > 1.50e5) %>% 
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset, group = Dataset)) + geom_point(size = 3, alpha = 0.3) +
+  geom_hline(yintercept = 0) +
+  geom_vline(aes(xintercept = c(171070)), linetype = "dashed") +
+    geom_vline(aes(xintercept = c(180309)), linetype = "dashed") +
+    facet_grid(rows = "Parent") +
+  theme(legend.position = "none")
+
+
+```
+
+RDL1: Thiosulfate sulfurtransferase; contains a rhodanese-like domain; localized to the mitochondrial outer membrane; protein abundance increases in response to DNA replication stress; similar to the human TSTD gene
+
+RDL2: Protein with rhodanese activity; contains a rhodanese-like domain similar to Rdl1p, Uba4p, Tum1p, and Ych1p; overexpression causes a cell cycle delay; null mutant displays elevated frequency of mitochondrial genome loss
+
+
+

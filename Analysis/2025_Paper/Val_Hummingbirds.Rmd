@@ -1,0 +1,82 @@
+---
+title: "Hummingbird Data"
+author: "Cass"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load in data
+
+CuSO4 Data run with different haplotypecaller parameters
+
+```{r}
+
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/Test_HFJTJDRX5_sorted.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+
+testrawdata
+
+rawdata <- cybrInputGATKTable2(myfile, yeast = FALSE)
+
+unique(rawdata$Dataset)
+
+rawdata %>% filter(POS == 8057) %>% na.omit() %>% ggplot(aes(x = Dataset, y = (AD.REF))) + geom_point() +
+  geom_point(aes(x = Dataset, y = as.numeric(AD.ALT)), color = "red")
+
+rawdata %>% select(CHROM, Dataset, REF, ALT) %>% 
+  separate(ALT, sep = ",", into = c("ALT1","ALT2","ALT3","ALT4","ALT5","ALT6","ALT7","ALT8","ALT9","ALT10"), extra = "merge") -> rawdata_expand
+
+rawdata %>% mutate(Dataset = gsub("HFJTJDRX5_", "", Dataset)) %>%
+  mutate(Dataset = gsub(".fastq", "", Dataset))-> rd_to_merge
+ 
+rd_to_merge %>% separate(col = Dataset, sep = "_", into = c("Pair","ID", "SpeciesID")) -> rd_to_merge
+
+rd_to_merge %>% mutate(RefCall = (as.numeric(AD.REF) - as.numeric(AD.ALT)) > 0) -> rdCalls
+
+rdCalls %>% ggplot(aes(x = POS, y = RefCall, color = as.factor(ID))) + geom_point() + theme(legend.position = "bottom")
+
+```
+
+```{r}
+#Load in metadata
+metadata <- read.csv("C:\\Users\\Cassandra\\Downloads\\alldata.csv")
+  
+rdCalls %>% mutate(birdID = as.numeric(ID)) %>% merge(metadata) -> rd_AllData
+
+
+rd_AllData %>% group_by(POS, type) %>% count(RefCall) %>% pivot_wider(names_from = RefCall, values_from = n, names_prefix = "Ref_") %>%
+  select(POS, type, Ref_TRUE, Ref_FALSE) %>% na.omit() %>%
+  ggplot(aes(x = POS, y = (log(Ref_TRUE/Ref_FALSE)), color = type)) + geom_point(alpha = 0.3) +
+  theme(legend.position = "bottom")
+
+rd_AllData %>% group_by(POS, sex_both) %>% count(RefCall) %>% pivot_wider(names_from = RefCall, values_from = n, names_prefix = "Ref_") %>%
+  select(POS, sex_both, Ref_TRUE, Ref_FALSE) %>% na.omit() %>%
+  ggplot(aes(x = POS, y = abs(log(Ref_TRUE/Ref_FALSE)), color = sex_both)) + geom_point(alpha = 0.3) +
+  theme(legend.position = "bottom")
+
+max(rd_AllData$POS)
+```
+
+
+```{r}
+rd_AllData %>% filter(POS == 164188) %>% group_by(tail_len) %>% count(RefCall) -> summary_tail_len
+
+lm(tail_len ~ n + RefCall, data = summary_tail_len)
+
+summary_tail_len %>% ggplot(aes(y = tail_len, x = n, color = RefCall)) + geom_point() + geom_smooth(method = "lm")
+
+```
+
+```{r}
+
+library("vcfR")
+
+
+```
+

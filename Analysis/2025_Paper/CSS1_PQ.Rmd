@@ -1,0 +1,105 @@
+---
+title: "CSS1 Loading"
+author: "Cass"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load in data
+
+```{r}
+parentSNPids <- cybrConvertParentalAlleles(Truncate = FALSE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+
+merge(pSNPs, parentSNPids) %>% filter(Unique == 1) %>% select(-Unique) -> parentSNPids
+
+unique(pSNPs$Unique)
+```
+
+```{r}
+MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+
+unique(MQC$Pool)
+```
+
+# Process each file as entire sequencing run
+
+## Not yet completed
+
+CuSO4 Data run with different haplotypecaller parameters
+
+```{r, eval = FALSE}
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/Dec24_H2LKCDMX2_css1.SortedCat.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+saveRDS(rawdata, file = "CSS1_PQ_2024_rawdataG_J25.rds")
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "CSS1_PQ_rawdata_called_ex_J25.rds")
+
+```
+
+```{r}
+#PQ_CSS1 <- rawdata_called_ex
+#PQ_CSS1 <- readRDS("CSS1_PQ_rawdata_called_ex_J25.rds")
+```
+
+```{r}
+MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+
+PQ_CSS1 %>% mutate(Library = gsub("H2LKCDMX2_n01_", "", Dataset)) %>%
+  mutate(Library = gsub(".fastq", "", Library)) %>%
+  merge(MQC) -> PQ_CSS1_annotated
+
+PQ_CSS1_annotated %>% select(Dataset = Library, POS, CHROM, Allele, Reads, Pool, Parent, Bulk, Rep) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) -> PQ_CSS1_test
+
+PQ_CSS1_test %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.2, alpha = 0.5) +
+  facet_grid(Bulk ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+
+```{r}
+PQ_CSS1_test %>% 
+  filter(Bulk %in% c("Dilute", "Freeze"), CHROM == "XV") %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(size = 0.2, alpha = 0.5) +
+  facet_grid(Parent~Bulk, scales = "free", space = "free") +
+  theme(legend.position = "bottom")
+```
+```{r}
+unique(PQ_CSS1_test$Selection)
+```
+

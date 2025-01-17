@@ -1,0 +1,112 @@
+---
+title: "Chr8_MappingQualityComparison"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+## Load in data
+
+```{r}
+parentSNPids <- cybrConvertParentalAlleles(Truncate = FALSE)
+parentSNPids %>% group_by(CHROM, POS) %>% summarize(Type = Type, Unique = length(unique(Type))) -> pSNPs
+
+merge(pSNPs, parentSNPids) %>% filter(Unique == 1) %>% select(-Unique) -> parentSNPids
+
+unique(pSNPs$Unique)
+```
+
+```{r}
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/AllCuSO4.REF.noMapQalFilter_NC_001140.6.SortedCat.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+################################################################################
+rawdata %>% #head(3000) %>%
+  merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+```
+
+```{r}
+rawdata_called %>% pivot_wider(names_from = Allele, values_from = Reads) -> Chr8_pivot
+
+Chr8_pivot %>% unnest() %>% mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_point(alpha = 0.2) +
+  theme(legend.position = "none") +
+  xlim(c(202535,232720))
+
+Cu_noPCR <- readRDS("CuSO4_noPCR_2024_rawdataG.rds") %>% filter(CHROM == "VIII")
+Cu_original <- readRDS("CuSO4_2024_rawdataG.rds") %>% filter(CHROM == "VIII")
+
+
+rawdata_called %>% filter(POS >211535, POS < 214720) %>%
+  ggplot(aes(x = POS, y = Coverage)) +
+  geom_point(alpha = 0.3) +
+  geom_point(data = Cu_noPCR[Cu_noPCR$POS >211535 & Cu_noPCR$POS < 214720,], aes(x = POS, y = Coverage), color = "maroon", alpha = 0.5) +
+  #geom_point(data = Cu_original[Cu_original$POS >202535 & Cu_original$POS < 222720,], aes(x = POS, y = Coverage), color = "blue", alpha = 0.1) +
+  geom_vline(xintercept = c(212535,212720), color = "red")
+
+```
+
+Looking at uncalled raw coverage - this didn't help
+
+```{r}
+rawdata %>% filter(POS >211535, POS < 224720) %>%
+  ggplot(aes(x = POS, y = POS, color = Coverage)) + geom_jitter(alpha = 0.1) +
+    geom_vline(xintercept = c(212535,212720), color = "red")
+
+```
+

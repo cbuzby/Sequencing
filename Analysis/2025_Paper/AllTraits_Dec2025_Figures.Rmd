@@ -1,0 +1,1335 @@
+---
+title: "All Traits Figures Dec 2024"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+# Figures
+
+```{r}
+Copper_CSS1_glm <- readRDS("J25/Copper_CSS1_glm_J25.rds")  
+Copper_CSS8_glm <- readRDS("J25/Copper_CSS8_glm_J25.rds")  
+
+Fluconazole_CSS1_glm <- readRDS("J25/Fluconazole_CSS1_glm_J25.rds") 
+Fluconazole_CSS8_glm <- readRDS("J25/Fluconazole_CSS8_glm_J25.rds") 
+
+Cyc_CSS1_glm <- readRDS("J25/Cyc_CSS1_glm_J25.rds") 
+Cyc_CSS8_glm <- readRDS("J25/Cyc_CSS8_glm_J25.rds") 
+
+H2O2_CSS1_glm <- readRDS("J25/H2O2_CSS1_glm_J25_c.rds") #remove trials 9 and 10, concat vcfs
+H2O2_CSS8_glm <- readRDS("J25/H2O2_CSS8_glm_J25_c.rds") 
+
+Ethanol_CSS1_glm <- readRDS("J25/Ethanol_CSS1_glm_J25.rds") 
+Ethanol_CSS8_glm <- readRDS("J25/Ethanol_CSS8_glm_J25_H2LK2only.rds") 
+
+Zeocin_CSS1_glm <- readRDS("J25/Zeocin_CSS1_glm_J25_c.rds") 
+Zeocin_CSS8_glm <- readRDS("J25/Zeocin_CSS8_glm_J25_c.rds") 
+
+PQ_CSS1_glm <- readRDS("J25/PQ_CSS1_glm_J25_xNAs.rds") 
+PQ_CSS8_glm <- readRDS("J25/PQ_CSS8_glm_J25_xNAs.rds")
+
+rbind(Copper_CSS1_glm,Copper_CSS8_glm,Fluconazole_CSS1_glm,Fluconazole_CSS8_glm,
+      Cyc_CSS1_glm,Cyc_CSS8_glm,H2O2_CSS1_glm,H2O2_CSS8_glm,Ethanol_CSS1_glm, Ethanol_CSS8_glm,
+      Zeocin_CSS1_glm,PQ_CSS1_glm,
+      Zeocin_CSS8_glm,PQ_CSS8_glm) -> glms
+
+########################
+
+Copper_CSS1_q5 <- readRDS("J25/Copper_CSS1_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5 <- readRDS("J25/Copper_CSS8_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+
+Fluconazole_CSS1_q5 <- readRDS("J25/Fluconazole_CSS1_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5 <- readRDS("J25/Fluconazole_CSS8_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+
+Cyc_CSS1_q5 <- readRDS("J25/Cyc_CSS1_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5 <- readRDS("J25/Cyc_CSS8_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+
+#Forgot to change these to c in name but should be the new ones
+H2O2_CSS1_q5 <- readRDS("J25/H2O2_CSS1_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5 <- readRDS("J25/H2O2_CSS8_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+
+Ethanol_CSS1_q5 <- readRDS("J25/Ethanol_CSS1_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5 <- readRDS("J25/Ethanol_CSS8_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+
+Zeocin_CSS8_q5 <- readRDS("J25/Zeocin_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5 <- readRDS("J25/Paraquat_CSS8_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+
+Zeocin_CSS1_q5 <- readRDS("J25/Zeocin_CSS1_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5 <- readRDS("J25/Paraquat_CSS1_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+
+################################################################################
+
+Copper_CSS1_q5_s15 <- readRDS("J25/Copper_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5_s15 <- readRDS("J25/Copper_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+
+Fluconazole_CSS1_q5_s15 <- readRDS("J25/Fluconazole_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5_s15 <- readRDS("J25/Fluconazole_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+
+Cyc_CSS1_q5_s15 <- readRDS("J25/Cyc_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5_s15 <- readRDS("J25/Cyc_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+
+#Forgot to change these to c in name but should be the new ones
+H2O2_CSS1_q5_s15 <- readRDS("J25/H2O2_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5_s15 <- readRDS("J25/H2O2_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+
+Ethanol_CSS1_q5_s15 <- readRDS("J25/Ethanol_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5_s15 <- readRDS("J25/Ethanol_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+
+Zeocin_CSS8_q5_s15 <- readRDS("J25/Zeocin_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5_s15 <- readRDS("J25/Paraquat_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+
+Zeocin_CSS1_q5_s15 <- readRDS("J25/Zeocin_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5_s15 <- readRDS("J25/Paraquat_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+
+################################################################################
+
+rbind(Copper_CSS1_q5,Copper_CSS8_q5,Fluconazole_CSS1_q5,Fluconazole_CSS8_q5,
+      Zeocin_CSS1_q5, Paraquat_CSS1_q5, Zeocin_CSS8_q5, Paraquat_CSS8_q5,
+      Cyc_CSS1_q5,Cyc_CSS8_q5,H2O2_CSS1_q5,H2O2_CSS8_q5,Ethanol_CSS1_q5, Ethanol_CSS8_q5) -> q5s
+
+rbind(Copper_CSS1_q5_s15,Copper_CSS8_q5_s15,Fluconazole_CSS1_q5_s15,Fluconazole_CSS8_q5_s15,
+      Zeocin_CSS1_q5_s15, Paraquat_CSS1_q5_s15, Zeocin_CSS8_q5_s15, Paraquat_CSS8_q5_s15,
+      Cyc_CSS1_q5_s15,Cyc_CSS8_q5_s15,H2O2_CSS1_q5_s15,H2O2_CSS8_q5_s15,Ethanol_CSS1_q5_s15, Ethanol_CSS8_q5_s15) -> q5_s15s
+
+q5_s15s %>% mutate(q15 = quant) %>% select(-quant) %>% merge(q5s) -> allQs
+
+glms %>% merge(allQs) -> AllTrait_glms
+
+saveRDS(AllTrait_glms, file = "Jan15_AllTrait_glms.rds")
+```
+
+```{r, fig.width=12, fig.height=5, eval = FALSE}
+
+Cyc_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  geom_hline(data = Cyc_CSS1_q5[Cyc_CSS1_q5$label != "cept",], aes(yintercept = quant, color = label)) +
+  geom_hline(data = Cyc_CSS1_q5[Cyc_CSS1_q5$label != "cept",], aes(yintercept = -quant, color = label)) +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Cyc_CSS1_glm")
+
+Cyc_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Cyc_CSS8_glm")
+
+H2O2_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("H2O2_CSS1_glm")
+
+H2O2_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("H2O2_CSS8_glm")
+
+Fluconazole_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Fluconazole_CSS1_glm")
+
+Fluconazole_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Fluconazole_CSS8_glm")
+
+Copper_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Copper_CSS1_glm") 
+
+Copper_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Copper_CSS8_glm")
+
+Ethanol_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Ethanol_CSS1_glm") 
+
+Ethanol_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Ethanol_CSS8_glm")
+
+
+```
+
+```{r, fig.width=10, fig.height=6}
+glms %>% filter(label %in% c("Bulk", "Interaction")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label, linetype = CSS)) + geom_line() +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("Bulk and Interactions") +
+  scale_color_manual(values = c("navyblue", "darkorange")) + 
+  theme(legend.position = "bottom") 
+```
+
+```{r, eval = FALSE}
+H2O2_G200<- readRDS("J25/H2O2_G200_J25.rds")
+H2O2_G200 %>% na.omit() %>% 
+  filter(grepl(8, Parent)) %>%
+  mutate_if(is.character, as.factor) -> H2O2_CSS8_factor
+
+H2O2_CSS8_factor %>% filter(CHROM == "XV", POS < 4.6e5, POS > 4.58e5, grepl("8", Parent)) -> tempdf
+
+table(tempdf$POS)
+
+H2O2_CSS8_factor %>% filter(CHROM == "XV", POS < 4.6e5, POS > 4.58e5, grepl("8", Parent)) %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Parent)) + geom_point(alpha = 0.4) +
+  facet_grid("Bulk") +
+  theme(legend.position = "bottom")
+
+H2O2_CSS8_factor %>% group_by(CHROM, POS) %>% count(POS) -> doesthiswork
+
+doesthiswork %>% filter(n == 80)
+
+table(doesthiswork$n)
+
+H2LK2DMX2 %>% filter(POS == 169833, CHROM == "IV",  Dataset == "Wine8_D_17") %>% distinct()
+H2O2_Unsmoothed %>% filter(POS == 169833, CHROM == "IV", Dataset == "Wine8_D_17") 
+H2O2_G200 %>% filter(POS == 169833, CHROM == "IV", Dataset == "Wine8_D_17") 
+H2O2_G200_edit %>% filter(POS == 169833, CHROM == "IV", Dataset == "Wine8_D_17") 
+H2O2_CSS1_factor %>% filter(POS == 169833, CHROM == "IV", Dataset == "Wine8_D_17") 
+H2O2_CSS8_factor %>% filter(POS == 169833, CHROM == "IV", Dataset == "Wine8_D_17") 
+
+```
+
+```{r}
+#Without cutoffs
+
+glms %>% filter(label %in% c("Bulk"), Selection == "H2O2", CHROM == "XV", POS < 4.6e5, POS > 4.58e5, CSS == "Fixed VIII") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = as.factor(POS))) + geom_point(alpha = 0.4) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") + ggtitle("H2O2 Bulk only") +
+  theme(legend.position = "bottom") 
+
+glms %>% filter(label %in% c("Bulk"), Selection == "Zeocin", CHROM == "XV") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = CSS, linetype = CSS)) + geom_point(size = 0.2, alpha = 0.4) +
+  facet_grid(CSS~CHROM, scales = "free", space = "free") + ggtitle("Zeocin Bulk only") +
+  scale_color_manual(values = c("navyblue", "darkorange")) + 
+  theme(legend.position = "bottom") 
+```
+
+
+```{r, fig.width=12, fig.height=5}
+glms %>% filter(label == "Bulk") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection, linetype = CSS)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("Bulk by Selection") +
+  theme(legend.position = "bottom")
+
+glms %>% filter(label %in%  c("cept", "Background")) %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = Selection, linetype = CSS)) + geom_line() +
+  facet_grid(label~CHROM, scales = "free", space = "free")+ ggtitle("Background and Intercept") +
+  theme(legend.position = "bottom")
+
+################################################################################
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Ethanol") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3)) +
+  ggtitle("Ethanol")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Copper") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Copper")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Fluconazole") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Fluconazole")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Cycloheximide") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Cycloheximide")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "H2O2") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("H2O2")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Zeocin") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Zeocin")
+```
+
+```{r, fig.width=8, fig.height=6}
+AllTrait_glms %>% filter(label == "Bulk") %>% ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
+  facet_grid(Selection~CHROM, scales = "free", space = "free")+ 
+  geom_hline(aes(yintercept = quant, color = CSS, linetype = CSS)) +
+  scale_color_manual(values = c("navyblue", "darkorange")) +
+  ggtitle("Bulk Effects")+
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+
+AllTrait_glms %>% filter(label == "Interaction") %>% ggplot(aes(x = POS, y = abs(zscore), color = CSS)) + geom_line() +
+  facet_grid(Selection~CHROM, scales = "free", space = "free")+ 
+  geom_hline(aes(yintercept = quant, color = CSS, linetype = CSS)) +
+  scale_color_manual(values = c("navyblue", "darkorange")) +
+  ggtitle("Interaction Effects") +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+
+```
+
+Using the cutoff of highest Chr III value
+
+```{r, fig.width=8, fig.height=6}
+AllTrait_glms %>% filter(CHROM == "III") %>%
+  group_by(label, CSS) %>%
+  summarize(Max3 = max(abs(zscore))) %>% merge(AllTrait_glms) -> AllTrait_glms_3
+
+AllTrait_glms_3 %>% filter(label == "Interaction") %>% ggplot(aes(x = POS, y = abs(zscore ), color = CSS)) + geom_line() +
+  facet_grid(Selection~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = Max3, color = CSS, linetype = CSS)) +
+  scale_color_manual(values = c("navyblue", "darkorange")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+
+AllTrait_glms_3 %>% filter(label == "Interaction") %>% ggplot(aes(x = POS, y = abs(zscore), color = Selection)) + geom_line() +
+    geom_hline(aes(yintercept = quant, color = Selection), linetype = "dashed") +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = Max3)) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+```
+
+## Find bulk peaks
+
+Remaking the logpeak function
+
+```{r}
+cybr_lmpeaks2 <- function(Data, cutoff, width = 700, labelgroup = "Bulk"){
+  CrossoverPoints <- Data %>% mutate(abs_zscore = abs(zscore)) %>% 
+        mutate_at(vars(abs_zscore), funs(replace(., . < cutoff, 
+            -2))) %>% arrange(POS) %>% group_by(CSS, CHROM) %>% 
+        summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = frollapply(abs_zscore, 
+            mean, n = 1, align = "center")) %>% na.omit() %>% 
+        group_by(CHROM, CSS) %>% arrange(POS) %>% summarize(POS = POS, 
+        abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z, 
+        slope = frollapply(smooth_abs_z, FUN = slope_change, 
+            n = width, align = "center")) %>% mutate(negative = slope < 
+        0) %>% na.omit() %>% summarize(POSc = POS, crossover = frollapply(negative, 
+        FUN = subtract2, n = 2)) %>% filter(crossover == 1)
+    
+    tempStartEnd <- data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% 
+        merge(data.frame(CSS = unique(Data$CSS))) %>% mutate(POSc = 1, 
+        crossover = 0) %>% rbind(CrossoverPoints) %>% group_by(CHROM, 
+        CSS) %>% arrange(POSc) %>% mutate(order = paste("A", 
+        row_number(POSc), sep = "_")) %>% select(-crossover) %>% 
+        pivot_wider(names_from = order, values_from = POSc) %>% 
+        pivot_longer(cols = starts_with("A"), names_to = "segment", 
+            values_to = "value") %>% filter(!is.na(value)) %>% 
+        arrange(CHROM, CSS, value) %>% group_by(CHROM, CSS) %>% 
+        mutate(End = lead(value, default = Inf)) %>% ungroup() %>% 
+        rename(Start = value) %>% select(CHROM, CSS, Start, End)
+    peakdata <- data.frame(CHROM = NA, CSS = NA, zscore = NA)
+    for (i in unique(tempStartEnd$CHROM)) {
+        for (c in unique(tempStartEnd$CSS)) {
+            newtemp <- tempStartEnd %>% filter(CHROM == i, CSS == 
+                c)
+            for (k in 1:length(newtemp$Start)) {
+                something <- Data %>% filter(CHROM == i, CSS == 
+                  c, label == labelgroup) %>% filter(POS > newtemp$Start[k], 
+                  POS < newtemp$End[k]) %>% ungroup() %>% group_by(CHROM, 
+                  CSS) %>% summarize(zscore = max(abs(zscore)))
+                peakdata <- rbind(peakdata, something)
+            }
+            rm(newtemp)
+        }
+    }
+    peaks <- Data %>% mutate(zscore = abs(zscore)) %>% merge(peakdata) %>% 
+        filter(zscore > cutoff)
+    return(peaks)
+}
+
+```
+
+Make a loop to do the cutoffs?
+
+```{r}
+#Bulk Cutoffs
+BulkCutoffs <- AllTrait_glms[1,] %>% mutate(label = "BLANK")
+for(s in unique(AllTrait_glms$Selection)){
+  for(c in unique(AllTrait_glms$CSS)){
+    AllTrait_glms %>% filter(CSS == c, Selection == s, label == "Bulk") -> subsetGLMs
+
+    tempcutoffs <- cybr_lmpeaks2(subsetGLMs, cutoff = unique(subsetGLMs$q15))
+    
+    BulkCutoffs <- rbind(BulkCutoffs, tempcutoffs)
+    rm(tempcutoffs)
+  }
+}
+
+#Interaction Cutoffs
+IntCutoffs <- AllTrait_glms[1,] %>% mutate(label = "BLANK")
+for(s in unique(AllTrait_glms$Selection)){
+  for(c in unique(AllTrait_glms$CSS)){
+    AllTrait_glms %>% filter(CSS == c, Selection == s, label == "Interaction") -> subsetGLMs
+
+    tempcutoffs <- cybr_lmpeaks2(subsetGLMs, cutoff = unique(subsetGLMs$q15))
+    
+    IntCutoffs <- rbind(IntCutoffs, tempcutoffs)
+    rm(tempcutoffs)
+  }
+}
+
+saveRDS(BulkCutoffs, file = "BulkCutoffs.rds")
+saveRDS(IntCutoffs, file = "IntCutoffs.rds")
+```
+
+```{r, warning=FALSE, message=FALSE, eval = FALSE}
+allQs %>% filter(label == "Bulk")
+
+H2O2_CSS1_peaks <- cybr_lmpeaks2(H2O2_CSS1_glm[H2O2_CSS1_glm$label == "Bulk",], cutoff = 1.36)
+H2O2_CSS8_peaks <- cybr_lmpeaks2(H2O2_CSS8_glm[H2O2_CSS8_glm$label == "Bulk" ,], cutoff = 1.36)
+
+Cyc_CSS1_peaks <- cybr_lmpeaks2(Cyc_CSS1_glm[Cyc_CSS1_glm$label == "Bulk",], cutoff = 1.23)
+Cyc_CSS8_peaks <- cybr_lmpeaks2(Cyc_CSS8_glm[Cyc_CSS8_glm$label == "Bulk",], cutoff = 1.23)
+
+Fluconazole_CSS1_peaks <- cybr_lmpeaks2(Fluconazole_CSS1_glm[Fluconazole_CSS1_glm$label == "Bulk",], cutoff = 1.42)
+Fluconazole_CSS8_peaks <- cybr_lmpeaks2(Fluconazole_CSS8_glm[Fluconazole_CSS8_glm$label == "Bulk" ,], cutoff = 1.42)
+
+Zeocin_CSS1_peaks <- cybr_lmpeaks2(Zeocin_CSS1_glm[Zeocin_CSS1_glm$label == "Bulk" ,], cutoff = 1.64)
+Zeocin_CSS8_peaks <- cybr_lmpeaks2(Zeocin_CSS8_glm[Zeocin_CSS8_glm$label == "Bulk",], cutoff = 1.64)
+
+Paraquat_CSS1_peaks <- cybr_lmpeaks2(PQ_CSS1_glm[PQ_CSS1_glm$label == "Bulk" ,], cutoff = 1.67)
+Paraquat_CSS8_peaks <- cybr_lmpeaks2(PQ_CSS8_glm[PQ_CSS8_glm$label == "Bulk",], cutoff = 1.67)
+
+Copper_CSS1_peaks <- cybr_lmpeaks2(Copper_CSS1_glm[Copper_CSS1_glm$label == "Bulk" ,], cutoff = 1.029575, labelgroup = "Bulk")
+Copper_CSS8_peaks <- cybr_lmpeaks2(Copper_CSS8_glm[Copper_CSS8_glm$label == "Bulk",], cutoff = 1.029575, labelgroup = "Bulk")
+
+
+Ethanol_CSS1_peaks <- cybr_lmpeaks2(Ethanol_CSS1_glm[Ethanol_CSS1_glm$label == "Bulk" ,], cutoff = 1.24, labelgroup = "Bulk")
+Ethanol_CSS8_peaks <- cybr_lmpeaks2(Ethanol_CSS8_glm[Ethanol_CSS8_glm$label == "Bulk",], cutoff = 1.24, labelgroup = "Bulk")
+
+print("clear")
+```
+
+```{r, fig.width=10, fig.height=3}
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "H2O2") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = H2O2_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = H2O2_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("H2O2 Bulk Peaks")
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Zeocin") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Zeocin_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Zeocin_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Zeocin Bulk Peaks")
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Fluconazole_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Fluconazole_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Fluconazole Bulk Peaks")
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Cycloheximide") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Cyc_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Cyc_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Cyc Bulk Peaks")
+
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Copper") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Copper_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Copper_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Copper Bulk Peaks")
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Ethanol") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Ethanol_CSS1_peaks, aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Ethanol_CSS8_peaks, aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Ethanol Bulk Peaks")
+
+
+```
+
+Checking specific genes
+
+```{r}
+SGD_genes <- read.csv("C:\\Users\\Cassandra\\Documents\\GitHub\\CSS_Paper\\ChromosomeFixation\\BSA_Analysis\\SGD_ORFs.csv")
+
+SGD_genes %>% filter(Gene.symbol %in% c("ERG1","ERG4","ERG25","ERG26")) %>%
+  select(Gene = Gene.symbol, POS = Gene.chromosomeLocation.start) -> ERGs
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Fluconazole") %>%
+  filter(CHROM == "VII") %>%
+  ggplot(aes(x = POS, y = zscore)) + geom_line(aes(color = CSS)) +
+  geom_vline(data = ERGs, aes(xintercept = POS), size = 1, alpha = 0.4, linetype= "dashed") +
+  geom_text_repel(data = ERGs, aes(y = 10 - (POS / 100000), x = POS, label = Gene)) +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_hline(aes(yintercept = -quant), linetype = "dashed") +
+  geom_vline(data = Fluconazole_CSS1_peaks[Fluconazole_CSS1_peaks$CHROM == "VII",], aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Fluconazole_CSS8_peaks[Fluconazole_CSS8_peaks$CHROM == "VII",], aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  scale_color_manual(values = c("navy", "darkorange")) +
+  theme(legend.position = "bottom") + 
+  ggtitle("Fluconazole Chr VII")
+
+SGD_genes %>% filter(Gene.symbol %in% c("ERG11")) %>%
+  select(Gene = Gene.symbol, POS = Gene.chromosomeLocation.start) -> ERG11
+
+AllTrait_glms %>% filter(label %in% c("Bulk"), Selection == "Fluconazole") %>%
+  filter(CHROM == "VIII") %>%
+  ggplot(aes(x = POS, y = zscore)) + geom_line(aes(color = CSS)) +
+  geom_vline(data = ERG11, aes(xintercept = POS), size = 1, alpha = 0.4, linetype= "dashed") +
+  geom_text_repel(data = ERG11, aes(y = 10 - (POS / 100000), x = POS, label = Gene)) +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_hline(aes(yintercept = -quant), linetype = "dashed") +
+  geom_vline(data = Fluconazole_CSS1_peaks[Fluconazole_CSS1_peaks$CHROM == "VIII",], aes(xintercept = POS), color = "navy", size = 2, alpha = 0.3) +
+  geom_vline(data = Fluconazole_CSS8_peaks[Fluconazole_CSS8_peaks$CHROM == "VIII",], aes(xintercept = POS), color = "darkorange", size = 2, alpha = 0.3) +
+  scale_color_manual(values = c("navy", "darkorange")) +
+  theme(legend.position = "bottom") + 
+  ggtitle("Fluconazole Chr VIII")
+```
+
+Interaction Peaks
+
+```{r, warning=FALSE, message=FALSE}
+#q5s %>% filter(label == "Interaction")
+
+H2O2_CSS1_peaks_int <- cybr_lmpeaks2(H2O2_CSS1_glm[H2O2_CSS1_glm$label == "Interaction",], cutoff = 1.623242, labelgroup = "Interaction")
+H2O2_CSS8_peaks_int <- cybr_lmpeaks2(H2O2_CSS8_glm[H2O2_CSS8_glm$label == "Interaction",], cutoff = 1.623242, labelgroup = "Interaction")
+
+Zeocin_CSS1_peaks_int <- cybr_lmpeaks2(Zeocin_CSS1_glm[Zeocin_CSS1_glm$label == "Interaction" ,], cutoff = 1.334840, labelgroup = "Interaction")
+Zeocin_CSS8_peaks_int <- cybr_lmpeaks2(Zeocin_CSS8_glm[Zeocin_CSS8_glm$label == "Interaction",], cutoff = 1.334840, labelgroup = "Interaction")
+
+
+Cyc_CSS1_peaks_int <- cybr_lmpeaks2(Cyc_CSS1_glm[Cyc_CSS1_glm$label == "Interaction",], cutoff = 1.229461, labelgroup = "Interaction")
+Cyc_CSS8_peaks_int <- cybr_lmpeaks2(Cyc_CSS8_glm[Cyc_CSS8_glm$label == "Interaction",], cutoff = 1.229461, labelgroup = "Interaction")
+
+Fluconazole_CSS1_peaks_int <- cybr_lmpeaks2(Fluconazole_CSS1_glm[Fluconazole_CSS1_glm$label == "Interaction",], cutoff = 1.422462, labelgroup = "Interaction") 
+Fluconazole_CSS8_peaks_int <- cybr_lmpeaks2(Fluconazole_CSS8_glm[Fluconazole_CSS8_glm$label == "Interaction" ,], cutoff = 1.422462, labelgroup = "Interaction")
+
+
+Paraquat_CSS1_peaks_int <- cybr_lmpeaks2(PQ_CSS1_glm[PQ_CSS1_glm$label == "Interaction" ,], cutoff = 1.407007, labelgroup = "Interaction")
+Paraquat_CSS8_peaks_int <- cybr_lmpeaks2(PQ_CSS8_glm[PQ_CSS8_glm$label == "Interaction",], cutoff = 1.399366, labelgroup = "Interaction")
+
+Copper_CSS1_peaks_int <- cybr_lmpeaks2(Copper_CSS1_glm[Copper_CSS1_glm$label == "Interaction" ,], cutoff = 1.029575, labelgroup = "Interaction")
+Copper_CSS8_peaks_int <- cybr_lmpeaks2(Copper_CSS8_glm[Copper_CSS8_glm$label == "Interaction",], cutoff = 1.029575, labelgroup = "Interaction")
+
+
+Ethanol_CSS1_peaks_int <- cybr_lmpeaks2(Ethanol_CSS1_glm[Ethanol_CSS1_glm$label == "Interaction" ,], cutoff = 1.256012, labelgroup = "Interaction")
+Ethanol_CSS8_peaks_int <- cybr_lmpeaks2(Ethanol_CSS8_glm[Ethanol_CSS8_glm$label == "Interaction",], cutoff = 1.256012, labelgroup = "Interaction")
+
+print("clear")
+```
+
+```{r, fig.width=10, fig.height=3}
+
+AllTrait_glms %>% filter(label %in% c("Interaction"), Selection == "H2O2") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + 
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = H2O2_CSS1_peaks_int, aes(xintercept = POS), color = "skyblue", size = 2) +
+  geom_vline(data = H2O2_CSS8_peaks_int, aes(xintercept = POS), color = "darkorange", size = 2) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("H2O2 Interaction peaks")
+
+AllTrait_glms %>% filter(label %in% c("Interaction"), Selection == "Zeocin") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Zeocin_CSS1_peaks_int, aes(xintercept = POS), color = "skyblue", size = 2) +
+  geom_vline(data = Zeocin_CSS8_peaks_int, aes(xintercept = POS), color = "darkorange", size = 2) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Zeocin Interaction peaks")
+
+AllTrait_glms %>% filter(label %in% c("Interaction"), Selection == "Fluconazole") %>%
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Fluconazole_CSS1_peaks_int, aes(xintercept = POS), color = "skyblue", size = 2) +
+  geom_vline(data = Fluconazole_CSS8_peaks_int, aes(xintercept = POS), color = "darkorange", size = 2) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Fluconazole Interaction peaks")
+
+AllTrait_glms %>% filter(label %in% c("Interaction"), Selection == "Cycloheximide") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Cyc_CSS1_peaks_int, aes(xintercept = POS), color = "skyblue", size = 2) +
+  geom_vline(data = Cyc_CSS8_peaks_int, aes(xintercept = POS), color = "darkorange", size = 2) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Cyc Interaction peaks")
+
+AllTrait_glms %>% filter(label %in% c("Interaction"), Selection == "Paraquat") %>% 
+  ggplot(aes(x = POS, y = abs(zscore))) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant), linetype = "dashed") +
+  geom_vline(data = Paraquat_CSS1_peaks_int, aes(xintercept = POS), color = "skyblue", size = 2) +
+  geom_vline(data = Paraquat_CSS8_peaks_int, aes(xintercept = POS), color = "darkorange", size = 2) +
+  geom_line() +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Paraquat Interaction Peaks")
+```
+
+
+```{r, fig.width=12, fig.height=6}
+rbind(H2O2_CSS1_peaks, H2O2_CSS1_peaks_int,
+      Cyc_CSS1_peaks, Cyc_CSS1_peaks_int,
+      Fluconazole_CSS1_peaks, Fluconazole_CSS1_peaks_int,
+      Paraquat_CSS1_peaks, Paraquat_CSS1_peaks_int,
+      Zeocin_CSS1_peaks, Zeocin_CSS1_peaks_int,
+      H2O2_CSS8_peaks, H2O2_CSS8_peaks_int,
+      Cyc_CSS8_peaks, Cyc_CSS8_peaks_int,
+      Fluconazole_CSS8_peaks, Fluconazole_CSS8_peaks_int,
+      Paraquat_CSS8_peaks, Paraquat_CSS8_peaks_int,
+      Zeocin_CSS8_peaks, Zeocin_CSS8_peaks_int,
+      Copper_CSS1_peaks, Copper_CSS1_peaks_int,
+      Ethanol_CSS1_peaks, Ethanol_CSS1_peaks_int,
+      Copper_CSS8_peaks, Copper_CSS8_peaks_int,
+      Ethanol_CSS8_peaks, Ethanol_CSS8_peaks_int) -> Peaks
+
+Peaks %>% merge(q5s) %>% filter(zscore > quant) -> Peaks
+
+```
+
+```{r, fig.width=12, fig.height=6}
+# AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Ethanol") %>% 
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+#   geom_vline(data = Ethanol_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+#   geom_vline(data = Ethanol_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+#   geom_vline(data = Ethanol_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+#   geom_vline(data = Ethanol_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+#   geom_line() +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+#   geom_hline(aes(yintercept = quant, color = label)) +
+#   scale_color_manual(values = c("black", "firebrick2")) +
+#   theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3)) +
+#   ggtitle("Ethanol")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Copper") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) +  
+  geom_vline(data = Copper_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Copper_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Copper_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_vline(data = Copper_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Copper")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Fluconazole") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+  geom_vline(data = Fluconazole_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Fluconazole_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Fluconazole_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_vline(data = Fluconazole_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Fluconazole")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Paraquat") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+  geom_vline(data = Paraquat_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Paraquat_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Paraquat_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_vline(data = Paraquat_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("PQ")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Cycloheximide") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+  geom_vline(data = Cyc_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+  geom_vline(data = Cyc_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) + 
+  geom_vline(data = Cyc_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+  geom_vline(data = Cyc_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") + 
+  geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  geom_hline(aes(yintercept = quant, color = label)) +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Cycloheximide")
+
+
+# 
+# AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "H2O2") %>% 
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+#   geom_vline(data = H2O2_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+#   geom_vline(data = H2O2_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) + 
+#   geom_vline(data = H2O2_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+#   geom_vline(data = H2O2_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") + 
+#   geom_line() +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+#   geom_hline(aes(yintercept = quant, color = label)) +
+#   scale_color_manual(values = c("black", "firebrick2")) +
+#   theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+#   ggtitle("H2O2")
+# 
+# AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Zeocin") %>% 
+#   ggplot(aes(x = POS, y = abs(zscore), color = label)) + 
+#   geom_vline(data = Zeocin_CSS1_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) +
+#   geom_vline(data = Zeocin_CSS8_peaks_int, aes(xintercept = POS), color = "red", size = 2, alpha = 0.3) + 
+#   geom_vline(data = Zeocin_CSS1_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") +
+#   geom_vline(data = Zeocin_CSS8_peaks, aes(xintercept = POS), color = "blue", size = 1, linetype = "dashed") + geom_line() +
+#   facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+#   geom_hline(aes(yintercept = quant, color = label)) +
+#   scale_color_manual(values = c("black", "firebrick2")) +
+#   theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+#   ggtitle("Zeocin")
+```
+
+## Correlations
+
+```{r}
+Peaks %>%
+  group_by(label, Selection, CSS) %>% count() %>% 
+  
+  pivot_wider(names_from = label, values_from = n) -> tempNAs
+
+tempNAs[is.na(tempNAs)] <- 0  
+        
+tempNAs %>% mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+   ggplot(aes(x = Interaction, y = Bulk, color = CSS, fill = CSS)) + geom_point(aes(shape = CSS), size = 4, alpha = 0.6) +
+  scale_color_manual(values = c("navy", "darkorange")) +
+  scale_fill_manual(values = c("navy", "darkorange")) +
+  theme_bw() + ggtitle("Counts") +
+  theme(legend.position = "bottom") +
+  ylim(0, 65) +
+  geom_smooth(method = "lm", alpha = 0.2) -> mylmplot
+
+Peaks %>% mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  group_by(label, Selection, CSS) %>% 
+  ggplot(aes(x = Selection, fill = label)) + 
+  geom_bar(position = position_stack(reverse = TRUE), ) +
+  scale_fill_manual(values = c("black", "red3")) +
+  facet_grid(rows = "CSS") +
+  theme_bw() + theme(legend.position = "bottom") +
+  ggtitle("QTL per Resistance Trait") -> mybarplot
+
+cowplot::plot_grid(mylmplot, mybarplot, rel_widths = c(1,2))
+
+```
+
+```{r}
+
+Peaks %>% group_by(label, Selection, CSS) %>% 
+  mutate(CSS = as.factor(CSS)) %>%
+  distinct() %>%
+  mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  #mutate(Selection = substr(Selection, 1, 6)) %>%
+  #filter(label == "Bulk") %>%
+  ggplot(aes(x = zscore, y = CSS, color = CSS)) + 
+  geom_boxplot(outliers = FALSE, size = 0.8) +
+  
+  geom_jitter(alpha = 0.4, height = 0.1, width = 0) +
+  geom_vline(aes(xintercept =quant), color = "red", size = 1.5, alpha = 0.4) +
+  #geom_point(aes(x =quant, y = CSS), color = "red", size = 2, alpha = 0.4, shape = 5) +
+  scale_color_manual(values = c("navy", "darkorange")) +
+  #facet_grid(rows = "Selection") +
+  theme_bw() + theme(legend.position = "bottom") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank()) +
+  xlab("| zscore |") +
+  ggtitle("QTL magnitudes per resistance trait") +
+  facet_grid(Selection~label, space = 'free', scales = "free_x") +
+  scale_x_continuous(breaks = c(1,5,10, 15, 20)) 
+```
+
+```{r}
+AllTrait_glms %>% select(-quant) %>% pivot_wider(names_from = label, values_from = zscore) -> AllTrait_wide
+
+AllTrait_wide %>% ggplot(aes(x = (Bulk), y = (Interaction), color = Selection)) + geom_point(alpha = 0.2, size = 0.2) +
+  #scale_color_manual(values = c("blue", "darkorange")) + 
+  geom_smooth(method = "lm")
+
+AllTrait_wide %>% filter(Selection == "Cycloheximide") %>% ggplot(aes(x = (Bulk), y = (Interaction), color = CSS)) + geom_point(alpha = 0.2, size = 0.2) +
+  scale_color_manual(values = c("blue", "darkorange")) + geom_smooth(method = "lm")
+
+summary(lm(data = AllTrait_wide, formula = abs(Interaction) ~ abs(Bulk) + CSS))
+summary(lm(data = AllTrait_wide, formula = abs(Interaction) ~ abs(Bulk) + Selection))
+
+for(i in unique(AllTrait_wide$Selection)){
+  print(i)
+  print(summary(lm(data = AllTrait_wide[AllTrait_wide$Selection == i,], formula = abs(Interaction) ~ abs(Bulk))))
+
+}
+
+for(i in unique(AllTrait_wide$Selection)){
+  print(i)
+  print(summary(lm(data = AllTrait_wide[AllTrait_wide$Selection == i,], formula = (Interaction) ~ (Bulk))))
+}
+
+```
+
+Bootstrapping for correlation between bulk and interactions
+
+```{r}
+AllTrait_wide %>% mutate(ID = row_number()) -> BootstrappingDF
+
+alloutput <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+BootstrappingDF %>% filter(Selection == "Copper") -> Copper_boot
+
+for(i in 1:1000){
+  Copper_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput <- rbind(alloutput, output)
+}
+
+alloutput %>% ggplot(aes(x = Rsquared)) + geom_density() + theme_classic()
+alloutput %>% ggplot(aes(x = Bulk)) + geom_density() + theme_classic()
+
+```
+
+```{r, eval = FALSE, message = FALSE, warning=FALSE}
+#Copper
+alloutput_copper <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+BootstrappingDF %>% filter(Selection == "Copper") -> Copper_boot
+
+for(i in 1:1000){
+  Copper_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_copper <- rbind(alloutput_copper, output)
+}
+saveRDS(alloutput_copper, file = "J25/bootstrap_Copper")
+
+#Cycloheximide
+BootstrappingDF %>% filter(Selection == "Cycloheximide") -> Cycloheximide_boot
+
+alloutput_Cycloheximide <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+for(i in 1:1000){
+  Cycloheximide_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_Cycloheximide <- rbind(alloutput_Cycloheximide, output)
+}
+saveRDS(alloutput_Cycloheximide, file = "J25/bootstrap_Cycloheximide.rds")
+
+
+#H2O2
+BootstrappingDF %>% filter(Selection == "H2O2") -> H2O2_boot
+
+alloutput_H2O2 <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+for(i in 1:1000){
+  H2O2_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_H2O2 <- rbind(alloutput_H2O2, output)
+}
+saveRDS(alloutput_H2O2, file = "J25/bootstrap_H2O2.rds")
+
+
+#Fluconazole
+BootstrappingDF %>% filter(Selection == "Fluconazole") -> Fluconazole_boot
+
+alloutput_Fluconazole <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+for(i in 1:1000){
+  Fluconazole_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_Fluconazole <- rbind(alloutput_Fluconazole, output)
+}
+saveRDS(alloutput_Fluconazole, file = "J25/bootstrap_fluconazole.rds")
+
+
+#Paraquat
+BootstrappingDF %>% filter(Selection == "Paraquat") -> Paraquat_boot
+
+alloutput_Paraquat <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+for(i in 1:1000){
+  Paraquat_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_Paraquat <- rbind(alloutput_Paraquat, output)
+}
+saveRDS(alloutput_Paraquat, file = "J25/bootstrap_paraquat.rds")
+
+
+#Ethanol
+BootstrappingDF %>% filter(Selection == "Ethanol") -> Ethanol_boot
+
+alloutput_Ethanol <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+for(i in 1:1000){
+  Ethanol_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_Ethanol <- rbind(alloutput_Ethanol, output)
+}
+
+saveRDS(alloutput_Ethanol, file = "J25/bootstrap_ethanol.rds")
+
+# Zeocin
+alloutput_Zeocin <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
+BootstrappingDF %>% filter(Selection == "Zeocin") -> Zeocin_boot
+
+for(i in 1:1000){
+  Zeocin_boot %>% group_by(Selection, CSS, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BootstrappingDF_sample <- BootstrappingDF[BootstrappingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BootstrappingDF_sample$Interaction ~ BootstrappingDF_sample$Bulk))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  alloutput_Zeocin <- rbind(alloutput, output)
+}
+
+saveRDS(alloutput_Zeocin, file = "J25/bootstrap_zeocin.rds")
+
+print("clear")
+```
+
+Bootstrapped correlations for fixed chromosome
+
+```{r, eval = FALSE, message = FALSE, warning = FALSE}
+BootstrappingDF %>% select(-cept, -Interaction, -Background, -ID) %>% 
+  mutate(CSS = gsub("Fixed ", "F", CSS)) %>%
+  pivot_wider(names_from = CSS, values_from = Bulk) %>% 
+  mutate(ID = row_number()) -> BSpingDF
+
+################################################################################
+#Copper
+Chr1v8cor_copper <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+BSpingDF %>% filter(Selection == "Copper") -> Copper_boot
+
+for(i in 1:1000){
+  Copper_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_copper <- rbind(Chr1v8cor_copper, output)
+}
+saveRDS(Chr1v8cor_copper, file = "J25/BS_Copper")
+
+#Cycloheximide
+BSpingDF %>% filter(Selection == "Cycloheximide") -> Cycloheximide_boot
+
+Chr1v8cor_Cycloheximide <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+for(i in 1:1000){
+  Cycloheximide_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_Cycloheximide <- rbind(Chr1v8cor_Cycloheximide, output)
+}
+saveRDS(Chr1v8cor_Cycloheximide, file = "J25/BS_Cycloheximide.rds")
+
+
+#H2O2
+BSpingDF %>% filter(Selection == "H2O2") -> H2O2_boot
+
+Chr1v8cor_H2O2 <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+for(i in 1:1000){
+  H2O2_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_H2O2 <- rbind(Chr1v8cor_H2O2, output)
+}
+saveRDS(Chr1v8cor_H2O2, file = "J25/BS_H2O2.rds")
+
+
+#Fluconazole
+BSpingDF %>% filter(Selection == "Fluconazole") -> Fluconazole_boot
+
+Chr1v8cor_Fluconazole <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+for(i in 1:1000){
+  Fluconazole_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_Fluconazole <- rbind(Chr1v8cor_Fluconazole, output)
+}
+saveRDS(Chr1v8cor_Fluconazole, file = "J25/BS_fluconazole.rds")
+
+
+#Paraquat
+BSpingDF %>% filter(Selection == "Paraquat") -> Paraquat_boot
+
+Chr1v8cor_Paraquat <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+for(i in 1:1000){
+  Paraquat_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_Paraquat <- rbind(Chr1v8cor_Paraquat, output)
+}
+saveRDS(Chr1v8cor_Paraquat, file = "J25/BS_paraquat.rds")
+
+
+#Ethanol
+BSpingDF %>% filter(Selection == "Ethanol") -> Ethanol_boot
+
+Chr1v8cor_Ethanol <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+for(i in 1:1000){
+  Ethanol_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_Ethanol <- rbind(Chr1v8cor_Ethanol, output)
+}
+
+saveRDS(Chr1v8cor_Ethanol, file = "J25/BS_ethanol.rds")
+
+# Zeocin
+Chr1v8cor_Zeocin <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
+BSpingDF %>% filter(Selection == "Zeocin") -> Zeocin_boot
+
+for(i in 1:1000){
+  Zeocin_boot %>% group_by(Selection, CHROM) %>%
+  summarize(IDs = sample(ID, size = 1)) -> mysample
+  
+  BSpingDF_sample <- BSpingDF[BSpingDF$ID %in% mysample$IDs,]
+  
+  slm <- summary(lm(BSpingDF_sample$FI ~ BSpingDF_sample$FVIII))
+  output <- c(slm$r.squared, slm$coefficients[5:6])
+  
+  Chr1v8cor_Zeocin <- rbind(Chr1v8cor_Zeocin, output)
+}
+
+saveRDS(Chr1v8cor_Zeocin, file = "J25/BS_zeocin.rds")
+
+print("clear")
+```
+
+```{r}
+alloutput_Ethanol %>% mutate(Selection = "EtOH") -> Eth
+alloutput_Cycloheximide %>% mutate(Selection = "Cyc") -> Eth1
+alloutput_copper %>% mutate(Selection = "Cu") -> Eth2
+alloutput_Fluconazole %>% mutate(Selection = "Fluc") -> Eth3
+alloutput_H2O2 %>% mutate(Selection = "H2O2") -> Eth4
+alloutput_Paraquat %>% mutate(Selection = "PQ") -> Eth5
+alloutput_Zeocin %>% mutate(Selection = "Zeo") -> Eth6
+
+rbind(Eth, Eth1, Eth2, Eth3, Eth4, Eth5, Eth6) %>% na.omit() -> All_Bootstraps
+
+quantile(All_Bootstraps$Rsquared, 0.025)
+quantile(All_Bootstraps$Rsquared, 0.975)
+
+All_Bootstraps %>% ungroup() %>%
+  summarize(Selection = "Total",
+            upperR2 = quantile(Rsquared, 0.025),
+            lowerR2 = quantile(Rsquared, 0.975),
+            upperBulk = quantile(Bulk, 0.025),
+            lowerBulk = quantile(Bulk, 0.975)) -> TotalQuant_Bootstraps
+
+All_Bootstraps %>% group_by(Selection) %>%
+  summarize(upperR2 = quantile(Rsquared, 0.025),
+            lowerR2 = quantile(Rsquared, 0.975),
+            upperBulk = quantile(Bulk, 0.025),
+            lowerBulk = quantile(Bulk, 0.975)) %>%
+  rbind(TotalQuant_Bootstraps) -> BootstrapQuantiles
+
+BootstrapQuantiles %>% pivot_longer(-Selection) %>%
+  filter(grepl("R2", name), Selection != "Total") %>%
+  ggplot(aes(x = value, y = Selection, color = Selection)) +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = upperR2), linetype = "dashed") +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = lowerR2), linetype = "dashed") +
+    scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+  xlim(0, 1) +
+  xlab("Rsquared 95% CI") +
+  geom_line(size = 2) +
+  theme_classic() +
+    theme(legend.position = "none") -> pR2
+
+BootstrapQuantiles %>% pivot_longer(-Selection) %>%
+  filter(grepl("Bulk", name), Selection != "Total") %>%
+  ggplot(aes(x = value, y = Selection, color = Selection)) +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = upperBulk), linetype = "dashed") +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = lowerBulk), linetype = "dashed") +
+    scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+  xlim(-10, 10) +
+  xlab("Effect 95% CI") +
+  geom_line(size = 2) +
+  theme_classic() +
+    theme(legend.position = "none") -> pBulk
+
+#saveRDS(All_Bootstraps, file = "J25/CorrBootstraps.rds")
+
+All_Bootstraps %>% ggplot(aes(x = Rsquared, color = Selection)) + 
+  geom_density(alpha = 0.5) + theme_classic() +
+  scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+    xlim(0, 1) +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = upperR2), linetype = "dashed") +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = lowerR2), linetype = "dashed") +
+  theme(legend.position = "none") -> p1
+
+All_Bootstraps %>% ggplot(aes(x = Bulk, color = Selection)) + geom_density(alpha = 0.5) + 
+  geom_vline(xintercept = 0, size = 1, color = "black", alpha = 0.4) +
+  theme_classic() +scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+    xlim(-10, 10) +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = upperBulk), linetype = "dashed") +
+  geom_vline(data = TotalQuant_Bootstraps, aes(xintercept = lowerBulk), linetype = "dashed") +
+  theme(legend.position = "none")-> p2
+
+# All_Bootstraps %>% ggplot(aes(x = abs(Bulk), color = Selection)) + geom_density() + theme_classic() +
+#   scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+#   theme(legend.position = "bottom")-> p3
+
+plot_grid(p1, p2)
+
+plot_grid(pR2, pBulk, p1, p2, align = "left")
+
+```
+
+```{r}
+Chr1v8cor_Ethanol %>% mutate(Selection = "EtOH") ->v18
+Chr1v8cor_Cycloheximide %>% mutate(Selection = "Cyc") ->v181
+Chr1v8cor_copper %>% mutate(Selection = "Cu") %>% 
+  select(Rsquared = Rsquared, Intercept = Intercept, FVIII = Bulk, Selection = Selection) ->v182
+Chr1v8cor_Fluconazole %>% mutate(Selection = "Fluc") ->v183
+Chr1v8cor_H2O2 %>% mutate(Selection = "H2O2") ->v184
+Chr1v8cor_Paraquat %>% mutate(Selection = "PQ") ->v185
+Chr1v8cor_Zeocin %>% mutate(Selection = "Zeo") ->v186
+
+rbind(v18,v181, v182,
+      v183,v184,v185,v186) %>% na.omit() -> Corv18_BS
+
+
+Corv18_BS %>% ungroup() %>%
+  summarize(Selection = "Total",
+            upperR2 = quantile(Rsquared, 0.025),
+            lowerR2 = quantile(Rsquared, 0.975),
+            upperBulk = quantile(FVIII, 0.025),
+            lowerBulk = quantile(FVIII, 0.975)) -> TotalQuant_Corv18_BS
+
+Corv18_BS %>% group_by(Selection) %>%
+  summarize(upperR2 = quantile(Rsquared, 0.025),
+            lowerR2 = quantile(Rsquared, 0.975),
+            upperBulk = quantile(FVIII, 0.025),
+            lowerBulk = quantile(FVIII, 0.975)) %>%
+  rbind(TotalQuant_Corv18_BS) -> Corv18_BSQuantiles
+
+Corv18_BSQuantiles %>% pivot_longer(-Selection) %>% 
+  filter(Selection != "Total") %>%
+  filter(grepl("R2", name)) %>%
+  ggplot(aes(x = value, y = Selection, color = Selection)) +
+  geom_line(size = 2) +
+  xlim(0,1) +
+  ggtitle("Fixed I ~ Fixed VIII Rsquared") +
+
+  xlab("95% CI") +
+      scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+  theme_classic() +
+  theme(legend.position = "none") -> r2cis
+
+Corv18_BS %>% 
+  ggplot(aes(x = Rsquared, color = Selection)) +
+  geom_density() +
+      scale_color_manual(values = c("darkturquoise", "goldenrod", "skyblue3", "firebrick", "orange", "violet", "gray")) +
+  xlab("Density") +
+  theme_classic() +
+  theme(legend.position = "none") -> r2density
+
+plot_grid(r2cis, r2density, ncol = 1)
+```
+Plotting all traits at once
+
+```{r, fig.width=10, fig.height=8}
+
+Peaks %>% 
+  mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "CuSO4", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) -> Peaks_short
+
+AllTrait_glms %>% 
+  mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "CuSO4", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  filter(label %in% c("Interaction", "Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label, linetype = CSS)) + 
+  #geom_vline(data = Peaks_short, aes(xintercept = POS, color = label, linetype = CSS, size = label),alpha = 0.4) +
+  geom_hline(aes(yintercept = quant), alpha = 0.4) +
+  geom_line() +
+  ylab("| z-score |") + 
+  ylim(c(0,10))+
+  facet_grid(Selection~CHROM, space = "free", scales = "free") +
+  scale_color_manual(values = c("black", "red")) +
+  scale_size_manual(values = c(0.5, 2)) +
+  theme_classic() +
+  theme(legend.position = "bottom",axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+
+AllTrait_glms %>% 
+  mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "CuSO4", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  filter(label %in% c("Interaction", "Bulk")) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label, linetype = CSS)) + 
+  geom_vline(data = Peaks_short[Peaks_short$label == "Interaction",], 
+             aes(xintercept = POS, color = CSS),alpha = 0.5, size = 2) +
+  geom_hline(aes(yintercept = quant), alpha = 0.4) +
+  geom_line() +
+  ylab("| z-score |") + 
+  ylim(c(0,12))+
+  facet_grid(Selection~CHROM, space = "free", scales = "free") +
+  scale_color_manual(values = c("black", "skyblue", "darkorange", "red")) +
+  scale_size_manual(values = c(0.5, 2)) +
+  theme_classic() +
+  theme(legend.position = "none",axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+```
+
+Correlate the peaks from CuSO4
+
+```{r}
+
+Peaks %>% filter(Selection == "Copper") %>% select(-quant) %>%
+  pivot_wider(names_from = label, values_from = zscore) %>%
+  select(-Bulk, -Interaction) %>%
+  merge(BootstrappingDF) -> IntTest
+
+summary(lm(abs(IntTest$Interaction) ~ abs(IntTest$Bulk)))
+
+IntTest %>% ggplot(aes(x = abs(Bulk), y = abs(Interaction), color = CSS, fill = CSS)) + geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("CuSO4 Interaction Peak Correlations")
+```
+
+## Better correlations
+
+Look between pearson and spearman, try ranks for the entire dataset but values for the peaks. Also do peaks of bulks vs the interactions and peaks of interactions vs the bulks.
+
+
