@@ -38,26 +38,26 @@ ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
 # Figures
 
 ```{r}
-Copper_CSS1_glm <- readRDS("J25/Copper_CSS1_glm_J25.rds")  
-Copper_CSS8_glm <- readRDS("J25/Copper_CSS8_glm_J25.rds")  
+Copper_CSS1_glm <- readRDS("covfilt/Copper_CSS1_glm_J25.rds")  
+Copper_CSS8_glm <- readRDS("covfilt/Copper_CSS8_glm_J25.rds")  
 
-Fluconazole_CSS1_glm <- readRDS("J25/Fluconazole_CSS1_glm_J25.rds") 
-Fluconazole_CSS8_glm <- readRDS("J25/Fluconazole_CSS8_glm_J25.rds") 
+Fluconazole_CSS1_glm <- readRDS("covfilt/Fluconazole_CSS1_glm_J25.rds") 
+Fluconazole_CSS8_glm <- readRDS("covfilt/Fluconazole_CSS8_glm_J25.rds") 
 
-Cyc_CSS1_glm <- readRDS("J25/Cyc_CSS1_glm_J25.rds") 
-Cyc_CSS8_glm <- readRDS("J25/Cyc_CSS8_glm_J25.rds") 
+Cyc_CSS1_glm <- readRDS("covfilt/Cyc_CSS1_glm_J25.rds") 
+Cyc_CSS8_glm <- readRDS("covfilt/Cyc_CSS8_glm_J25.rds") 
 
-H2O2_CSS1_glm <- readRDS("J25/H2O2_CSS1_glm_J25_c.rds") #remove trials 9 and 10, concat vcfs
-H2O2_CSS8_glm <- readRDS("J25/H2O2_CSS8_glm_J25_c.rds") 
+H2O2_CSS1_glm <- readRDS("covfilt/H2O2_CSS1_glm_covfilt_c.rds") #remove trials 9 and 10, concat vcfs
+H2O2_CSS8_glm <- readRDS("covfilt/H2O2_CSS8_glm_covfilt_c.rds") 
 
-Ethanol_CSS1_glm <- readRDS("J25/Ethanol_CSS1_glm_J25.rds") 
-Ethanol_CSS8_glm <- readRDS("J25/Ethanol_CSS8_glm_J25_H2LK2only.rds") 
+Ethanol_CSS1_glm <- readRDS("covfilt/Ethanol_CSS1_glm_J25.rds") 
+Ethanol_CSS8_glm <- readRDS("covfilt/Ethanol_CSS8_glm_covfilt_H2LK2only.rds") 
 
-Zeocin_CSS1_glm <- readRDS("J25/Zeocin_CSS1_glm_J25_c.rds") 
-Zeocin_CSS8_glm <- readRDS("J25/Zeocin_CSS8_glm_J25_c.rds") 
+Zeocin_CSS1_glm <- readRDS("covfilt/Zeocin_CSS1_glm_covfilt_c.rds") 
+Zeocin_CSS8_glm <- readRDS("covfilt/Zeocin_CSS8_glm_covfilt_c.rds") 
 
-PQ_CSS1_glm <- readRDS("J25/PQ_CSS1_glm_J25_xNAs.rds") 
-PQ_CSS8_glm <- readRDS("J25/PQ_CSS8_glm_J25_xNAs.rds")
+PQ_CSS1_glm <- readRDS("covfilt/PQ_CSS1_glm_covfilt_xNAs.rds") 
+PQ_CSS8_glm <- readRDS("covfilt/PQ_CSS8_glm_covfilt_xNAs.rds")
 
 rbind(Copper_CSS1_glm,Copper_CSS8_glm,Fluconazole_CSS1_glm,Fluconazole_CSS8_glm,
       Cyc_CSS1_glm,Cyc_CSS8_glm,H2O2_CSS1_glm,H2O2_CSS8_glm,Ethanol_CSS1_glm, Ethanol_CSS8_glm,
@@ -66,51 +66,51 @@ rbind(Copper_CSS1_glm,Copper_CSS8_glm,Fluconazole_CSS1_glm,Fluconazole_CSS8_glm,
 
 ########################
 
-Copper_CSS1_q5 <- readRDS("J25/Copper_CSS1_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
-Copper_CSS8_q5 <- readRDS("J25/Copper_CSS8_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+Copper_CSS1_q5 <- readRDS("covfilt/Copper_CSS1_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5 <- readRDS("covfilt/Copper_CSS8_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
 
-Fluconazole_CSS1_q5 <- readRDS("J25/Fluconazole_CSS1_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
-Fluconazole_CSS8_q5 <- readRDS("J25/Fluconazole_CSS8_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+Fluconazole_CSS1_q5 <- readRDS("covfilt/Fluconazole_CSS1_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5 <- readRDS("covfilt/Fluconazole_CSS8_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
 
-Cyc_CSS1_q5 <- readRDS("J25/Cyc_CSS1_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
-Cyc_CSS8_q5 <- readRDS("J25/Cyc_CSS8_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+Cyc_CSS1_q5 <- readRDS("covfilt/Cyc_CSS1_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5 <- readRDS("covfilt/Cyc_CSS8_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
 
 #Forgot to change these to c in name but should be the new ones
-H2O2_CSS1_q5 <- readRDS("J25/H2O2_CSS1_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
-H2O2_CSS8_q5 <- readRDS("J25/H2O2_CSS8_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+H2O2_CSS1_q5 <- readRDS("covfilt/H2O2_CSS1_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5 <- readRDS("covfilt/H2O2_CSS8_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
 
-Ethanol_CSS1_q5 <- readRDS("J25/Ethanol_CSS1_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
-Ethanol_CSS8_q5 <- readRDS("J25/Ethanol_CSS8_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+Ethanol_CSS1_q5 <- readRDS("covfilt/Ethanol_CSS1_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5 <- readRDS("covfilt/Ethanol_CSS8_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
 
-Zeocin_CSS8_q5 <- readRDS("J25/Zeocin_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
-Paraquat_CSS8_q5 <- readRDS("J25/Paraquat_CSS8_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+Zeocin_CSS8_q5 <- readRDS("covfilt/Zeocin_CSS8_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5 <- readRDS("covfilt/Paraquat_CSS8_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
 
-Zeocin_CSS1_q5 <- readRDS("J25/Zeocin_CSS1_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
-Paraquat_CSS1_q5 <- readRDS("J25/Paraquat_CSS1_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+Zeocin_CSS1_q5 <- readRDS("covfilt/Zeocin_CSS1_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5 <- readRDS("covfilt/Paraquat_CSS1_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
 
 ################################################################################
 
-Copper_CSS1_q5_s15 <- readRDS("J25/Copper_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
-Copper_CSS8_q5_s15 <- readRDS("J25/Copper_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+Copper_CSS1_q5_s15 <- readRDS("covfilt/Copper_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5_s15 <- readRDS("covfilt/Copper_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
 
-Fluconazole_CSS1_q5_s15 <- readRDS("J25/Fluconazole_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
-Fluconazole_CSS8_q5_s15 <- readRDS("J25/Fluconazole_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+Fluconazole_CSS1_q5_s15 <- readRDS("covfilt/Fluconazole_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5_s15 <- readRDS("covfilt/Fluconazole_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
 
-Cyc_CSS1_q5_s15 <- readRDS("J25/Cyc_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
-Cyc_CSS8_q5_s15 <- readRDS("J25/Cyc_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+Cyc_CSS1_q5_s15 <- readRDS("covfilt/Cyc_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5_s15 <- readRDS("covfilt/Cyc_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
 
 #Forgot to change these to c in name but should be the new ones
-H2O2_CSS1_q5_s15 <- readRDS("J25/H2O2_CSS1_q5_J25_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
-H2O2_CSS8_q5_s15 <- readRDS("J25/H2O2_CSS8_q5_J25_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+H2O2_CSS1_q5_s15 <- readRDS("covfilt/H2O2_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5_s15 <- readRDS("covfilt/H2O2_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
 
-Ethanol_CSS1_q5_s15 <- readRDS("J25/Ethanol_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
-Ethanol_CSS8_q5_s15 <- readRDS("J25/Ethanol_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+Ethanol_CSS1_q5_s15 <- readRDS("covfilt/Ethanol_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5_s15 <- readRDS("covfilt/Ethanol_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
 
-Zeocin_CSS8_q5_s15 <- readRDS("J25/Zeocin_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
-Paraquat_CSS8_q5_s15 <- readRDS("J25/Paraquat_CSS8_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+Zeocin_CSS8_q5_s15 <- readRDS("covfilt/Zeocin_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5_s15 <- readRDS("covfilt/Paraquat_CSS8_q5_covfilt_s15.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
 
-Zeocin_CSS1_q5_s15 <- readRDS("J25/Zeocin_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
-Paraquat_CSS1_q5_s15 <- readRDS("J25/Paraquat_CSS1_q5_s15_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+Zeocin_CSS1_q5_s15 <- readRDS("covfilt/Zeocin_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5_s15 <- readRDS("covfilt/Paraquat_CSS1_q5_covfilt_s15.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
 
 ################################################################################
 
@@ -124,11 +124,11 @@ rbind(Copper_CSS1_q5_s15,Copper_CSS8_q5_s15,Fluconazole_CSS1_q5_s15,Fluconazole_
 
 q5_s15s %>% mutate(q15 = quant) %>% select(-quant) %>% merge(q5s) -> allQs
 
-saveRDS(allQs, file = "allQs.rds")
+saveRDS(allQs, file = "allQs_coveragefiltered.rds") 
 
 glms %>% merge(allQs) -> AllTrait_glms
 
-saveRDS(AllTrait_glms, file = "Jan15_AllTrait_glms.rds")
+saveRDS(AllTrait_glms, file = "CoverageFiltered_AllTrait_glms.rds")
 ```
 
 ```{r, fig.width=12, fig.height=5, eval = FALSE}
@@ -177,7 +177,7 @@ glms %>% filter(label %in% c("Bulk", "Interaction")) %>%
 ```
 
 ```{r, eval = FALSE}
-H2O2_G200<- readRDS("J25/H2O2_G200_J25.rds")
+H2O2_G200<- readRDS("covfilt/H2O2_G200_covfilt.rds")
 H2O2_G200 %>% na.omit() %>% 
   filter(grepl(8, Parent)) %>%
   mutate_if(is.character, as.factor) -> H2O2_CSS8_factor
@@ -403,26 +403,21 @@ for(s in unique(AllTrait_glms$Selection)){
   }
 }
 
-saveRDS(BulkCutoffs, file = "BulkCutoffs.rds")
-saveRDS(IntCutoffs, file = "IntCutoffs.rds")
-
-BulkPeaks <- BulkCutoffs %>% filter(label != "BLANK")
-IntPeaks <- IntCutoffs %>% filter(label != "BLANK")
+saveRDS(BulkCutoffs, file = "covfilt/BulkCutoffs_cf.rds")
+saveRDS(IntCutoffs, file = "covfilt/IntCutoffs_cf.rds")
 ```
 
 # Plotting Together
 ```{r}
-BulkPeaks <- readRDS("BulkCutoffs.rds") %>% filter(label != "BLANK")
-IntPeaks <- readRDS("IntCutoffs.rds") %>% filter(label != "BLANK")
+BulkPeaks <- readRDS("BulkCutoffs_cf.rds") %>% filter(label != "BLANK")
+IntPeaks <- readRDS("IntCutoffs_cf.rds") %>% filter(label != "BLANK")
 
-AllTrait_glms <- readRDS("Jan15_AllTrait_glms.rds")
+AllTrait_glms <- readRDS("CoverageFiltered_AllTrait_glms.rds")
 
 ```
 
 ```{r, fig.height=7, fig.width=7}
-
-AllTrait_glms %>% 
-  filter(label %in% c("Bulk", "Interaction")) %>%
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction")) %>%
   ggplot(aes(x= POS, y = abs(zscore), color = label, linetype = CSS)) +
   geom_hline(aes(yintercept = quant, linetype = CSS)) +
   geom_line() +
@@ -576,7 +571,7 @@ for(i in 1:1000){
   
   alloutput_copper <- rbind(alloutput_copper, output)
 }
-saveRDS(alloutput_copper, file = "J25/bootstrap_Copper")
+saveRDS(alloutput_copper, file = "covfilt/bootstrap_Copper")
 
 #Cycloheximide
 BootstrappingDF %>% filter(Selection == "Cycloheximide") -> Cycloheximide_boot
@@ -593,7 +588,7 @@ for(i in 1:1000){
   
   alloutput_Cycloheximide <- rbind(alloutput_Cycloheximide, output)
 }
-saveRDS(alloutput_Cycloheximide, file = "J25/bootstrap_Cycloheximide.rds")
+saveRDS(alloutput_Cycloheximide, file = "covfilt/bootstrap_Cycloheximide.rds")
 
 
 #H2O2
@@ -611,7 +606,7 @@ for(i in 1:1000){
   
   alloutput_H2O2 <- rbind(alloutput_H2O2, output)
 }
-saveRDS(alloutput_H2O2, file = "J25/bootstrap_H2O2.rds")
+saveRDS(alloutput_H2O2, file = "covfilt/bootstrap_H2O2.rds")
 
 
 #Fluconazole
@@ -629,7 +624,7 @@ for(i in 1:1000){
   
   alloutput_Fluconazole <- rbind(alloutput_Fluconazole, output)
 }
-saveRDS(alloutput_Fluconazole, file = "J25/bootstrap_fluconazole.rds")
+saveRDS(alloutput_Fluconazole, file = "covfilt/bootstrap_fluconazole.rds")
 
 
 #Paraquat
@@ -647,7 +642,7 @@ for(i in 1:1000){
   
   alloutput_Paraquat <- rbind(alloutput_Paraquat, output)
 }
-saveRDS(alloutput_Paraquat, file = "J25/bootstrap_paraquat.rds")
+saveRDS(alloutput_Paraquat, file = "covfilt/bootstrap_paraquat.rds")
 
 
 #Ethanol
@@ -666,7 +661,7 @@ for(i in 1:1000){
   alloutput_Ethanol <- rbind(alloutput_Ethanol, output)
 }
 
-saveRDS(alloutput_Ethanol, file = "J25/bootstrap_ethanol.rds")
+saveRDS(alloutput_Ethanol, file = "covfilt/bootstrap_ethanol.rds")
 
 # Zeocin
 alloutput_Zeocin <- data.frame(Rsquared = NA, Intercept = NA, Bulk = NA)
@@ -684,7 +679,7 @@ for(i in 1:1000){
   alloutput_Zeocin <- rbind(alloutput, output)
 }
 
-saveRDS(alloutput_Zeocin, file = "J25/bootstrap_zeocin.rds")
+saveRDS(alloutput_Zeocin, file = "covfilt/bootstrap_zeocin.rds")
 
 print("clear")
 ```
@@ -713,7 +708,7 @@ for(i in 1:1000){
   
   Chr1v8cor_copper <- rbind(Chr1v8cor_copper, output)
 }
-saveRDS(Chr1v8cor_copper, file = "J25/BS_Copper")
+saveRDS(Chr1v8cor_copper, file = "covfilt/BS_Copper")
 
 #Cycloheximide
 BSpingDF %>% filter(Selection == "Cycloheximide") -> Cycloheximide_boot
@@ -730,7 +725,7 @@ for(i in 1:1000){
   
   Chr1v8cor_Cycloheximide <- rbind(Chr1v8cor_Cycloheximide, output)
 }
-saveRDS(Chr1v8cor_Cycloheximide, file = "J25/BS_Cycloheximide.rds")
+saveRDS(Chr1v8cor_Cycloheximide, file = "covfilt/BS_Cycloheximide.rds")
 
 
 #H2O2
@@ -748,7 +743,7 @@ for(i in 1:1000){
   
   Chr1v8cor_H2O2 <- rbind(Chr1v8cor_H2O2, output)
 }
-saveRDS(Chr1v8cor_H2O2, file = "J25/BS_H2O2.rds")
+saveRDS(Chr1v8cor_H2O2, file = "covfilt/BS_H2O2.rds")
 
 
 #Fluconazole
@@ -766,7 +761,7 @@ for(i in 1:1000){
   
   Chr1v8cor_Fluconazole <- rbind(Chr1v8cor_Fluconazole, output)
 }
-saveRDS(Chr1v8cor_Fluconazole, file = "J25/BS_fluconazole.rds")
+saveRDS(Chr1v8cor_Fluconazole, file = "covfilt/BS_fluconazole.rds")
 
 
 #Paraquat
@@ -784,7 +779,7 @@ for(i in 1:1000){
   
   Chr1v8cor_Paraquat <- rbind(Chr1v8cor_Paraquat, output)
 }
-saveRDS(Chr1v8cor_Paraquat, file = "J25/BS_paraquat.rds")
+saveRDS(Chr1v8cor_Paraquat, file = "covfilt/BS_paraquat.rds")
 
 
 #Ethanol
@@ -803,7 +798,7 @@ for(i in 1:1000){
   Chr1v8cor_Ethanol <- rbind(Chr1v8cor_Ethanol, output)
 }
 
-saveRDS(Chr1v8cor_Ethanol, file = "J25/BS_ethanol.rds")
+saveRDS(Chr1v8cor_Ethanol, file = "covfilt/BS_ethanol.rds")
 
 # Zeocin
 Chr1v8cor_Zeocin <- data.frame(Rsquared = NA, Intercept = NA, FVIII = NA)
@@ -821,7 +816,7 @@ for(i in 1:1000){
   Chr1v8cor_Zeocin <- rbind(Chr1v8cor_Zeocin, output)
 }
 
-saveRDS(Chr1v8cor_Zeocin, file = "J25/BS_zeocin.rds")
+saveRDS(Chr1v8cor_Zeocin, file = "covfilt/BS_zeocin.rds")
 
 print("clear")
 ```
@@ -878,7 +873,7 @@ BootstrapQuantiles %>% pivot_longer(-Selection) %>%
   theme_classic() +
     theme(legend.position = "none") -> pBulk
 
-#saveRDS(All_Bootstraps, file = "J25/CorrBootstraps.rds")
+#saveRDS(All_Bootstraps, file = "covfilt/CorrBootstraps.rds")
 
 All_Bootstraps %>% ggplot(aes(x = Rsquared, color = Selection)) + 
   geom_density(alpha = 0.5) + theme_classic() +
@@ -1031,4 +1026,31 @@ IntTest %>% ggplot(aes(x = abs(Bulk), y = abs(Interaction), color = CSS, fill = 
 
 Look between pearson and spearman, try ranks for the entire dataset but values for the peaks. Also do peaks of bulks vs the interactions and peaks of interactions vs the bulks.
 
+
+# Allele Odds
+
+```{r}
+# Copper_G200 <- readRDS()
+# Copper_Unsmoothed_cf <- readRDS()
+
+Copper_G200 %>% filter(Dataset == "HKTFTDRX2_n01_OCa") %>%
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak),
+         Smooth = TRUE) -> sm_Cu
+
+CuSO4_2024 %>% filter(Dataset == "HKTFTDRX2_n01_OCa") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak),
+         Smooth = FALSE) -> unsm_Cu
+
+sm_Cu %>% ggplot(aes(x = POS, y = logOdds)) +
+  geom_point(data = unsm_Cu, color = "turquoise", alpha = 0.4) +
+  geom_line(color = "black") +
+  facet_grid(~CHROM, scales = "free", space = "free")
+  
+  
+
+```
 

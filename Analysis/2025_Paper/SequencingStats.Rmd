@@ -446,3 +446,42 @@ Totals_G200 %>% filter(Dataset == "Oak8_D_1") %>% na.omit() #mutate(Filter = "al
 Totals_G200 %>% na.omit()
 ```
 
+## Comparing glm from all points vs coverage filtered points
+
+Look at the cutoffs first
+```{r}
+noncfs <- readRDS("")
+cfs <- readRDS("allQs_coveragefiltered.rds")
+```
+
+```{r}
+cf_AllTrait_glms <- readRDS("CoverageFiltered_AllTrait_glms.rds")
+nocf_AllTrait_glms <- readRDS("Jan15_AllTrait_glms.rds")
+
+```
+
+```{r}
+cf_AllTrait_glms %>% select(label, Selection, CSS, q15, quant) %>% distinct() -> cf_qs
+nocf_AllTrait_glms %>% select(label, Selection, CSS, q15, quant)%>% distinct() -> nocf_qs
+
+nocf_qs %>% ggplot(aes(x = Selection, y = quant, color = Selection)) + 
+  geom_point(alpha = 0.3, size = 3) +
+  geom_point(data = cf_qs, shape = 1, size = 4) +
+  facet_grid(label~CSS) 
+
+```
+
+```{r}
+cf_AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction")) %>% mutate(CF = TRUE) -> FCF
+
+nocf_AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction")) %>% mutate(CF = FALSE) -> FnoCF
+
+rbind(FCF, FnoCF) -> CF_Comparison
+
+CF_Comparison %>% filter(label == "Bulk", CHROM == "XV", CSS == "Fixed VIII") %>% 
+  ggplot(aes(x = POS, y = zscore, color = CF)) + geom_line(alpha = 0.3) +
+  facet_grid(Selection ~ CHROM, scales = "free", space = "free")
+
+
+```
+

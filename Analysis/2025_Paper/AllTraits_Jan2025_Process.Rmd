@@ -418,34 +418,17 @@ saveRDS(H2O2_G200, file = "covfilt/H2O2_G200d_covfiltc.rds")
 
 ```
 
-```{r, eval = FALSE}
-
-Ethanol_G200 <- readRDS("covfilt/Ethanol_G200_J25.rds")
-unique(H2O2_G200$Dataset)
-
-Ethanol_G200 %>% filter(Dataset == "HWTCNDMXY_n01_E_O_B_x") %>%
-  mutate(Bulk = gsub("Ethanol", "H2O2", Bulk)) %>%
-  rbind(H2O2_G200) -> H2O2_G200_edit
-
-H2O2_G200 %>% filter(Dataset == "HWTCNDMXY_n01_H_O_B_x") %>%
-  mutate(Bulk = gsub("H2O2", "Ethanol", Bulk)) %>%
-  rbind(Ethanol_G200) -> Ethanol_G200_edit
-
-H2O2_G200_edit %>% filter(Dataset != "HWTCNDMXY_n01_H_O_B_x") -> H2O2_G200_edit
-Ethanol_G200_edit %>% filter(Dataset != "HWTCNDMXY_n01_E_O_B_x") -> Ethanol_G200_edit
-
-```
-
 # GLMs
 
 DOUBLE CHECK that each run has the pools that it should (ie cold stress excluded)
 
 ```{r}
+#Confirmed all without CSS15, which will be run on its own later
 unique(Copper_G200$Pool)
 unique(Cycloheximide_G200$Pool)
 unique(Fluconazole_G200$Pool)
-unique(Ethanol_G200_edit$Pool)
-unique(H2O2_G200_edit$Pool)
+unique(Ethanol_G200$Pool)
+unique(H2O2_G200$Pool)
 unique(Paraquat_G200$Pool)
 unique(Zeocin_G200$Pool)
 ```
@@ -454,7 +437,7 @@ Running glm rather than glmer so that the individual bulks count as noise but no
 
 ### Copper
 
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 Copper_G200 %>% na.omit() %>% 
   filter(grepl(1, Parent)) %>%
   mutate_if(is.character, as.factor) -> Copper_CSS1_factor
@@ -504,7 +487,7 @@ saveRDS(Copper_CSS8_glm, file = "covfilt/Copper_CSS8_glm_J25.rds")
 
 ### Cycloheximide
 
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 Cycloheximide_G200 %>% na.omit() %>% 
   filter(grepl(1, Parent)) %>%
   mutate_if(is.character, as.factor) -> Cyc_CSS1_factor
@@ -605,7 +588,7 @@ saveRDS(Ethanol_CSS8_glm, file = "covfilt/Ethanol_CSS8_glm_covfilt_H2LK2only.rds
 
 ### Fluconazole 
 
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 Fluconazole_G200 %>% na.omit() %>% 
   filter(grepl(1, Parent)) %>%
   mutate_if(is.character, as.factor) -> Fluconazole_CSS1_factor
@@ -655,16 +638,6 @@ saveRDS(Fluconazole_CSS8_glm, file = "covfilt/Fluconazole_CSS8_glm_J25.rds")
 
 
 ### Hydrogen Peroxide 
-
-```{r}
-H2O2_G200 <- readRDS("covfilt/H2O2_G200d_covfiltc.rds")
-
-# H2O2_G200 %>% filter(grepl("HW", Dataset) == FALSE) -> H2O2_G200
-# unique(H2O2_G200$Dataset)
-
-#_sans910 = sans runs 9 and 10, which were cold shocked
-#_c = concatenated VCFs
-```
 
 ```{r}
 rm(H2O2_CSS1_glm)
@@ -778,14 +751,6 @@ PQTest %>% filter(POS > 2.2e05, POS < 2.3e05) %>% unnest(cols = c(Oak, Wine)) %>
 
 ### Zeocin
 
-```{r}
-Zeocin_G200 <- readRDS("covfilt/Zeocin_G200d_covfiltc.rds")
-
-Zeocin_G200 %>% filter(grepl("HJ", Dataset) == FALSE) -> Zeocin_G200
-unique(Zeocin_G200$Dataset)
-
-#_sans910 = sans runs 9 and 10, which were cold shocked
-```
 
 ```{r}
 unique(Zeocin_G200$Dataset)
@@ -849,7 +814,7 @@ Ethanol_G200<- readRDS("covfilt/Ethanol_G200_covfilt_xNAs.rds")
 Fluconazole_G200<- readRDS("covfilt/Fluconazole_G200_J25.rds")
 H2O2_G200<- readRDS("covfilt/H2O2_G200d_covfiltc.rds")
 Paraquat_G200 <- readRDS("covfilt/Paraquat_G200_covfilt_xNAs.rds")
-Zeocin_G200 <- readRDS("covfilt/Zeocin_G200_J25.rds")
+Zeocin_G200 <- readRDS("covfilt/Zeocin_G200d_covfiltc.rds")
 ```
 
 ## Without Excluding Chr XV (Normal)
