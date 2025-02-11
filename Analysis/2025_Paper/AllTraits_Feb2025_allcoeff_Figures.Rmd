@@ -1,0 +1,721 @@
+---
+title: "All Traits Figures Dec 2024"
+author: "Cass"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load packages
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(reshape2)
+require(cowplot)
+require(data.table)
+
+require(doParallel)
+require(RColorBrewer)
+require(scales)
+require(circlize) 
+require(stringr)
+require(ggrepel)
+
+require(cybrBSA)
+require(lme4)
+
+ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
+                     theme(#axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()))
+```
+
+# Figures
+
+```{r}
+Copper_CSS1_glm <- readRDS("allstats/Copper_CSS1_glm_J25.rds")  
+Copper_CSS8_glm <- readRDS("allstats/Copper_CSS8_glm_J25.rds")  
+
+Fluconazole_CSS1_glm <- readRDS("allstats/Fluconazole_CSS1_glm_J25.rds") 
+Fluconazole_CSS8_glm <- readRDS("allstats/Fluconazole_CSS8_glm_J25.rds") 
+
+Cyc_CSS1_glm <- readRDS("allstats/Cyc_CSS1_glm_J25.rds") 
+Cyc_CSS8_glm <- readRDS("allstats/Cyc_CSS8_glm_J25.rds") 
+
+H2O2_CSS1_glm <- readRDS("allstats/H2O2_CSS1_glm_allstats_c.rds") #remove trials 9 and 10, concat vcfs
+H2O2_CSS8_glm <- readRDS("allstats/H2O2_CSS8_glm_allstats_c.rds") 
+
+Ethanol_CSS1_glm <- readRDS("allstats/Ethanol_CSS1_glm_J25.rds") 
+Ethanol_CSS8_glm <- readRDS("allstats/Ethanol_CSS8_glm_allstats_H2LK2only.rds") 
+
+Zeocin_CSS1_glm <- readRDS("allstats/Zeocin_CSS1_glm_allstats_c.rds") 
+Zeocin_CSS8_glm <- readRDS("allstats/Zeocin_CSS8_glm_allstats_c.rds") 
+
+PQ_CSS1_glm <- readRDS("allstats/PQ_CSS1_glm_allstats_xNAs.rds") 
+PQ_CSS8_glm <- readRDS("allstats/PQ_CSS8_glm_allstats_xNAs.rds")
+
+rbind(Copper_CSS1_glm,Copper_CSS8_glm,Fluconazole_CSS1_glm,Fluconazole_CSS8_glm,
+      Cyc_CSS1_glm,Cyc_CSS8_glm,H2O2_CSS1_glm,H2O2_CSS8_glm,Ethanol_CSS1_glm, Ethanol_CSS8_glm,
+      Zeocin_CSS1_glm,PQ_CSS1_glm,
+      Zeocin_CSS8_glm,PQ_CSS8_glm) -> glms
+
+########################
+
+Copper_CSS1_q5 <- readRDS("allstats/Copper_CSS1_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5 <- readRDS("allstats/Copper_CSS8_q5_J25.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+
+Fluconazole_CSS1_q5 <- readRDS("allstats/Fluconazole_CSS1_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5 <- readRDS("allstats/Fluconazole_CSS8_q5_J25.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+
+Cyc_CSS1_q5 <- readRDS("allstats/Cyc_CSS1_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5 <- readRDS("allstats/Cyc_CSS8_q5_J25.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+
+#Forgot to change these to c in name but should be the new ones
+H2O2_CSS1_q5 <- readRDS("allstats/H2O2_CSS1_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5 <- readRDS("allstats/H2O2_CSS8_q5_J25.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+
+Ethanol_CSS1_q5 <- readRDS("allstats/Ethanol_CSS1_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5 <- readRDS("allstats/Ethanol_CSS8_q5_J25.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+
+Zeocin_CSS8_q5 <- readRDS("allstats/Zeocin_CSS8_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5 <- readRDS("allstats/Paraquat_CSS8_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+
+Zeocin_CSS1_q5 <- readRDS("allstats/Zeocin_CSS1_q5_J25.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5 <- readRDS("allstats/Paraquat_CSS1_q5_J25.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+
+################################################################################
+
+Copper_CSS1_q5_s15 <- readRDS("allstats/Copper_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed I")
+Copper_CSS8_q5_s15 <- readRDS("allstats/Copper_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Copper", CSS = "Fixed VIII")
+
+Fluconazole_CSS1_q5_s15 <- readRDS("allstats/Fluconazole_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed I")
+Fluconazole_CSS8_q5_s15 <- readRDS("allstats/Fluconazole_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Fluconazole", CSS = "Fixed VIII")
+
+Cyc_CSS1_q5_s15 <- readRDS("allstats/Cyc_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed I")
+Cyc_CSS8_q5_s15 <- readRDS("allstats/Cyc_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")
+
+#Forgot to change these to c in name but should be the new ones
+H2O2_CSS1_q5_s15 <- readRDS("allstats/H2O2_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed I")
+H2O2_CSS8_q5_s15 <- readRDS("allstats/H2O2_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "H2O2", CSS = "Fixed VIII")
+
+Ethanol_CSS1_q5_s15 <- readRDS("allstats/Ethanol_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed I")
+Ethanol_CSS8_q5_s15 <- readRDS("allstats/Ethanol_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Ethanol", CSS = "Fixed VIII")
+
+Zeocin_CSS8_q5_s15 <- readRDS("allstats/Zeocin_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed VIII")
+Paraquat_CSS8_q5_s15 <- readRDS("allstats/Paraquat_CSS8_q5_allstats_s15.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed VIII")
+
+Zeocin_CSS1_q5_s15 <- readRDS("allstats/Zeocin_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Zeocin", CSS = "Fixed I")
+Paraquat_CSS1_q5_s15 <- readRDS("allstats/Paraquat_CSS1_q5_allstats_s15.rds") %>% mutate(Selection = "Paraquat", CSS = "Fixed I")
+
+################################################################################
+
+rbind(Copper_CSS1_q5,Copper_CSS8_q5,Fluconazole_CSS1_q5,Fluconazole_CSS8_q5,
+      Zeocin_CSS1_q5, Paraquat_CSS1_q5, Zeocin_CSS8_q5, Paraquat_CSS8_q5,
+      Cyc_CSS1_q5,Cyc_CSS8_q5,H2O2_CSS1_q5,H2O2_CSS8_q5,Ethanol_CSS1_q5, Ethanol_CSS8_q5) -> q5s
+
+rbind(Copper_CSS1_q5_s15,Copper_CSS8_q5_s15,Fluconazole_CSS1_q5_s15,Fluconazole_CSS8_q5_s15,
+      Zeocin_CSS1_q5_s15, Paraquat_CSS1_q5_s15, Zeocin_CSS8_q5_s15, Paraquat_CSS8_q5_s15,
+      Cyc_CSS1_q5_s15,Cyc_CSS8_q5_s15,H2O2_CSS1_q5_s15,H2O2_CSS8_q5_s15,Ethanol_CSS1_q5_s15, Ethanol_CSS8_q5_s15) -> q5_s15s
+
+q5_s15s %>% mutate(q15 = quant) %>% select(-quant) %>% merge(q5s) -> allQs
+
+saveRDS(allQs, file = "allQs_coveragefiltered.rds") 
+
+glms %>% merge(allQs) -> AllTrait_glms
+
+saveRDS(AllTrait_glms, file = "AllTrait_allstat_glms.rds")
+```
+
+```{r, fig.width=12, fig.height=5, eval = FALSE}
+
+Cyc_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  geom_hline(data = Cyc_CSS1_q5[Cyc_CSS1_q5$label != "cept",], aes(yintercept = quant, color = label)) +
+  geom_hline(data = Cyc_CSS1_q5[Cyc_CSS1_q5$label != "cept",], aes(yintercept = -quant, color = label)) +
+  facet_grid(~CHROM, scales = "free", space = "free") + ggtitle("Cyc_CSS1_glm")
+
+Cyc_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Cyc_CSS8_glm")
+
+H2O2_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("H2O2_CSS1_glm")
+
+H2O2_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("H2O2_CSS8_glm")
+
+Fluconazole_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Fluconazole_CSS1_glm")
+
+Fluconazole_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Fluconazole_CSS8_glm")
+
+Copper_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Copper_CSS1_glm") 
+
+Copper_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Copper_CSS8_glm")
+
+Ethanol_CSS1_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Ethanol_CSS1_glm") 
+
+Ethanol_CSS8_glm %>% filter(label != "cept") %>% ggplot(aes(x = POS, y = zscore, color = label)) + geom_line() +
+  facet_grid(~CHROM, scales = "free", space = "free")+ ggtitle("Ethanol_CSS8_glm")
+
+
+```
+
+```{r, fig.width=10, fig.height=6}
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label, linetype = CSS)) + geom_line() +
+  facet_grid(Selection~CHROM, scales = "free", space = "free") + ggtitle("Bulk and Interactions") +
+  scale_color_manual(values = c("navyblue", "darkorange")) + 
+  theme(legend.position = "bottom") 
+```
+
+
+
+
+```{r, fig.width=12, fig.height=5}
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Ethanol", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3)) +
+  ggtitle("Ethanol")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Copper", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Copper")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Fluconazole", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Fluconazole")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Cycloheximide", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Cycloheximide")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "H2O2", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("H2O2")
+
+AllTrait_glms %>% filter(label %in% c("Bulk", "Interaction"), Selection == "Zeocin", stat == "e") %>% 
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  facet_grid(CSS~CHROM, scales = "free", space = "free")+ ggtitle("") +
+  scale_color_manual(values = c("black", "firebrick2")) +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))+
+  ggtitle("Zeocin")
+```
+
+```{r, fig.width=8, fig.height=10}
+AllTrait_glms %>% filter(label == "Bulk") %>%
+  pivot_wider(names_from = stat, values_from = zscore) -> AllBulk_Pivot
+
+AllBulk_Pivot %>% filter(abs(z) > quant) %>%
+  ggplot(aes(x = POS, y = abs(e), color = CSS)) + 
+  geom_point(size = 0.05) +
+  geom_line(data = AllBulk_Pivot, aes(x = POS, y = abs(e), color = CSS), alpha = 0.2) +
+  facet_grid(Selection~CHROM, space = "free_x", scales = "free_x")+ 
+  scale_color_manual(values = c("navyblue", "darkorange", "maroon")) +
+  scale_alpha_manual(values = c(0.01,1,0)) +
+  ggtitle("Bulk Effects")+
+    xlab("Chromosomal Position") +
+  ylab("|Effect Size|") +
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+
+```
+```{r, fig.width=8, fig.height=10}
+AllTrait_glms %>% filter(label == "Interaction") %>%
+  pivot_wider(names_from = stat, values_from = zscore) -> AllInt_Pivot
+
+AllInt_Pivot %>% #filter(abs(z) > quant) %>%
+  filter(abs(z) > q15) %>%
+  ggplot(aes(x = POS, y = abs(e), color = CSS)) + 
+  geom_point(size = 0.05) +
+  geom_line(data = AllInt_Pivot, aes(x = POS, y = abs(e), color = CSS), alpha = 0.2) +
+  facet_grid(Selection~CHROM, space = "free_x", scales = "free_x")+ 
+  scale_color_manual(values = c("navyblue", "darkorange", "maroon")) +
+  xlab("Chromosomal Position") +
+  ylab("|Effect Size|") +
+  ggtitle("Interaction Effects")+
+  theme(legend.position = "bottom") + scale_linetype_manual(values = c(2,3))
+
+```
+
+## Find bulk peaks
+
+Remaking the logpeak function
+
+```{r}
+cybr_lmpeaks2 <- function(Data, cutoff, width = 700, labelgroup = "Bulk"){
+  CrossoverPoints <- Data %>% mutate(abs_zscore = abs(zscore)) %>% 
+        mutate_at(vars(abs_zscore), funs(replace(., . < cutoff, 
+            -2))) %>% arrange(POS) %>% group_by(CSS, CHROM) %>% 
+        summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = frollapply(abs_zscore, 
+            mean, n = 1, align = "center")) %>% na.omit() %>% 
+        group_by(CHROM, CSS) %>% arrange(POS) %>% summarize(POS = POS, 
+        abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z, 
+        slope = frollapply(smooth_abs_z, FUN = slope_change, 
+            n = width, align = "center")) %>% mutate(negative = slope < 
+        0) %>% na.omit() %>% summarize(POSc = POS, crossover = frollapply(negative, 
+        FUN = subtract2, n = 2)) %>% filter(crossover == 1)
+    
+    tempStartEnd <- data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% 
+        merge(data.frame(CSS = unique(Data$CSS))) %>% mutate(POSc = 1, 
+        crossover = 0) %>% rbind(CrossoverPoints) %>% group_by(CHROM, 
+        CSS) %>% arrange(POSc) %>% mutate(order = paste("A", 
+        row_number(POSc), sep = "_")) %>% select(-crossover) %>% 
+        pivot_wider(names_from = order, values_from = POSc) %>% 
+        pivot_longer(cols = starts_with("A"), names_to = "segment", 
+            values_to = "value") %>% filter(!is.na(value)) %>% 
+        arrange(CHROM, CSS, value) %>% group_by(CHROM, CSS) %>% 
+        mutate(End = lead(value, default = Inf)) %>% ungroup() %>% 
+        rename(Start = value) %>% select(CHROM, CSS, Start, End)
+    peakdata <- data.frame(CHROM = NA, CSS = NA, zscore = NA)
+    for (i in unique(tempStartEnd$CHROM)) {
+        for (c in unique(tempStartEnd$CSS)) {
+            newtemp <- tempStartEnd %>% filter(CHROM == i, CSS == 
+                c)
+            for (k in 1:length(newtemp$Start)) {
+                something <- Data %>% filter(CHROM == i, CSS == 
+                  c, label == labelgroup) %>% filter(POS > newtemp$Start[k], 
+                  POS < newtemp$End[k]) %>% ungroup() %>% group_by(CHROM, 
+                  CSS) %>% summarize(zscore = max(abs(zscore)))
+                peakdata <- rbind(peakdata, something)
+            }
+            rm(newtemp)
+        }
+    }
+    peaks <- Data %>% mutate(zscore = abs(zscore)) %>% merge(peakdata) %>% 
+        filter(zscore > cutoff)
+    return(peaks)
+}
+
+```
+
+Make a loop to do the cutoffs?
+
+```{r, eval = FALSE}
+AllTrait_glms <- readRDS("CoverageFiltered_AllTrait_glms.rds")
+
+AllTrait_glms %>% merge(SNPEff_table) -> AllTraits_snpeff_glms
+
+AllTraits_snpeff_glms %>% filter(label %in% c("Bulk", "Interaction")) %>%
+  filter(CHROM %in% c("XV")) %>%
+  ggplot(aes(x= POS, y = abs(zscore), color = label, linetype = CSS)) +
+  geom_hline(aes(yintercept = quant, linetype = CSS)) +
+  geom_line() +
+  geom_point(aes(size = Annotation_Impact == "HIGH"), alpha = 0.4) +
+  scale_size_manual(values = c(0,3)) +
+  # geom_point(data = BulkPeaks, aes(x = POS, y = zscore), alpha = 0.2) +
+  # geom_point(data = IntPeaks, aes(x = POS, y = zscore), alpha = 0.2) +
+  facet_grid(Selection ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  #ylim(0, 15) +
+  scale_color_manual(values = c("black", "red"))
+
+
+AllTraits_snpeff_glms %>% filter(label %in% c("Bulk", "Interaction")) %>%
+  filter(CHROM %in% c("VIII", "VII")) %>%
+  ggplot(aes(x= POS, y = abs(zscore), color = label, linetype = CSS)) +
+  geom_hline(aes(yintercept = quant, linetype = CSS)) +
+  geom_line() +
+  geom_point(aes(size = Annotation_Impact == "HIGH"), alpha = 0.4) +
+  scale_size_manual(values = c(0,3)) +
+  # geom_point(data = BulkPeaks, aes(x = POS, y = zscore), alpha = 0.2) +
+  # geom_point(data = IntPeaks, aes(x = POS, y = zscore), alpha = 0.2) +
+  facet_grid(Selection ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  geom_vline(xintercept = 492468) +
+  #ylim(0, 15) +
+  scale_color_manual(values = c("black", "red"))
+
+AllTraits_snpeff_glms %>% filter(label == "Bulk", CHROM == "VII") %>%
+  arrange(desc(abs(zscore)))
+
+SNPEff_table %>% filter(CHROM == "VII", POS <= 492468, POS > 400000) %>%
+  filter(Annotation_Impact == "HIGH")
+
+SNPEff_table %>% filter(CHROM == "VII", POS > 492468 - 10000, POS < 492468 + 10000) %>%
+  count(Gene_Name, Annotation_Impact) %>%
+  pivot_wider(names_from = Annotation_Impact, values_from = n)
+
+#This will fail without loading in pSNPs:
+SNPEff_table %>% filter(Gene_Name == "PMA1") %>% filter(Annotation_Impact == "MODERATE") %>% merge(pSNPs) %>%
+  pivot_wider(names_from = Type, values_from = Annotation_Impact)
+
+SNPEff_table %>% filter(CHROM == "VIII", POS < 212720+6000, POS > 212720 - 6000) 
+
+```
+
+
+```{r, eval = FALSE}
+#Bulk Cutoffs
+BulkCutoffs <- AllTrait_glms[1,] %>% mutate(label = "BLANK")
+for(s in unique(AllTrait_glms$Selection)){
+  for(c in unique(AllTrait_glms$CSS)){
+    AllTrait_glms %>% filter(CSS == c, Selection == s, label == "Bulk") -> subsetGLMs
+
+    tempcutoffs <- cybr_lmpeaks2(subsetGLMs, cutoff = unique(subsetGLMs$q15))
+    
+    BulkCutoffs <- rbind(BulkCutoffs, tempcutoffs)
+    rm(tempcutoffs)
+  }
+}
+
+#Interaction Cutoffs
+IntCutoffs <- AllTrait_glms[1,] %>% mutate(label = "BLANK")
+for(s in unique(AllTrait_glms$Selection)){
+  for(c in unique(AllTrait_glms$CSS)){
+    AllTrait_glms %>% filter(CSS == c, Selection == s, label == "Interaction")  -> subsetGLMs
+
+    tempcutoffs <- cybr_lmpeaks2(subsetGLMs, cutoff = unique(subsetGLMs$q15), labelgroup = "Interaction")
+
+    IntCutoffs <- rbind(IntCutoffs, tempcutoffs)
+    rm(tempcutoffs)
+  }
+}
+
+saveRDS(BulkCutoffs, file = "allstats/BulkCutoffs_cf.rds")
+saveRDS(IntCutoffs, file = "allstats/IntCutoffs_cf.rds")
+```
+
+# Plotting Together
+
+```{r}
+BulkPeaks <- readRDS("covfilt//BulkCutoffs_cf.rds") %>% filter(label != "BLANK")
+IntPeaks <- readRDS("covfilt/IntCutoffs_cf.rds") %>% filter(label != "BLANK")
+
+# BulkPeaks <- readRDS("BulkCutoffs.rds") %>% filter(label != "BLANK")
+# IntPeaks <- readRDS("IntCutoffs.rds") %>% filter(label != "BLANK")
+
+AllTrait_glms <- readRDS("AllTrait_allstat_glms.rds")
+
+AllTrait_glms %>% pivot_wider(names_from = stat, values_from = zscore) %>% mutate(zscore = abs(z)) %>%
+  select(-q15, -quant) -> AllTrait_glms_pivot
+
+
+IntPeaks %>% left_join(AllTrait_glms_pivot) -> IntPeaks_effect
+BulkPeaks %>% left_join(AllTrait_glms_pivot) -> BulkPeaks_effect
+
+```
+
+```{r, fig.height=7, fig.width=7}
+AllTrait_glms_pivot %>% filter(label %in% c("Bulk", "Interaction")) %>%
+  ggplot(aes(x= POS, y = abs(e), color = label, linetype = CSS)) +
+  geom_line() +
+  geom_point(data = BulkPeaks_effect, aes(x = POS, y = abs(e)), alpha = 0.2) +
+  geom_point(data = IntPeaks_effect, aes(x = POS, y = abs(e)), alpha = 0.2) +
+  facet_grid(Selection ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("black", "red"))
+  
+```
+
+
+## Stat Plots
+
+```{r}
+BulkPeaks_effect %>%
+  rbind(IntPeaks_effect) -> Peaks
+
+Peaks %>%
+  group_by(label, Selection, CSS) %>% count() %>% 
+  pivot_wider(names_from = label, values_from = n) -> tempNAs
+
+tempNAs[is.na(tempNAs)] <- 0  
+        
+tempNAs %>% mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+   ggplot(aes(x = Interaction, y = Bulk, color = CSS, fill = CSS)) + geom_point(aes(shape = CSS), size = 4, alpha = 0.6) +
+  scale_color_manual(values = c("navy", "darkorange")) +
+  scale_fill_manual(values = c("navy", "darkorange")) +
+  theme_bw() + ggtitle("Counts") +
+  theme(legend.position = "bottom") +
+  ylim(0, 65) +
+  geom_smooth(method = "lm", alpha = 0.2) -> mylmplot
+
+Peaks %>% mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  group_by(label, Selection, CSS) %>% 
+  ggplot(aes(x = Selection, fill = label)) + 
+  geom_bar(position = position_stack(reverse = TRUE), ) +
+  scale_fill_manual(values = c("black", "red3")) +
+  facet_grid(rows = "CSS") +
+  theme_bw() + theme(legend.position = "bottom") +
+  ggtitle("QTL per Resistance Trait") -> mybarplot
+
+cowplot::plot_grid(mylmplot, mybarplot, rel_widths = c(1,2)) -> QTL_Counts_plot
+
+QTL_Counts_plot
+
+ggsave(QTL_Counts_plot, file = "QTL_Counts_plot.pdf", height = 4, width = 6)
+
+
+```
+
+```{r}
+
+Peaks %>% group_by(label, Selection, CSS) %>% 
+  mutate(CSS = as.factor(CSS)) %>%
+  distinct() %>%
+  mutate(Selection = gsub("Cycloheximide", "Cyc", Selection),
+         Selection = gsub("Copper", "Cu", Selection),
+         Selection = gsub("Fluconazole", "Fluc", Selection),
+         Selection = gsub("Ethanol", "EtOH", Selection),
+         Selection = gsub("Zeocin", "Zeo", Selection),
+         Selection = gsub("Paraquat", "PQ", Selection)) %>%
+  #mutate(Selection = substr(Selection, 1, 6)) %>%
+  #filter(label == "Bulk") %>%
+  ggplot(aes(x = abs(e), y = CSS, color = CSS)) + 
+  geom_boxplot(outliers = FALSE, size = 0.8) +
+  
+  geom_jitter(alpha = 0.4, height = 0.1, width = 0) +
+  # geom_vline(aes(xintercept =quant), color = "firebrick", size = 1, alpha = 0.4) +
+  # geom_vline(aes(xintercept =q15), color = "red", size = 1, alpha = 0.4) +
+  #geom_point(aes(x =quant, y = CSS), color = "red", size = 2, alpha = 0.4, shape = 5) +
+  scale_color_manual(values = c("navy", "darkorange", "maroon")) +
+  #facet_grid(rows = "Selection") +
+  theme_bw() + theme(legend.position = "bottom") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank()) +
+  xlab("| Effect Size |") +
+  ggtitle("QTL magnitudes per resistance trait") +
+  facet_grid(Selection~label, space = 'free', scales = "free_x") +
+  scale_x_continuous(breaks = c(0.5, 1,1.5, 2, 2.5, 3)) -> EffectSize_boxplot
+
+EffectSize_boxplot
+
+ggsave(EffectSize_boxplot, file = "EffectSize_boxplot.pdf", height = 4, width = 6)
+```
+
+## Circos Plots
+
+```{r, fig.width=6, fig.height=6}
+
+Peaks %>% filter(CSS == "Fixed I", label == "Interaction") %>% mutate(summary = zscore) -> Int_d1
+Peaks %>% filter(CSS == "Fixed VIII", label == "Interaction") %>% mutate(summary = zscore)-> Int_d8
+
+AllTrait_glms_pivot %>% filter(CSS == "Fixed I", label == "Interaction") %>% mutate(summary = zscore)-> pl_1
+AllTrait_glms_pivot %>% filter(CSS == "Fixed VIII", label == "Interaction") %>% mutate(summary = zscore)-> pl_8
+
+# Error in if (ylim[2] == ylim[1]) { : 
+#   missing value where TRUE/FALSE needed
+  
+unique(Int_d1$Selection)
+unique(Int_d8$Selection)
+
+#for(i in unique(Int_d1$Selection)){
+for(i in unique(Int_d1$Selection)[1]){
+  if(i == "Paraquat"){
+    cybr_circos3(peaklist1 = Int_d1[Int_d1$Selection == i,], 
+                d1 = pl_1[pl_1$Selection == i,], 
+                d8 = pl_8[pl_8$Selection == i,],
+                d15 = pl_8[pl_8$Selection == i,],
+
+            color1 = "#000080")
+    title(main = i, adj = 0)
+  }else{
+    cybr_circos3(peaklist1 = Int_d1[Int_d1$Selection == i,], 
+                 peaklist8 = Int_d8[Int_d8$Selection == i,], 
+                 peaklist15 = Int_d8[Int_d8$Selection == "Fluconazole",], 
+            d1 = pl_1[pl_1$Selection == i,], 
+            d8 = pl_8[pl_8$Selection == i,],
+            d15 = pl_8[pl_8$Selection == "Fluconazole",],
+            color1 = "#000080")
+    title(main = i, adj = 0)
+  }
+
+}
+
+```
+
+```{r}
+# peaklist1 = Int_d1
+# peaklist8 = Int_d8
+# d1 = pl_1
+# d8 = pl_8
+# maxy = NULL
+# color1 = "#7DB0B0"
+# color8 = "#ED7B01"
+
+########################
+
+cybr_circos2 <- function(d1, d8, peaklist1 = NULL, peaklist8 = NULL, maxy = NULL, 
+    color1 = "#7DB0B0", color8 = "#ED7B01"){
+
+color1fade <- paste(color1, "50", sep = "")
+    color8fade <- paste(color8, "50", sep = "")
+    df8 <- data.frame(sectors = as.character(d8$CHROM), x = d8$POS, 
+        y = abs(d8$summary), label = d8$label)
+    df1 <- data.frame(sectors = as.character(d1$CHROM), x = d1$POS, 
+        y = abs(d1$summary), label = d1$label)
+    df8int <- subset(df8, label == "Interaction")
+    df1int <- subset(df1, label == "Interaction")
+    df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+    df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+    dfall <- rbind(df1int, df8int) %>% na.omit()
+    
+    circos.par(track.height = 0.3, start.degree = 90, cell.padding = c(0, 
+        0))
+    circos.initialize(dfall$sectors, x = dfall$x)
+    if (is.null(maxy)) {
+        circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, 
+            y = dfall$y, panel.fun = function(x, y) {
+                circos.text(CELL_META$xcenter, 0 - mm_y(5), CELL_META$sector.index, 
+                  niceFacing = FALSE)
+                circos.axis(labels.cex = 0.1)
+            })
+    }else{
+        circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+            panel.fun = function(x, y) {
+                circos.text(CELL_META$xcenter, 0 - mm_y(5), CELL_META$sector.index, 
+                  niceFacing = FALSE)
+                circos.axis(labels.cex = 0.1)
+            })
+    }
+    
+    
+    draw.sector(83.5, 90, rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, 
+        col = color1fade, border = FALSE)
+    draw.sector(289.5, 305.4, rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, 
+        col = color8fade, border = FALSE)
+    circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), 
+        col = color8, pch = 16, cex = 0.1)
+    circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), 
+        col = color1, pch = 16, cex = 0.1)
+    if (is.null(peaklist8) == FALSE) {
+        for (i in 1:length(peaklist8$POS)) {
+            circos.link(peaklist8$CHROM[i], peaklist8$POS[i], 
+                "VIII", c(0, max(df1int$x[df1int$sectors == "VIII"])), 
+                col = color8fade, h.ratio = 0.3, border = color8fade, 
+                lwd = 2)
+        }
+    }
+    if (is.null(peaklist1) == FALSE) {
+        for (i in 1:length(peaklist1$POS)) {
+            circos.link("I", c(0, max(df8int$x[df8int$sectors == 
+                "I"])), peaklist1$CHROM[i], peaklist1$POS[i], 
+                col = color1fade, h.ratio = 0.3, border = color1fade, 
+                lwd = 2)
+        }
+    }
+    circos.clear()
+}
+
+cybr_circos3 <- function(d1, d8, d15,
+                         peaklist1 = NULL, peaklist8 = NULL, peaklist15 = NULL,
+                         maxy = NULL, 
+    color1 = "#7DB0B0", color8 = "#ED7B01", color15 = "#800000"){
+
+    color1fade <- paste(color1, "50", sep = "")
+    color8fade <- paste(color8, "50", sep = "")
+    color15fade <- paste(color15, "50", sep = "")
+    
+    df8 <- data.frame(sectors = as.character(d8$CHROM), x = d8$POS, 
+        y = abs(d8$summary), label = d8$label)
+    df1 <- data.frame(sectors = as.character(d1$CHROM), x = d1$POS, 
+        y = abs(d1$summary), label = d1$label)
+    df15 <- data.frame(sectors = as.character(d15$CHROM), x = d15$POS, 
+        y = abs(d15$summary), label = d15$label)    
+    
+    df8int <- subset(df8, label == "Interaction")
+    df15int <- subset(df15, label == "Interaction")
+    df1int <- subset(df1, label == "Interaction")
+    
+    df8int$sectors <- factor(df8int$sectors, levels = as.character(as.roman(1:16)))
+    df1int$sectors <- factor(df1int$sectors, levels = as.character(as.roman(1:16)))
+    df15int$sectors <- factor(df15int$sectors, levels = as.character(as.roman(1:16)))
+    
+    dfall <- rbind(df1int, df8int, df15int) %>% na.omit()
+    
+    circos.par(track.height = 0.3, start.degree = 90, cell.padding = c(0, 
+        0))
+    circos.initialize(dfall$sectors, x = dfall$x)
+    #Define height of the tracks
+    if (is.null(maxy)) {
+        circos.track(ylim = c(max(c(dfall$y)), 0), dfall$sectors, 
+            y = dfall$y, panel.fun = function(x, y) {
+                circos.text(CELL_META$xcenter, 0 - mm_y(5), CELL_META$sector.index, 
+                  niceFacing = FALSE)
+                circos.axis(labels.cex = 0.1)
+            })
+    }else{
+        circos.track(ylim = c(maxy, 0), dfall$sectors, y = dfall$y, 
+            panel.fun = function(x, y) {
+                circos.text(CELL_META$xcenter, 0 - mm_y(5), CELL_META$sector.index, 
+                  niceFacing = FALSE)
+                circos.axis(labels.cex = 0.1)
+            })
+    }
+    
+    #Draw borders around fixed chromosomes
+    draw.sector(84, 90, rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, 
+        col = color1fade, border = FALSE)
+    draw.sector(289.5, 305.4, rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, 
+        col = color8fade, border = FALSE)
+    draw.sector(119, 150.5, rou1 = 0.99, rou2 = 0.69, clock.wise = FALSE, 
+        col = color15fade, border = FALSE)
+    
+    circos.trackPoints(df8int$sectors, df8int$x, abs(df8int$y), 
+        col = color8, pch = 16, cex = 0.1)
+    circos.trackPoints(df1int$sectors, df1int$x, abs(df1int$y), 
+        col = color1, pch = 16, cex = 0.1)
+    circos.trackPoints(df15int$sectors, df15int$x, abs(df15int$y), 
+        col = color15, pch = 16, cex = 0.1)
+    
+    if (is.null(peaklist8) == FALSE) {
+        for (i in 1:length(peaklist8$POS)) {
+            circos.link(peaklist8$CHROM[i], peaklist8$POS[i],"VIII", 
+                        c(0, max(df1int$x[df1int$sectors == "VIII"])), 
+                col = color8fade, h.ratio = 0.3, border = color8fade, 
+                lwd = 2)
+        }
+    }
+    if (is.null(peaklist1) == FALSE) {
+        for (i in 1:length(peaklist1$POS)) {
+            circos.link("I", c(0, max(df8int$x[df8int$sectors =="I"])), 
+                        peaklist1$CHROM[i], peaklist1$POS[i], 
+                col = color1fade, h.ratio = 0.3, border = color1fade, 
+                lwd = 2)
+        }
+    }
+    if (is.null(peaklist15) == FALSE) {
+        for (i in 1:length(peaklist15$POS)) {
+            circos.link("XV", c(0, max(df8int$x[df8int$sectors == "XV"])), 
+                        peaklist15$CHROM[i], peaklist15$POS[i], 
+                col = color15fade, h.ratio = 0.3, border = color15fade, 
+                lwd = 2)
+        }
+    }
+    circos.clear()
+}
+
+```
+

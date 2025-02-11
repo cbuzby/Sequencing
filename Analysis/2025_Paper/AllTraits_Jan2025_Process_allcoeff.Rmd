@@ -1,5 +1,5 @@
 ---
-title: "All Traits Process Jan 2025"
+title: "All Traits Process Jan 2025 with Effect Sizes"
 author: "Cass"
 date: "`r Sys.Date()`"
 output:
@@ -35,8 +35,50 @@ ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
         axis.ticks.x=element_blank()))
 ```
 
+IGNORE THIS
+```{r, eval = FALSE}
+# Number of chromosomes      : 17
+# Chromosomes                : Format 'chromo_name size codon_table'
+#               'IV'    1531933 Standard
+#               'XV'    1091291 Standard
+#               'VII'   1090940 Standard
+#               'XII'   1078177 Standard
+#               'XVI'   948066  Standard
+#               'XIII'  924431  Standard
+#               'II'    813184  Standard
+#               'XIV'   784333  Standard
+#               'X'     745751  Standard
+#               'XI'    666816  Standard
+#               'V'     576874  Standard
+#               'VIII'  562643  Standard
+#               'IX'    439888  Standard
+#               'III'   316620  Standard
+#               'VI'    270161  Standard
+#               'I'     230218  Standard
+#               'Mito'  85779   Standard
+
+NC_001133.9 I
+NC_001134.8 II
+NC_001135.5 III
+NC_001136.10 IV
+NC_001137.3 V
+NC_001138.5 VI
+NC_001139.9 VII
+NC_001140.6 VIII
+NC_001141.2 IX
+NC_001142.9 X
+NC_001143.9 XI
+NC_001144.5 XII
+NC_001145.3 XIII
+NC_001146.8 XIV
+NC_001147.6 XV
+NC_001148.4 XVI
+NC_001224.1 Mito
+
+```
 
 # Output table to called .rds
+
 ```{r}
 #Do the H2O2 and Zeocin processing here
 myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/H2O2.SortedCat.vcf.output.table"
@@ -114,7 +156,59 @@ saveRDS(rawdata_called_ex, file = "Zeocin_called_ex.rds")
 
 # Reorganize by Selection Type
 
+## CSS 15 + Output table to .rds
+
 ```{r}
+MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+MQC %>% select(Pool, PoolID, Dataset = Library, Parent, Bulk, Rep) -> MQC_Key
+
+#Do the CSS15 processing here
+myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/####H2O2.SortedCat.vcf.output.table"
+
+#GET RID OF EXCLUDED ONES
+read.table(myfile, header = TRUE) -> testrawdata
+testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+
+ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                         "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                         CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                   "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                   "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                   "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+
+exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+
+exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+
+cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+
+rawdata %>% merge(parentSNPids) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+  group_by(Dataset, CHROM, POS) %>%
+  mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+         Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+  select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+
+rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+
+saveRDS(rawdata_called_ex, file = "CSS15_called_ex.rds")
+
+rawdata_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> CSS15
+
+saveRDS(CSS15, file = "CSS15_2025.mqc.rds")
+
+rm(testrawdata)
+rm(rawdata)
+rm(exclKEY)
+rm(rawdata_called)
+rm(rawdata_called_ex)
+rm(exclude)
+
+```
+
+## All others
+```{r, eval = FALSE}
 
 H2LK2DMX2_rawdata_called_ex <- readRDS("CSS8_PQ_rawdata_called_ex.rds")
 H2LKCDMX2_rawdata_called_ex <- readRDS("CSS1_PQ_rawdata_called_ex_J25.rds")
@@ -134,12 +228,12 @@ Zeocin_rawdata_called_ex <- readRDS("Zeocin_called_ex.rds")
 
 ```
 
-```{r}
+```{r, eval = FALSE}
 MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
 MQC %>% select(Pool, PoolID, Dataset = Library, Parent, Bulk, Rep) -> MQC_Key
 ```
 
-```{r}
+```{r, eval = FALSE}
 H2LKCDMX2_rawdata_called_ex %>% mutate(Dataset = gsub("H2LKCDMX2_n01_", "", Dataset)) %>%
   mutate(Dataset = gsub(".fastq", "", Dataset)) %>%
   merge(MQC_Key) -> H2LKCDMX2
@@ -180,7 +274,7 @@ saveRDS(CuSO4_2024, file = "CuSO4_2024.mqc.rds")
 
 Full sets on their own
 
-```{r}
+```{r, eval = FALSE}
 ################################################################################
 MQC_Key %>% filter(PoolID %in% c(11,12)) %>% mutate(Dataset = paste(Pool, "n01", Dataset, sep = "_")) -> MQC_Key_edit
 
@@ -196,7 +290,7 @@ saveRDS(Zeocin_unsmoothed, file = "Zeocin.mqc.rds")
 
 Remove unneeded files to clear space
 
-```{r}
+```{r, eval = FALSE}
 rm(HKTFTDRX2_rawdata_called_ex)
 rm(HWMMFDMXY_rawdata_called_ex)
 rm(HWTCNDMXY_rawdata_called_ex)
@@ -209,7 +303,7 @@ rm(CuSO4_2024_rawdata_called_ex)
 
 Load in if needed
 
-```{r}
+```{r, eval = FALSE}
 HKTFTDRX2 <- readRDS("HKTFTDRX2.mqc.rds")
 HWMMFDMXY <- readRDS("HWMMFDMXY.mqc.rds")
 HWTCNDMXY <- readRDS("HWTCNDMXY.mqc.rds")
@@ -239,7 +333,7 @@ rm(H2LK2DMX2)
 rm(CuSO4_2024)
 ```
 
-```{r}
+```{r, eval = FALSE}
 CuSO4_2024 %>% filter(Bulk != "Fluconazole") -> Copper_Unsmoothed
 
 rbind(HWTCNDMXY, HWMMFDMXY) %>% filter(Bulk %in% c("Dilute", "Cycloheximide")) %>%
@@ -263,7 +357,7 @@ rbind(H2LK2DMX2,H2LKCDMX2) %>% filter(Bulk %in% c("Dilute", "PQ")) %>%
 
 Make sure each only has ONE from each allele etc
 
-```{r}
+```{r, eval = FALSE}
 #Put these in alphabetical order so I don't go insane
 Copper_Unsmoothed %>% distinct() -> Copper_Unsmoothed
 Cycloheximide_Unsmoothed %>% distinct() -> Cycloheximide_Unsmoothed
@@ -276,7 +370,25 @@ Zeocin_unsmoothed %>% distinct() -> Zeocin_Unsmoothed
 
 # Filter out positions with low coverage compared to average
 
+## CSS 15
+
 ```{r}
+CSS15 %>% ungroup() %>% group_by(Dataset) %>% summarize(AvgCovg = mean(Coverage, na.rm = TRUE)) -> Means
+
+CSS15 %>% left_join(Means) %>% ungroup() %>% na.omit() %>%
+  group_by(Dataset, CHROM, POS) %>% 
+  select(Dataset, CHROM, POS, Coverage, AvgCovg) %>%
+  distinct() %>%
+  mutate(CovChange = log(Coverage/AvgCovg)) %>%
+  filter(CovChange > -1) -> CSS15_Unsmoothed_cf
+
+rm(Means)
+
+```
+
+## All other traits
+
+```{r, eval = FALSE}
 #COPPER
 Copper_Unsmoothed %>% ungroup() %>% group_by(Dataset) %>% summarize(AvgCovg = mean(Coverage, na.rm = TRUE)) -> Means
 
@@ -369,7 +481,18 @@ rm(Means)
 
 # Smoothing All
 
+## CSS 15
+
 ```{r}
+CSS15_Unsmoothed_cf %>% ungroup() %>%
+  group_by(CHROM, Pool, Parent, Bulk, Allele, Dataset) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) -> CSS15_G200
+
+saveRDS(CSS15_G200, file = "covfilt/CSS15_G200_J25.rds")
+```
+
+```{r, eval = FALSE}
 Cycloheximide_Unsmoothed %>% ungroup() %>%
   group_by(CHROM, Pool, Parent, Bulk, Allele, Dataset) %>%
   arrange(POS) %>%
@@ -418,7 +541,57 @@ saveRDS(H2O2_G200, file = "covfilt/H2O2_G200d_covfiltc.rds")
 
 ```
 
+##################################################
+# Everything below this is new for exporting all coefficients
+##################################################
+
+```{r}
+H2O2_G200 <- readRDS("covfilt/H2O2_G200d_covfiltc.rds")
+Zeocin_G200 <- readRDS("covfilt/Zeocin_G200d_covfiltc.rds")
+Paraquat_G200 <- readRDS("covfilt/Paraquat_G200_covfilt_xNAs.rds")
+Ethanol_G200 <- readRDS("covfilt/Ethanol_G200_covfilt_xNAs.rds")
+Fluconazole_G200 <- readRDS("covfilt/Fluconazole_G200_J25.rds")
+Cycloheximide_G200 <- readRDS("covfilt/Cycloheximide_G200_J25.rds")
+Copper_G200 <- readRDS("covfilt/Copper_G200_J25.rds")
+
+#CSS15_G200 <- readRDS("covfilt/CSS15_G200_J25.rds")
+```
+
 # GLMs
+
+Write new function for glms with everything output
+
+```{r}
+glm_cb2_all <- function (..., W, formula, numgroups = FALSE, outputlength = 4) 
+{
+    data <- list(...)
+    
+    if (is.null(W) || is.null(formula)) {
+        stop("Weights (W) and formula must be provided")
+    }
+    glm_formula <- as.formula(formula)
+    if (!all(names(data) %in% all.vars(glm_formula))) {
+        stop("One or more variables in the formula are not provided as arguments")
+    }
+    for (i in all.vars(glm_formula)) {
+        if (length(unique(as.data.frame(data)[, i])) < 2) {
+            output <- rep(NA, outputlength*4)
+            return(output)
+        }
+    }
+    glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, 
+        family = binomial)
+    
+    output <- c(summary(glm_fit)$coefficients)
+    
+    if (length(output) == outputlength*4) {
+        return(output)
+    }
+    else {
+        return(rep(NA, outputlength*4))
+    }
+}
+```
 
 DOUBLE CHECK that each run has the pools that it should (ie cold stress excluded)
 
@@ -431,6 +604,61 @@ unique(Ethanol_G200$Pool)
 unique(H2O2_G200$Pool)
 unique(Paraquat_G200$Pool)
 unique(Zeocin_G200$Pool)
+```
+
+### Chromosome XV Fixed (all)
+
+```{r, eval = FALSE}
+CSS15_G200 %>% na.omit() %>% 
+  filter(grepl(1, Parent)) %>%
+  mutate_if(is.character, as.factor) -> PQ_CSS15
+```
+
+```{r, eval = FALSE}
+CSS15_G200 %>% na.omit() %>% 
+  filter(grepl(1, Parent)) %>%
+  mutate_if(is.character, as.factor) -> PQ_CSS15
+
+#Set contrasts
+contrasts(Copper_CSS1_factor$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Copper_CSS1_factor$Bulk) <- matrix(c(1, 0))
+
+#Run GLM
+Copper_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p")) %>%
+  mutate(Selection = "Copper", CSS = "Fixed I") -> Copper_CSS1_glm
+
+#Save
+saveRDS(Copper_CSS1_glm, file = "allstats/Copper_CSS1_glm_J25.rds")
+
+################################################################################
+Copper_G200 %>% na.omit() %>% 
+  filter(grepl(8, Parent)) %>%
+  mutate_if(is.character, as.factor) -> Copper_CSS8_factor
+
+#Set contrasts
+contrasts(Copper_CSS8_factor$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Copper_CSS8_factor$Bulk) <- matrix(c(1, 0))
+
+#Run GLM
+Copper_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
+  mutate(Selection = "Copper", CSS = "Fixed VIII")  -> Copper_CSS8_glm
+
+#Save
+saveRDS(Copper_CSS8_glm, file = "allstats/Copper_CSS8_glm_J25.rds")
 ```
 
 Running glm rather than glmer so that the individual bulks count as noise but nothing else contributes
@@ -449,16 +677,16 @@ contrasts(Copper_CSS1_factor$Bulk) <- matrix(c(1, 0))
 #Run GLM
 Copper_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction")) %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p")) %>%
   mutate(Selection = "Copper", CSS = "Fixed I") -> Copper_CSS1_glm
 
 #Save
-saveRDS(Copper_CSS1_glm, file = "covfilt/Copper_CSS1_glm_J25.rds")
+saveRDS(Copper_CSS1_glm, file = "allstats/Copper_CSS1_glm_J25.rds")
 
 ################################################################################
 Copper_G200 %>% na.omit() %>% 
@@ -472,16 +700,16 @@ contrasts(Copper_CSS8_factor$Bulk) <- matrix(c(1, 0))
 #Run GLM
 Copper_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Copper", CSS = "Fixed VIII")  -> Copper_CSS8_glm
 
 #Save
-saveRDS(Copper_CSS8_glm, file = "covfilt/Copper_CSS8_glm_J25.rds")
+saveRDS(Copper_CSS8_glm, file = "allstats/Copper_CSS8_glm_J25.rds")
 ```
 
 
@@ -499,16 +727,16 @@ contrasts(Cyc_CSS1_factor$Bulk) <- matrix(c(1, 0))
 #Run GLM
 Cyc_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Cycloheximide", CSS = "Fixed I")  -> Cyc_CSS1_glm
 
 #Save
-saveRDS(Cyc_CSS1_glm, file = "covfilt/Cyc_CSS1_glm_J25.rds")
+saveRDS(Cyc_CSS1_glm, file = "allstats/Cyc_CSS1_glm_J25.rds")
 
 ################################################################################
 Cycloheximide_G200 %>% na.omit() %>% 
@@ -522,16 +750,16 @@ contrasts(Cyc_CSS8_factor$Bulk) <- matrix(c(1, 0))
 #Run GLM
 Cyc_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Cycloheximide", CSS = "Fixed VIII")  -> Cyc_CSS8_glm
 
 #Save
-saveRDS(Cyc_CSS8_glm, file = "covfilt/Cyc_CSS8_glm_J25.rds")
+saveRDS(Cyc_CSS8_glm, file = "allstats/Cyc_CSS8_glm_J25.rds")
 ```
 
 ### Ethanol
@@ -548,16 +776,16 @@ contrasts(Ethanol_CSS1_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Ethanol", CSS = "Fixed I")  -> Ethanol_CSS1_glm
 
 #Save
-saveRDS(Ethanol_CSS1_glm, file = "covfilt/Ethanol_CSS1_glm_J25.rds")
+saveRDS(Ethanol_CSS1_glm, file = "allstats/Ethanol_CSS1_glm_J25.rds")
 
 ################################################################################
 Ethanol_G200 %>% na.omit() %>% 
@@ -573,16 +801,16 @@ contrasts(Ethanol_CSS8_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Ethanol", CSS = "Fixed VIII")  -> Ethanol_CSS8_glm
 
 #Save
-saveRDS(Ethanol_CSS8_glm, file = "covfilt/Ethanol_CSS8_glm_covfilt_H2LK2only.rds")
+saveRDS(Ethanol_CSS8_glm, file = "allstats/Ethanol_CSS8_glm_allstats_H2LK2only.rds")
 
 ```
 
@@ -600,16 +828,16 @@ contrasts(Fluconazole_CSS1_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Fluconazole", CSS = "Fixed I")  -> Fluconazole_CSS1_glm
 
 #Save
-saveRDS(Fluconazole_CSS1_glm, file = "covfilt/Fluconazole_CSS1_glm_J25.rds")
+saveRDS(Fluconazole_CSS1_glm, file = "allstats/Fluconazole_CSS1_glm_J25.rds")
 
 ################################################################################
 Fluconazole_G200 %>% na.omit() %>% 
@@ -623,16 +851,16 @@ contrasts(Fluconazole_CSS8_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Fluconazole", CSS = "Fixed VIII")  -> Fluconazole_CSS8_glm
 
 #Save
-saveRDS(Fluconazole_CSS8_glm, file = "covfilt/Fluconazole_CSS8_glm_J25.rds")
+saveRDS(Fluconazole_CSS8_glm, file = "allstats/Fluconazole_CSS8_glm_J25.rds")
 
 ```
 
@@ -656,16 +884,16 @@ contrasts(H2O2_CSS1_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "H2O2", CSS = "Fixed I")  -> H2O2_CSS1_glm
 
 #Save
-saveRDS(H2O2_CSS1_glm, file = "covfilt/H2O2_CSS1_glm_covfilt_c.rds")
+saveRDS(H2O2_CSS1_glm, file = "allstats/H2O2_CSS1_glm_allstats_c.rds")
 
 ################################################################################
 H2O2_G200 %>% na.omit() %>% 
@@ -679,16 +907,16 @@ contrasts(H2O2_CSS8_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "H2O2", CSS = "Fixed VIII")  -> H2O2_CSS8_glm
 
 #Save
-saveRDS(H2O2_CSS8_glm, file = "covfilt/H2O2_CSS8_glm_covfilt_c.rds")
+saveRDS(H2O2_CSS8_glm, file = "allstats/H2O2_CSS8_glm_allstats_c.rds")
 
 ```
 
@@ -706,16 +934,16 @@ contrasts(PQ_CSS1_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 PQ_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Paraquat", CSS = "Fixed I")  -> PQ_CSS1_glm
 
 #Save
-saveRDS(PQ_CSS1_glm, file = "covfilt/PQ_CSS1_glm_covfilt_xNAs.rds")
+saveRDS(PQ_CSS1_glm, file = "allstats/PQ_CSS1_glm_allstats_xNAs.rds")
 
 ################################################################################
 Paraquat_G200 %>% na.omit() %>% 
@@ -729,16 +957,16 @@ contrasts(PQ_CSS8_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 PQ_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Paraquat", CSS = "Fixed VIII")  -> PQ_CSS8_glm
 
 #Save
-saveRDS(PQ_CSS8_glm, file = "covfilt/PQ_CSS8_glm_covfilt_xNAs.rds")
+saveRDS(PQ_CSS8_glm, file = "allstats/PQ_CSS8_glm_allstats_xNAs.rds")
 
 PQ_CSS8_factor %>% filter(CHROM == "V") %>% pivot_wider(names_from = Allele, values_from = SmoothCount) ->PQTest
 
@@ -768,16 +996,16 @@ contrasts(Zeocin_CSS1_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Zeocin", CSS = "Fixed I")  -> Zeocin_CSS1_glm
 
 #Save
-saveRDS(Zeocin_CSS1_glm, file = "covfilt/Zeocin_CSS1_glm_covfilt_c.rds")
+saveRDS(Zeocin_CSS1_glm, file = "allstats/Zeocin_CSS1_glm_allstats_c.rds")
 
 ################################################################################
 Zeocin_G200 %>% na.omit() %>% 
@@ -792,16 +1020,16 @@ contrasts(Zeocin_CSS8_factor$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  %>%
   mutate(Selection = "Zeocin", CSS = "Fixed VIII")  -> Zeocin_CSS8_glm
 
 #Save
-saveRDS(Zeocin_CSS8_glm, file = "covfilt/Zeocin_CSS8_glm_covfilt_c.rds")
+saveRDS(Zeocin_CSS8_glm, file = "allstats/Zeocin_CSS8_glm_allstats_c.rds")
 
 ```
 
@@ -859,12 +1087,12 @@ contrasts(Cyc_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Cyc_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Cyc_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Cyc_CSS8_perm
 
 ################################
 Perm_Cyc %>% na.omit() %>% 
@@ -878,12 +1106,12 @@ contrasts(Cyc_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Cyc_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Cyc_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Cyc_CSS1_perm
 
 ################################
 
@@ -893,8 +1121,8 @@ Cyc_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Cyc_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Cyc_CSS1_q5
 
-saveRDS(Cyc_CSS8_q5, file = "covfilt/Cyc_CSS8_q5_J25.rds")
-saveRDS(Cyc_CSS1_q5, file = "covfilt/Cyc_CSS1_q5_J25.rds")
+saveRDS(Cyc_CSS8_q5, file = "allstats/Cyc_CSS8_q5_J25.rds")
+saveRDS(Cyc_CSS1_q5, file = "allstats/Cyc_CSS1_q5_J25.rds")
 
 
 ```
@@ -941,12 +1169,12 @@ contrasts(Copper_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Copper_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Copper_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Copper_CSS8_perm
 
 ################################
 Perm_Copper %>% na.omit() %>% 
@@ -960,12 +1188,12 @@ contrasts(Copper_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Copper_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Copper_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Copper_CSS1_perm
 
 ################################
 
@@ -975,8 +1203,8 @@ Copper_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Copper_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Copper_CSS1_q5
 
-saveRDS(Copper_CSS8_q5, file = "covfilt/Copper_CSS8_q5_J25.rds")
-saveRDS(Copper_CSS1_q5, file = "covfilt/Copper_CSS1_q5_J25.rds")
+saveRDS(Copper_CSS8_q5, file = "allstats/Copper_CSS8_q5_J25.rds")
+saveRDS(Copper_CSS1_q5, file = "allstats/Copper_CSS1_q5_J25.rds")
 
 
 ```
@@ -1022,12 +1250,12 @@ contrasts(H2O2_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> H2O2_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> H2O2_CSS8_perm
 
 ################################
 Perm_H2O2 %>% na.omit() %>% 
@@ -1041,12 +1269,12 @@ contrasts(H2O2_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> H2O2_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> H2O2_CSS1_perm
 
 ################################
 
@@ -1056,8 +1284,8 @@ H2O2_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 H2O2_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> H2O2_CSS1_q5
 
-saveRDS(H2O2_CSS8_q5, file = "covfilt/H2O2_CSS8_q5_J25.rds")
-saveRDS(H2O2_CSS1_q5, file = "covfilt/H2O2_CSS1_q5_J25.rds")
+saveRDS(H2O2_CSS8_q5, file = "allstats/H2O2_CSS8_q5_J25.rds")
+saveRDS(H2O2_CSS1_q5, file = "allstats/H2O2_CSS1_q5_J25.rds")
 
 
 ```
@@ -1103,12 +1331,12 @@ contrasts(Fluconazole_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Fluconazole_CSS8_perm
 
 ################################
 Perm_Fluconazole %>% na.omit() %>% 
@@ -1122,12 +1350,12 @@ contrasts(Fluconazole_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Fluconazole_CSS1_perm
 
 ################################
 
@@ -1137,8 +1365,8 @@ Fluconazole_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Fluconazole_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Fluconazole_CSS1_q5
 
-saveRDS(Fluconazole_CSS8_q5, file = "covfilt/Fluconazole_CSS8_q5_J25.rds")
-saveRDS(Fluconazole_CSS1_q5, file = "covfilt/Fluconazole_CSS1_q5_J25.rds")
+saveRDS(Fluconazole_CSS8_q5, file = "allstats/Fluconazole_CSS8_q5_J25.rds")
+saveRDS(Fluconazole_CSS1_q5, file = "allstats/Fluconazole_CSS1_q5_J25.rds")
 
 ```
 
@@ -1183,12 +1411,12 @@ contrasts(Ethanol_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Ethanol_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Ethanol_CSS8_perm
 
 ################################
 Perm_Ethanol %>% na.omit() %>% 
@@ -1202,12 +1430,12 @@ contrasts(Ethanol_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Ethanol_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Ethanol_CSS1_perm
 
 ################################
 
@@ -1217,11 +1445,11 @@ Ethanol_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Ethanol_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Ethanol_CSS1_q5
 # 
-# saveRDS(Ethanol_CSS8_q5, file = "covfilt/Ethanol_CSS8_q5_J25.rds")
-# saveRDS(Ethanol_CSS1_q5, file = "covfilt/Ethanol_CSS1_q5_J25.rds")
+# saveRDS(Ethanol_CSS8_q5, file = "allstats/Ethanol_CSS8_q5_J25.rds")
+# saveRDS(Ethanol_CSS1_q5, file = "allstats/Ethanol_CSS1_q5_J25.rds")
 
-saveRDS(Ethanol_CSS8_q5, file = "covfilt/Ethanol_CSS8_q5_J25.rds")
-saveRDS(Ethanol_CSS1_q5, file = "covfilt/Ethanol_CSS1_q5_J25.rds")
+saveRDS(Ethanol_CSS8_q5, file = "allstats/Ethanol_CSS8_q5_J25.rds")
+saveRDS(Ethanol_CSS1_q5, file = "allstats/Ethanol_CSS1_q5_J25.rds")
 
 ```
 
@@ -1266,12 +1494,12 @@ contrasts(Zeocin_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Zeocin_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Zeocin_CSS8_perm
 
 ################################
 Perm_Zeocin %>% na.omit() %>%
@@ -1285,12 +1513,12 @@ contrasts(Zeocin_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Zeocin_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Zeocin_CSS1_perm
 
 ################################
 
@@ -1301,8 +1529,8 @@ Zeocin_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Zeocin_CSS1_q5
 
 
-saveRDS(Zeocin_CSS8_q5, file = "covfilt/Zeocin_CSS8_q5_J25.rds")
-saveRDS(Zeocin_CSS1_q5, file = "covfilt/Zeocin_CSS1_q5_J25.rds")
+saveRDS(Zeocin_CSS8_q5, file = "allstats/Zeocin_CSS8_q5_J25.rds")
+saveRDS(Zeocin_CSS1_q5, file = "allstats/Zeocin_CSS1_q5_J25.rds")
 
 ```
 
@@ -1348,12 +1576,12 @@ contrasts(Paraquat_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Paraquat_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Paraquat_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Paraquat_CSS8_perm
 
 ################################
 Perm_Paraquat %>% na.omit() %>%
@@ -1367,12 +1595,12 @@ contrasts(Paraquat_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Paraquat_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Paraquat_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Paraquat_CSS1_perm
 
 ################################
 
@@ -1383,8 +1611,8 @@ Paraquat_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Paraquat_CSS1_q5
 
 
-saveRDS(Paraquat_CSS8_q5, file = "covfilt/Paraquat_CSS8_q5_J25.rds")
-saveRDS(Paraquat_CSS1_q5, file = "covfilt/Paraquat_CSS1_q5_J25.rds")
+saveRDS(Paraquat_CSS8_q5, file = "allstats/Paraquat_CSS8_q5_J25.rds")
+saveRDS(Paraquat_CSS1_q5, file = "allstats/Paraquat_CSS1_q5_J25.rds")
 
 ```
 
@@ -1434,12 +1662,12 @@ contrasts(Cyc_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Cyc_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Cyc_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Cyc_CSS8_perm
 
 ################################
 Perm_Cyc %>% na.omit() %>% 
@@ -1453,12 +1681,12 @@ contrasts(Cyc_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Cyc_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Cyc_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Cyc_CSS1_perm
 
 ################################
 
@@ -1468,8 +1696,8 @@ Cyc_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Cyc_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Cyc_CSS1_q5
 
-saveRDS(Cyc_CSS8_q5, file = "covfilt/Cyc_CSS8_q5_covfilt_s15.rds")
-saveRDS(Cyc_CSS1_q5, file = "covfilt/Cyc_CSS1_q5_covfilt_s15.rds")
+saveRDS(Cyc_CSS8_q5, file = "allstats/Cyc_CSS8_q5_allstats_s15.rds")
+saveRDS(Cyc_CSS1_q5, file = "allstats/Cyc_CSS1_q5_allstats_s15.rds")
 
 
 ```
@@ -1516,12 +1744,12 @@ contrasts(Copper_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Copper_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Copper_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Copper_CSS8_perm
 
 ################################
 Perm_Copper %>% na.omit() %>% 
@@ -1535,12 +1763,12 @@ contrasts(Copper_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Copper_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Copper_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Copper_CSS1_perm
 
 ################################
 
@@ -1550,8 +1778,8 @@ Copper_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Copper_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Copper_CSS1_q5
 
-saveRDS(Copper_CSS8_q5, file = "covfilt/Copper_CSS8_q5_covfilt_s15.rds")
-saveRDS(Copper_CSS1_q5, file = "covfilt/Copper_CSS1_q5_covfilt_s15.rds")
+saveRDS(Copper_CSS8_q5, file = "allstats/Copper_CSS8_q5_allstats_s15.rds")
+saveRDS(Copper_CSS1_q5, file = "allstats/Copper_CSS1_q5_allstats_s15.rds")
 
 
 ```
@@ -1597,12 +1825,12 @@ contrasts(H2O2_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> H2O2_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> H2O2_CSS8_perm
 
 ################################
 Perm_H2O2 %>% na.omit() %>% 
@@ -1616,12 +1844,12 @@ contrasts(H2O2_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 H2O2_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> H2O2_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> H2O2_CSS1_perm
 
 ################################
 
@@ -1631,8 +1859,8 @@ H2O2_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 H2O2_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> H2O2_CSS1_q5
 
-saveRDS(H2O2_CSS8_q5, file = "covfilt/H2O2_CSS8_q5_covfilt_s15.rds")
-saveRDS(H2O2_CSS1_q5, file = "covfilt/H2O2_CSS1_q5_covfilt_s15.rds")
+saveRDS(H2O2_CSS8_q5, file = "allstats/H2O2_CSS8_q5_allstats_s15.rds")
+saveRDS(H2O2_CSS1_q5, file = "allstats/H2O2_CSS1_q5_allstats_s15.rds")
 
 
 ```
@@ -1678,12 +1906,12 @@ contrasts(Fluconazole_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Fluconazole_CSS8_perm
 
 ################################
 Perm_Fluconazole %>% na.omit() %>% 
@@ -1697,12 +1925,12 @@ contrasts(Fluconazole_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Fluconazole_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Fluconazole_CSS1_perm
 
 ################################
 
@@ -1712,8 +1940,8 @@ Fluconazole_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Fluconazole_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Fluconazole_CSS1_q5
 
-saveRDS(Fluconazole_CSS8_q5, file = "covfilt/Fluconazole_CSS8_q5_covfilt_s15.rds")
-saveRDS(Fluconazole_CSS1_q5, file = "covfilt/Fluconazole_CSS1_q5_covfilt_s15.rds")
+saveRDS(Fluconazole_CSS8_q5, file = "allstats/Fluconazole_CSS8_q5_allstats_s15.rds")
+saveRDS(Fluconazole_CSS1_q5, file = "allstats/Fluconazole_CSS1_q5_allstats_s15.rds")
 
 ```
 
@@ -1758,12 +1986,12 @@ contrasts(Ethanol_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Ethanol_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Ethanol_CSS8_perm
 
 ################################
 Perm_Ethanol %>% na.omit() %>% 
@@ -1777,12 +2005,12 @@ contrasts(Ethanol_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Ethanol_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Ethanol_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Ethanol_CSS1_perm
 
 ################################
 
@@ -1792,11 +2020,11 @@ Ethanol_CSS8_perm %>% na.omit() %>% group_by(label) %>%
 Ethanol_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Ethanol_CSS1_q5
 # 
-# saveRDS(Ethanol_CSS8_q5, file = "covfilt/Ethanol_CSS8_q5_covfilt_s15.rds")
-# saveRDS(Ethanol_CSS1_q5, file = "covfilt/Ethanol_CSS1_q5_covfilt_s15.rds")
+# saveRDS(Ethanol_CSS8_q5, file = "allstats/Ethanol_CSS8_q5_allstats_s15.rds")
+# saveRDS(Ethanol_CSS1_q5, file = "allstats/Ethanol_CSS1_q5_allstats_s15.rds")
 
-saveRDS(Ethanol_CSS8_q5, file = "covfilt/Ethanol_CSS8_q5_covfilt_s15.rds")
-saveRDS(Ethanol_CSS1_q5, file = "covfilt/Ethanol_CSS1_q5_covfilt_s15.rds")
+saveRDS(Ethanol_CSS8_q5, file = "allstats/Ethanol_CSS8_q5_allstats_s15.rds")
+saveRDS(Ethanol_CSS1_q5, file = "allstats/Ethanol_CSS1_q5_allstats_s15.rds")
 
 ```
 
@@ -1841,12 +2069,12 @@ contrasts(Zeocin_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,  
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Zeocin_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Zeocin_CSS8_perm
 
 ################################
 Perm_Zeocin %>% na.omit() %>%
@@ -1860,12 +2088,12 @@ contrasts(Zeocin_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Zeocin_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Zeocin_CSS1_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Zeocin_CSS1_perm
 
 ################################
 
@@ -1876,8 +2104,8 @@ Zeocin_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Zeocin_CSS1_q5
 
 
-saveRDS(Zeocin_CSS8_q5, file = "covfilt/Zeocin_CSS8_q5_covfilt_s15.rds")
-saveRDS(Zeocin_CSS1_q5, file = "covfilt/Zeocin_CSS1_q5_covfilt_s15.rds")
+saveRDS(Zeocin_CSS8_q5, file = "allstats/Zeocin_CSS8_q5_allstats_s15.rds")
+saveRDS(Zeocin_CSS1_q5, file = "allstats/Zeocin_CSS1_q5_allstats_s15.rds")
 
 ```
 
@@ -1923,12 +2151,12 @@ contrasts(Paraquat_CSS8_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Paraquat_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Paraquat_CSS8_perm
+                                                                  label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Paraquat_CSS8_perm
 
 ################################
 Perm_Paraquat %>% na.omit() %>%
@@ -1942,12 +2170,12 @@ contrasts(Paraquat_CSS1_factor_p$Bulk) <- matrix(c(0,1))
 #Run GLM
 Paraquat_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>%
   #Select sequencing runs for Chr I fixed
-  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_all(Bulk = Bulk,
                                                             Parent = Parent,
                                                             Allele = Allele,
                                                             W = SmoothCount, outputlength = 4,
                                                             formula = "Allele ~ Bulk*Parent "),
-                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Paraquat_CSS1_perm
+                                                            label = rep(c("cept","Bulk", "Background", "Interaction"),4), stat = c("e","e","e","e","se","se","se","se","z","z","z","z","p","p","p","p"))  -> Paraquat_CSS1_perm
 
 ################################
 
@@ -1958,8 +2186,8 @@ Paraquat_CSS1_perm %>% na.omit() %>% group_by(label) %>%
   summarize(quant = quantile(abs(zscore), 0.95)) -> Paraquat_CSS1_q5
 
 
-saveRDS(Paraquat_CSS8_q5, file = "covfilt/Paraquat_CSS8_q5_covfilt_s15.rds")
-saveRDS(Paraquat_CSS1_q5, file = "covfilt/Paraquat_CSS1_q5_covfilt_s15.rds")
+saveRDS(Paraquat_CSS8_q5, file = "allstats/Paraquat_CSS8_q5_allstats_s15.rds")
+saveRDS(Paraquat_CSS1_q5, file = "allstats/Paraquat_CSS1_q5_allstats_s15.rds")
 
 ```
 

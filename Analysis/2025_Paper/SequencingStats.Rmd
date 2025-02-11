@@ -485,3 +485,244 @@ CF_Comparison %>% filter(label == "Bulk", CHROM == "XV", CSS == "Fixed VIII") %>
 
 ```
 
+# Cold Shock Jan 2025
+
+```{r}
+HKTFTDRX2 <- readRDS("HKTFTDRX2.mqc.rds")
+HWMMFDMXY <- readRDS("HWMMFDMXY.mqc.rds")
+HWTCNDMXY <- readRDS("HWTCNDMXY.mqc.rds")
+HGVMVDRX2 <- readRDS("HGVMVDRX2.mqc.rds")
+HJ5HKDRX3b <- readRDS("HJ5HKDRX3b.mqc.rds")
+HKTMZDRX2 <- readRDS("HKTMZDRX2.mqc.rds")
+HVYTYDRX2 <- readRDS("HVYTYDRX2.mqc.rds")
+H2LKCDMX2 <- readRDS("H2LKCDMX2.mqc.rds")
+H2LK2DMX2 <- readRDS("H2LK2DMX2.mqc.rds")
+
+# CuSO4_2024 <- readRDS("CuSO4_2024.mqc.rds")
+# H2O2_unsmoothed <- readRDS("H2O2.mqc.rds")
+# Zeocin_unsmoothed <- readRDS("Zeocin.mqc.rds")
+```
+
+```{r}
+HKTFTDRX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HKTFTDRX2.logodds
+
+HWMMFDMXY %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HWMMFDMXY.logodds
+
+HWTCNDMXY %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HWTCNDMXY.logodds
+
+HGVMVDRX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HGVMVDRX2.logodds
+
+HJ5HKDRX3b %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HJ5HKDRX3b.logodds
+
+HKTMZDRX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HKTMZDRX2.logodds
+
+HVYTYDRX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> HVYTYDRX2.logodds
+
+H2LKCDMX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> H2LKCDMX2.logodds
+H2LK2DMX2 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> H2LK2DMX2.logodds
+
+```
+
+```{r, fig.height=6, fig.width=10}
+rbind(HKTMZDRX2.logodds, H2LK2DMX2.logodds, H2LKCDMX2.logodds,HVYTYDRX2.logodds,
+      HKTFTDRX2.logodds, HWMMFDMXY.logodds, HWTCNDMXY.logodds, HGVMVDRX2.logodds, HJ5HKDRX3b.logodds) -> All_LogOdds
+
+All_LogOdds %>% filter(Bulk == "Dilute", CHROM != "VIII", CHROM != "I", PoolID != 4) %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_line() +
+  facet_grid(PoolID ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Checking on the ones I've concatenated 
+
+CuSO4_2024 <- readRDS("CuSO4_2024.mqc.rds")
+H2O2_unsmoothed <- readRDS("H2O2.mqc.rds")
+Zeocin_unsmoothed <- readRDS("Zeocin.mqc.rds")
+
+CuSO4_2024 %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> Copper.logodds
+
+H2O2_unsmoothed %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> H2O2.logodds
+
+Zeocin_unsmoothed %>% ungroup() %>% group_by(Dataset) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>%
+  mutate(logOdds = log(Wine/Oak)) -> Zeocin.logodds
+
+################################################################################
+Copper.logodds %>% 
+  filter(Bulk == "Dilute", CHROM != "VIII", CHROM != "I") %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_line() +
+  facet_grid(PoolID ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Copper Dilute Log Odds")
+
+H2O2.logodds %>% 
+  filter(Bulk == "Dilute", CHROM != "VIII", CHROM != "I") %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_line() +
+  facet_grid(PoolID ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("H2O2 Dilute Log Odds")
+
+Zeocin.logodds %>% 
+  filter(Bulk == "Dilute", CHROM != "VIII", CHROM != "I") %>% ggplot(aes(x = POS, y = logOdds, color = Dataset)) + geom_line() +
+  facet_grid(PoolID ~ CHROM, scales = "free", space = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Zeocin Dilute Log Odds")
+```
+
+```{r}
+# All_LogOdds %>% group_by(PoolID, CSS = grepl(1, Parent)) %>% summarize(Bulk = unique(Bulk)) %>%
+#   filter(Bulk != "Dilute", Bulk != "UNDETERMINED") %>%
+#   mutate(Bulk = gsub("Ethanol", "EtOH", Bulk)) %>%
+#   arrange(as.numeric(PoolID)) %>%
+#   ggplot(aes(y = Bulk, x= as.factor(as.numeric(PoolID)), shape = CSS, color = Bulk)) + geom_point(size = 4, alpha = 0.4) +
+#   facet_grid(rows = "CSS") +
+#   theme_bw() +
+#   theme(legend.position = "bottom")
+# 
+# H2O2.logodds %>% group_by(PoolID, CSS = grepl(1, Parent)) %>% summarize(Bulk = unique(Bulk)) %>%
+#   filter(Bulk != "Dilute", Bulk != "UNDETERMINED") %>%
+#   arrange(as.numeric(PoolID)) %>%
+#   ggplot(aes(y = Bulk, x= as.factor(as.numeric(PoolID)), shape = CSS, color = Bulk)) + geom_point(size = 4, alpha = 0.4) +
+#   theme_bw() + ggtitle("H2O2 Only")
+# 
+# Copper.logodds %>% group_by(PoolID, CSS = grepl(1, Parent)) %>% summarize(Bulk = unique(Bulk)) %>%
+#   filter(Bulk != "Dilute", Bulk != "UNDETERMINED") %>%
+#   arrange(as.numeric(PoolID)) %>%
+#   ggplot(aes(y = Bulk, x= as.factor(as.numeric(PoolID)), shape = CSS, color = Bulk)) + geom_point(size = 4, alpha = 0.4) +
+#   theme_bw() + ggtitle("Copper Only")
+# 
+# Zeocin.logodds %>% group_by(PoolID, CSS = grepl(1, Parent)) %>% summarize(Bulk = unique(Bulk)) %>%
+#   filter(Bulk != "Dilute", Bulk != "UNDETERMINED") %>%
+#   arrange(as.numeric(PoolID)) %>%
+#   ggplot(aes(y = Bulk, x= as.factor(as.numeric(PoolID)), shape = CSS, color = Bulk)) + geom_point(size = 4, alpha = 0.4) +
+#   theme_bw() + ggtitle("Zeo Only")
+
+newdata <- data.frame(PoolID = "13", CSS = "CSS15", Bulk = c("Fluconazole", "CuSO4", "PQ"))
+
+All_LogOdds %>%  filter(Bulk %in% c("Zeocin", "H2O2", "CuSO4") == FALSE) %>%
+  rbind(H2O2.logodds, Copper.logodds, Zeocin.logodds) %>%
+  group_by(PoolID, CSS = gsub("Oak|Wine", "CSS0", Parent)) %>%
+  summarize(Bulk = unique(Bulk)) %>%
+  filter(Bulk != "Dilute", Bulk != "UNDETERMINED") %>%
+  mutate(Bulk = gsub("Ethanol", "EtOH", Bulk)) %>%
+  rbind(newdata) %>%
+  arrange(as.numeric(PoolID)) %>%
+  ggplot(aes(y = Bulk, x= as.factor(as.numeric(PoolID)), color = Bulk)) + geom_point(size = 4, alpha = 0.4) +
+  facet_grid(rows = "CSS") +
+  ylab("Selection") +
+  xlab("Sequencing Pool ID") +
+  scale_color_manual(values = c("darkturquoise", "chartreuse", "lightblue", "firebrick", 
+                                "gray", "navy", "magenta", "purple", 
+                                "gray", "gray")) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+  
+```
+
+### Visualize how many replicates we have each
+
+```{r}
+# All_LogOdds %>%  filter(Bulk %in% c("Zeocin", "H2O2", "CuSO4") == FALSE) %>%
+#   rbind(H2O2.logodds, Copper.logodds, Zeocin.logodds) %>% 
+#   select(Dataset, Parent, Bulk, Rep, Pool, PoolID) %>%
+#   distinct() -> temp
+
+temp %>% filter(Bulk != "UNDETERMINED", Bulk != "AIG", Bulk != "Freeze") %>% 
+  mutate(Bulk = gsub("Ethanol", "EtOH", Bulk)) %>%
+  mutate(Bulk = gsub("Dilute", ".Uns", Bulk)) %>%
+  
+  ggplot(aes(x = paste(PoolID, Rep), y = Bulk, color = Parent, shape = Parent)) + 
+  geom_jitter(width = 0.1, height = 0.2, size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("gold", "darkorange" , "violet", "maroon4")) +
+  scale_shape_manual(values = c(15,15,16,16)) +
+  theme(legend.position = "bottom")
+
+temp %>% filter(Bulk != "UNDETERMINED", Bulk != "AIG", Bulk != "Freeze") %>% 
+  mutate(Bulk = gsub("Ethanol", "EtOH", Bulk)) %>%
+  ggplot(aes(x = paste(PoolID, Rep), y = Parent, color = Bulk, shape = Bulk)) + 
+  geom_jitter(width = 0, height = 0.2, size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("darkturquoise", 
+                                "chartreuse", 
+                                "black",
+                                "lightblue", 
+                                "firebrick", 
+                                "navy", "magenta", "purple", 
+                                "gray", "gray")) +
+  #scale_shape_manual(values = c(16,1)) +
+  scale_shape_manual(values = c(16, 
+                                16, 
+                                1,
+                                16, 
+                                16, 
+                                16, 16, 16, 16)) +
+  theme(legend.position = "bottom")
+
+```
+
+## Smoothing Dilutes to compare 50/50 ratio
+
+```{r, eval = FALSE}
+All_LogOdds %>% filter(Bulk == "Dilute") %>%
+  ungroup() %>%
+  group_by(Dataset, CHROM, Parent) %>% 
+  arrange(POS) %>%
+  summarize(PoolID = PoolID, POS = POS, 
+            SmoothOdds = frollapply(FUN = cybr_weightedgauss, x=logOdds, n = 200, align = "center")) -> Dilute_G200
+
+Dilute_G200 %>% filter(CHROM != "VIII", CHROM != "I", PoolID != 4) %>% 
+  ggplot(aes(x = POS, y = SmoothOdds, color = Dataset)) + geom_point(size = 0.1) +
+  facet_grid(PoolID ~ CHROM, scales = "free", space = "free") +
+  ylim(-1,1) +
+  theme(legend.position = "none")
+
+Dilute_G200 %>% filter(CHROM == "XV", PoolID != 4) %>% 
+  ggplot(aes(x = POS, y = SmoothOdds, color = PoolID)) + geom_point(size = 0.2, alpha = 0.8) +
+  facet_grid(Parent~ CHROM)
+
+Dilute_G200 %>% filter(CHROM == "XV") %>% 
+  ggplot(aes(x = POS, y = SmoothOdds, color = PoolID == 5)) + geom_point(size = 0.2, alpha = 0.8) +
+  facet_grid(Parent~ CHROM)
+```
+## Deep dive into Chr I
+
+```{r}
+All_LogOdds %>% filter(CHROM == "I") %>%
+  filter(Bulk != "UNDETERMINED", Bulk != "AIG") %>%
+  filter(grepl(1, Parent) == FALSE) %>%
+  ggplot(aes(x = POS, y = logOdds, color = Bulk == "Dilute")) + geom_point(alpha = 0.2) +
+  facet_grid(rows = "Bulk")  +
+  theme(legend.position = "bottom")
+```
+
