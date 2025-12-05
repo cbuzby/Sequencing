@@ -1,0 +1,5 @@
+#Instructions for running this in terminal
+
+alias Rscript='/drives/C/Program*/R/R*/bin/Rscript.exe'
+
+for i in $(ls *output.table); do Rscript SinglePoolProcess.R $i $i MQC_Annotated_REVISED.csv; done
