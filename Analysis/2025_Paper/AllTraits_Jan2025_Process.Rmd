@@ -12,22 +12,22 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #Load packages
-require(ggplot2)
-require(tidyr)
-require(dplyr)
-require(reshape2)
-require(cowplot)
-require(data.table)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(reshape2)
+library(cowplot)
+library(data.table)
 
-require(doParallel)
-require(RColorBrewer)
-require(scales)
-require(circlize) 
-require(stringr)
-require(ggrepel)
+library(doParallel)
+library(RColorBrewer)
+library(scales)
+library(circlize) 
+library(stringr)
+library(ggrepel)
 
-require(cybrBSA)
-require(lme4)
+library(cybrBSA)
+library(lme4)
 
 ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
                      theme(#axis.title.x=element_blank(),
@@ -37,7 +37,56 @@ ggplot2::theme_set(theme_minimal() + theme(text = element_text(size = 10)) +
 
 
 # Output table to called .rds
+
+Post computer meltdown (4/2026):  
+
 ```{r}
+#getwd()
+setwd("C:/Users/cassa/Documents/SiegalLab/Data/DownloadedOutputTables/")
+
+myfiles <- dir()
+
+parentSNPs <- cybrConvertParentalAlleles(Truncate = TRUE)
+
+for(i in myfiles){ 
+  
+  myfile <- i
+  
+  myfilename <- paste(gsub(".SortedCat.vcf.output.table", "", i), "_called_ex.rds", sep = "")
+
+  #GET RID OF EXCLUDED ONES
+  read.table(myfile, header = TRUE) -> testrawdata
+  testrawdata %>% select(CHROM, POS, ALT) %>% separate(ALT, into = c("First", "Second"), sep = ",") %>% na.omit() -> exclude
+  
+  ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII",
+                                           "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"),
+                           CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10",
+                                     "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6",
+                                     "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5",
+                                     "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+  
+  exclude %>% left_join(.,ChromKey) %>% select(-CHROM) %>% mutate(CHROM = chromosomes) %>% select(-chromosomes) -> exclude
+  
+  exclude %>% mutate(locus = paste(CHROM, POS)) -> exclKEY
+  
+  cybrInputGATKTable2(myfile) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+    select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+  
+  rawdata %>% merge(parentSNPs) %>% mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+    group_by(Dataset, CHROM, POS) %>%
+    mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+           Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+    select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> rawdata_called
+  
+  rawdata_called %>% mutate(locus = paste(CHROM, POS)) %>% filter(locus %in% exclKEY$locus == FALSE) %>% select(-locus) -> rawdata_called_ex
+  
+  saveRDS(rawdata_called_ex, file = myfilename)
+
+}
+```
+
+```{r, eval = FALSE}
 #Do the H2O2 and Zeocin processing here
 myfile <- "C:/Users/Cassandra/Documents/Data_NYU/Sequencing/H2O2.SortedCat.vcf.output.table"
 
@@ -135,9 +184,235 @@ Zeocin_rawdata_called_ex <- readRDS("Zeocin_called_ex.rds")
 ```
 
 ```{r}
-MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+#MQC <- read.csv("C:/Users/Cassandra/Documents/Data_NYU/Sequencing/MQC_Annotated.csv")
+
+MQC <- read.csv("MQC_Annotated_REVISED.csv")
 MQC %>% select(Pool, PoolID, Dataset = Library, Parent, Bulk, Rep) -> MQC_Key
 ```
+
+New 4/2026
+```{r}
+as.data.frame(myfiles) %>% mutate(filename = paste(gsub(".SortedCat.vcf.output.table", "", myfiles), "_called_ex.rds", sep = ""),
+                                  name = gsub(".SortedCat.vcf.output.table", "", myfiles)) -> filelist
+
+setwd("C:/Users/cassa/Documents/SiegalLab/Data/DownloadedOutputTables/")
+
+for(i in filelist$filename){
+  variablename <- gsub(".rds", "", i)
+  #variablename <- readRDS(i)
+  assign(variablename, readRDS(i))
+}
+
+# Jan25_CSS15 %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> Jan25_CSS15_mqc #FAILED
+# Fluc2025 %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> Fluc2025_mqc #FAILED
+# 
+# PQ_CSS8 %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> PQ_CSS8_mqc #FAILED
+# Zeocin %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> Zeocin_mqc #FAILED
+# 
+# 
+# H2O2 %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> H2O2_mqc
+# HVYTYDRX2 %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HVYTYDRX2_mqc
+# HWMMFDMXY %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HWMMFDMXY_mqc
+# 
+# MQC_Key %>% filter(Bulk == "Fluconazole") %>% select(Pool) %>% distinct()
+
+filelist[,3:2]
+
+HGVMVDRX2_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HGVMVDRX2_mqc
+HJ5HKDRX3b_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HJ5HKDRX3b_mqc
+HKTFTDRX2_called_ex	%>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HKTFTDRX2_mqc
+HKTMZDRX2_called_ex	%>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HKTMZDRX2_mqc
+HVYTYDRX2_called_ex	%>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> HVYTYDRX2_mqc
+newHJ5HKDRX3_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> newHJ5HKDRX3_mqc
+TelTrimmed_mergedCuSO4.REF_called_ex %>% mutate(Dataset = gsub(".fastq", "", Dataset)) %>% merge(MQC_Key) -> TelTrimmed_mergedCuSO4.REF_called_ex_mqc
+
+saveRDS(HGVMVDRX2_mqc, file = "HGVMVDRX2_mqc.rds")
+saveRDS(HJ5HKDRX3b_mqc, file = "HJ5HKDRX3b_mqc.rds")
+saveRDS( HKTFTDRX2_mqc, file = "HKTFTDRX2_mqc.rds")
+saveRDS(HKTMZDRX2_mqc, file = "HKTMZDRX2_mqc.rds")
+saveRDS(HVYTYDRX2_mqc, file = "HVYTYDRX2_mqc.rds")
+```
+
+```{r, eval = FALSE}
+saveRDS(Fluc2025_mqc, file = "Fluc2025_mqc.rds")
+saveRDS(H2O2_mqc, file = "H2O2_mqc.rds")
+saveRDS(HVYTYDRX2_mqc, file = "HVYTYDRX2_mqc.rds")
+saveRDS(HWMMFDMXY_mqc, file = "HWMMFDMXY_mqc.rds")
+saveRDS(Jan25_CSS15_mqc, file = "Jan25_CSS15_mqc.rds")
+saveRDS(PQ_CSS8_mqc, file = "PQ_CSS8_mqc.rds")
+saveRDS(Zeocin_mqc, file = "Zeocin_mqc.rds")
+```
+### Get the Fluconazole ones separated for Raymond  
+
+```{r}
+rbind(HGVMVDRX2_mqc, HJ5HKDRX3b_mqc, HKTFTDRX2_mqc,HKTMZDRX2_mqc, HVYTYDRX2_mqc, H2O2_mqc,HWMMFDMXY_mqc) -> Combined_MQC_April2026
+
+table(Combined_MQC_April2026$Bulk, Combined_MQC_April2026$Pool)
+
+Combined_MQC_April2026 %>% filter(Pool %in% c("HGVMVDRX2", "HVYTYDRX2")) -> Fluconazole_April2026
+
+table(Fluconazole_April2026$Bulk, Fluconazole_April2026$Rep, Fluconazole_April2026$Pool)
+
+Fluconazole_April2026 %>% filter(Bulk != "CuSO4") -> Fluconazole_April2026
+```
+
+
+```{r}
+Fluconazole_April2026 %>% distinct() -> Fluconazole_Unsmoothed #(not actually done yet)
+
+#FLUCONAZOLE
+Fluconazole_Unsmoothed %>% ungroup() %>% group_by(Dataset) %>% summarize(AvgCovg = mean(Coverage, na.rm = TRUE)) -> Means
+
+Fluconazole_Unsmoothed %>% left_join(Means) %>% ungroup() %>% na.omit() %>%
+  group_by(Dataset, CHROM, POS) %>% 
+  select(Dataset, CHROM, POS, Coverage, AvgCovg) %>%
+  distinct() %>%
+  mutate(CovChange = log(Coverage/AvgCovg)) %>%
+  filter(CovChange > -1) -> Fluconazole_Unsmoothed_cf
+
+rm(Means)
+```
+
+```{r}
+Fluconazole_Unsmoothed %>% ungroup() %>%
+  group_by(CHROM, Pool, Parent, Bulk, Allele, Dataset) %>%
+  arrange(POS) %>%
+  reframe(POS = POS, SmoothCount = frollapply(Reads, n = 200, FUN = cybr_weightedgauss, align = "center")) -> Fluconazole_G200
+saveRDS(Fluconazole_G200, file = "Fluconazole_G200_J25_A26.rds")
+
+```
+
+### Fluconazole 
+
+```{r, eval = TRUE}
+Fluconazole_G200 %>% na.omit() %>% 
+  filter(grepl(1, Parent)) %>%
+  mutate_if(is.character, as.factor) -> Fluconazole_CSS1_factor
+
+#Set contrasts
+contrasts(Fluconazole_CSS1_factor$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Fluconazole_CSS1_factor$Bulk) <- matrix(c(0,1))
+
+#Run GLM
+Fluconazole_CSS1_factor %>% filter(CHROM != "M", CHROM != "I") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+  mutate(Selection = "Fluconazole", CSS = "Fixed I")  -> Fluconazole_CSS1_glm
+
+#Save
+saveRDS(Fluconazole_CSS1_glm, file = "Fluconazole_CSS1_glm_J25.rds")
+
+################################################################################
+Fluconazole_G200 %>% na.omit() %>% 
+  filter(grepl(8, Parent)) %>%
+  mutate_if(is.character, as.factor) -> Fluconazole_CSS8_factor
+
+#Set contrasts
+contrasts(Fluconazole_CSS8_factor$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Fluconazole_CSS8_factor$Bulk) <- matrix(c(0,1))
+
+#Run GLM
+Fluconazole_CSS8_factor %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  %>%
+  mutate(Selection = "Fluconazole", CSS = "Fixed VIII")  -> Fluconazole_CSS8_glm
+
+#Save
+saveRDS(Fluconazole_CSS8_glm, file = "Fluconazole_CSS8_glm_J25.rds")
+
+```
+
+```{r}
+Fluconazole_G200 %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Parent = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Selected") -> rd_shuffled_selected
+
+Fluconazole_G200 %>% filter(Bulk == "Dilute",
+                     CHROM %in% c("I", "VIII", "M", "III", "V") == FALSE) %>% 
+  pivot_wider(names_from = Allele, values_from = SmoothCount) %>% unnest() %>%
+  mutate(label = paste(CHROM, POS, sep = "_")) %>%
+  group_by(Pool) %>%
+  summarize(NewPOS = sample(label),
+            Oak = Oak,
+            Wine = Wine,
+            Parent = Parent) %>%
+  separate(NewPOS, into = c("CHROM", "POS"), sep = "_") %>%
+  mutate(Bulk = "Dilute") %>%
+  rbind(rd_shuffled_selected) %>%
+  pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "SmoothCount")-> Perm_Fluconazole
+
+################################################################################
+Perm_Fluconazole %>% na.omit() %>% 
+  filter(grepl(8, Parent)) %>%
+  mutate_if(is.character, as.factor) -> Fluconazole_CSS8_factor_p
+
+#Set contrasts
+contrasts(Fluconazole_CSS8_factor_p$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Fluconazole_CSS8_factor_p$Bulk) <- matrix(c(0,1))
+
+#Run GLM
+Fluconazole_CSS8_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS8_perm
+
+################################
+Perm_Fluconazole %>% na.omit() %>% 
+  filter(grepl(8, Parent)) %>%
+  mutate_if(is.character, as.factor) -> Fluconazole_CSS1_factor_p
+
+#Set contrasts
+contrasts(Fluconazole_CSS1_factor_p$Parent) <- matrix(c(0.5, -0.5))
+contrasts(Fluconazole_CSS1_factor_p$Bulk) <- matrix(c(0,1))
+
+#Run GLM
+Fluconazole_CSS1_factor_p %>% filter(CHROM != "M", CHROM != "VIII") %>% distinct() %>% 
+  #Select sequencing runs for Chr I fixed
+  group_by(CHROM, POS) %>% summarize(zscore = glm_cb2_short(Bulk = Bulk,  
+                                                            Parent = Parent,
+                                                            Allele = Allele,
+                                                            W = SmoothCount, outputlength = 4,
+                                                            formula = "Allele ~ Bulk*Parent "),
+                                                                  label = c("cept","Bulk", "Background", "Interaction"))  -> Fluconazole_CSS1_perm
+
+################################
+
+Fluconazole_CSS8_perm %>% na.omit() %>% group_by(label) %>%
+  summarize(quant = quantile(abs(zscore), 0.95)) -> Fluconazole_CSS8_q5
+
+Fluconazole_CSS1_perm %>% na.omit() %>% group_by(label) %>%
+  summarize(quant = quantile(abs(zscore), 0.95)) -> Fluconazole_CSS1_q5
+
+saveRDS(Fluconazole_CSS8_q5, file = "Fluconazole_CSS8_q5_J25.rds")
+saveRDS(Fluconazole_CSS1_q5, file = "Fluconazole_CSS1_q5_J25.rds")
+
+```
+
+## Back to regular scripts
+
+OLD
 
 ```{r}
 H2LKCDMX2_rawdata_called_ex %>% mutate(Dataset = gsub("H2LKCDMX2_n01_", "", Dataset)) %>%

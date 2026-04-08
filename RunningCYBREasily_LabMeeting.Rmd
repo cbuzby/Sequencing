@@ -1,0 +1,548 @@
+---
+title: "Running cybrBSA Easily | Lab Meeting Tutorial"
+author: "Cassandra Buzby"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+
+Link to the cybrBSA github: https://github.com/cbuzby/cybrBSA  
+
+### Install cybrBSA if you haven't already
+
+One day Cassandra will get this on CRAN, but until then, github is going to have to work:
+
+```{r, eval = FALSE}
+#Do you have devtools installed?
+#install.packages("devtools")
+
+#Do you have devtools loaded?
+library(devtools)
+
+#Do you have cybrBSA installed?
+install_github("cbuzby/cybrBSA")
+
+#Do you have cybrBSA loaded?
+library(cybrBSA)
+
+```
+
+### Load in your functions
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#Load packages
+library(tidyverse)
+library(dplyr)
+library(cybrBSA) #Adding this here as well since you'll need to run this section each
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+
+```{r, echo = FALSE}
+ez_getrawdata <- function(tablefilename){
+  ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
+                                       "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
+                       CHROM = c("NC_001133.9", "NC_001134.8", "NC_001135.5", "NC_001136.10", 
+                                 "NC_001137.3", "NC_001138.5", "NC_001139.9", "NC_001140.6", 
+                                 "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
+                                 "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
+  
+  cybrInputGATKTable(tablefilename) %>% mutate(Coverage = as.numeric(AD.REF) + as.numeric(AD.ALT)) %>%
+  select(POS, CHROM, Dataset, GQ, AD.REF, AD.ALT, Coverage) -> rawdata
+  
+  return(rawdata)
+}
+
+ez_callSNPs <- function(mydata = rawdata, parentSNPs){
+  
+  if(missing(parentSNPs)){
+    parentSNPs <- cybrConvertParentalAlleles(Truncate = TRUE)
+  }
+
+  mydata %>% 
+    merge(parentSNPs) %>% 
+    mutate(REFW = as.numeric(Type == "Wine"), REFO = as.numeric(Type == "Oak")) %>%
+    group_by(Dataset, CHROM, POS) %>%
+    mutate(Wine = max(REFW * as.numeric(AD.REF), REFO * as.numeric(AD.ALT)),
+           Oak = max(REFW * as.numeric(AD.ALT), REFO * as.numeric(AD.REF))) %>%
+    select(Dataset, POS, CHROM, Coverage, Wine, Oak) %>%
+    pivot_longer(c(Oak, Wine), names_to = "Allele", values_to = "Reads") -> called.output
+  
+  return(called.output)
+}
+
+ez_smooth <- function(mydata = rawdata_called, window = 200, myfunction = cybr_weightedgauss, myalignment = "center"){
+  
+  require(data.table)
+
+  mydata %>% group_by(Dataset, CHROM, Allele) %>% arrange(POS) %>%
+  reframe(POS = POS, 
+          SmoothCount = ceiling(frollapply(Reads, n = window, FUN = myfunction, align = myalignment))
+          ) -> smoothed.output
+  
+  return(smoothed.output)
+
+}
+
+ez_colselect <- function(mydata = rawdata_smoothed,
+                       datasetcol = "Dataset",
+                       separator = "[_.]",
+                       mode = "SELECTCOLS",
+                       library, droplist = "B", keeplist = "C"){
+  
+  n_cols <- max(lengths(strsplit(mydata[[datasetcol]], separator)))
+  
+  mydata %>%
+    #head(10) %>%
+    separate(datasetcol, into = LETTERS[1:n_cols], sep = separator) -> temp
+  
+  if(mode == "SELECTCOLS"){
+    
+    cat("You are using ez_glmprep in SELECTCOLS mode. To switch, please set mode to 'FILTERCOLS'","\n" )
+    for(k in unique(temp$A)){
+      temp.a <- temp %>% filter(A == k)
+      
+      cat(paste("\n","### In library", k,"###", "\n"))
+      
+      for(i in LETTERS[2:n_cols]){
+      #cat(i,"\n")
+      cat("Col", i, ":", unique(temp.a[[i]]),"\n")
+      }
+    }
+  }else if(mode == "FILTERCOLS"){
+      mycols <- LETTERS[1:n_cols]
+      losers <- mycols[mycols %in% droplist | (mycols %in% keeplist)== FALSE]
+      
+    if(missing(library)){
+      temp %>% select(colnames(temp)[colnames(temp) %in% losers == FALSE]) %>%
+      na.omit() -> filtered.output
+    
+    return(filtered.output)
+    }else{
+       temp %>% filter(A == library) %>%
+        select(colnames(temp)[colnames(temp) %in% losers == FALSE]) %>%
+      na.omit() -> filtered.output
+    
+    return(filtered.output)
+    }
+  }
+}
+
+ez_glmprep.setcontrasts <- function(mydata, colname, ctrl, exp){
+  mysubset <- mydata[mydata[[colname]] %in% c(ctrl, exp),]
+  mysubset[[colname]] <- factor(mysubset[[colname]], levels = c(ctrl, exp))
+  
+  contrasts(mysubset[[colname]]) <- c(0,1)
+  
+  return(mysubset)
+}
+
+ez_glm.single <- function(mydatainput, 
+                          dropchroms = c("M"),
+                       AlleleCol = "Allele",
+                       ExpCol = "E",
+                       ReadsCol = "SmoothCount"){
+  
+  myformula = "Allele ~ E"
+  
+  mydatainput$Allele <- mydatainput[[AlleleCol]]
+  mydatainput$E <- mydatainput[[ExpCol]]
+  mydatainput$weights <- mydatainput[[ReadsCol]]
+  
+  mydatainput %>% na.omit() %>% 
+  filter(CHROM %in% dropchroms == FALSE) %>%
+  group_by(CHROM, POS) %>%
+  mutate_if(is.character, as.factor) %>%
+  summarize(summary = glm_cb2_short(Allele = Allele,
+                             E = E,
+                             W = weights, #use the weights variable from test
+                             formula = myformula,
+                             outputlength = 2),
+            #MAKE SURE THIS IS THE SAME LENGTH AS OUTPUT LENGTH
+            Factor = (c("Intercept", "E"))) -> processed_glm_all
+  
+  return(processed_glm_all)
+}
+
+ez_plotting <- function(glmoutput, absolutevalue = TRUE,
+                        dropintercept = TRUE,
+                        chroms = c("All"),
+                        cutoff){
+  
+  require(ggplot2)
+  
+  if(dropintercept == TRUE){
+    glmoutput %>% filter(Factor != "Intercept") -> glmoutput
+  }
+  
+  if(chroms != "All"){
+    glmoutput %>% filter(CHROM %in% chroms) -> glmoutput
+  }
+  
+  if(absolutevalue == TRUE){
+    glmoutput$summary <- abs(glmoutput$summary)
+  }
+  
+  glmoutput %>% 
+      ggplot(aes(x = POS, y = summary, color = Factor)) + geom_line() +
+      ylab("z-score") +
+      facet_grid(~CHROM, scales = "free", space = "free") +
+      theme_bw() +
+      theme(legend.position = "bottom") -> plotoutput
+  
+  if(missing(cutoff) == FALSE){
+    plotoutput + geom_hline(aes(yintercept = cutoff), linetype = "dashed") -> plotoutput
+  }
+  
+  return(plotoutput)
+    
+}
+
+```
+
+
+# Theory
+
+We're going to load in a partially processed segment here that we can use for principles, before getting to an actual pipeline.  
+
+```{r, eval = FALSE}
+#This is how I'm getting the data that you can load in as an RDS; it takes a while since it's all
+
+rawdata.cb <- ez_getrawdata(tablefilename = "C://Users//cassa//Documents//SiegalLab//Data//Jan25_CSS15.SortedCat.vcf.output.table")
+
+rawdata.cb_called <- ez_callSNPs(mydata = rawdata.cb)
+
+rawdata.cb_called %>% filter(grepl("undetermined", Dataset) == FALSE) -> rawdata.cb_called.filtered
+
+ez_colselect(mydata = rawdata.cb_called.filtered[rawdata.cb_called.filtered$CHROM == "II",], 
+             mode = "SELECTCOLS")
+
+sampledata <- ez_colselect(mydata = rawdata.cb_called.filtered, 
+                           keeplist = c("C", "D", "E"), 
+                           mode = "FILTERCOLS")
+
+saveRDS(sampledata, file = "sampledata.rds")
+```
+
+```{r}
+example.cb <- readRDS("sampledata.rds")
+
+head(example.cb)
+
+```
+
+
+```{r}
+#What do our log odds look like? Filter from Chr IV to test
+example.cb %>% 
+  filter(CHROM == "IV") %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  unnest() %>% 
+  mutate(logOdds = log(Oak/Wine)) -> example.cb.logodds
+
+#Plot these unsmoothed values
+example.cb.logodds %>% ggplot(aes(x = POS, y = logOdds, color = C, group = E)) +
+  geom_line() +
+  geom_vline(aes(xintercept = 1000343), linetype = "dotted") +
+      scale_color_manual(values = c("orange", "maroon")) +
+  facet_grid(D ~ CHROM)
+
+example.cb.logodds %>% ungroup() %>% 
+  filter(CHROM == "IV", POS < (1000343 + 2000), POS > (1000343 - 1000)) %>%
+  ggplot(aes(x = POS, y = logOdds, color = C, group = E)) +
+  geom_point() +
+  geom_vline(aes(xintercept = 1000343), linetype = "dotted") +
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+      scale_color_manual(values = c("orange", "maroon")) +
+  facet_grid(D ~ CHROM) + ggtitle("Pos 1000343 +/- 1kb")
+
+example.cb.logodds %>% filter(POS == 1000343, CHROM == "IV") %>%
+ ggplot(aes(x = C, y = logOdds, color = C)) +
+  geom_boxplot() + 
+  geom_point(size = 4, alpha = 0.6) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  xlab("Background Strain") +
+    scale_color_manual(values = c("orange", "maroon")) +
+  guides(color = "none") +
+   facet_grid(~ D) +
+  theme_bw()+ ggtitle("Pos 1000343 by Condition")
+
+example.cb.logodds %>% filter(POS == 1000343, CHROM == "IV") %>%
+ ggplot(aes(x = C, y = logOdds, color = C)) +
+  geom_point(size = 4, alpha = 0.6) +
+    geom_hline(aes(yintercept = 0), linetype = "dashed") +
+    scale_color_manual(values = c("orange", "maroon")) +
+  guides(color = "none") +
+  xlab("Background Strain") +
+   facet_grid(E ~ D) +
+  theme_bw()  + ggtitle("Pos 1000343, Condition x Replicate")
+```
+
+Comparing ratio counts using bar plots (geom_col)  
+
+```{r}
+#What do our ratios look like at this random position?
+example.cb %>% filter(POS == 1000343, CHROM == "IV") %>%
+  ggplot(aes(x = C, y = Reads, fill = Allele)) + geom_col(position = "fill") +
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed") +
+  xlab("Parent (O = Oak XV)") +
+    scale_fill_manual(values = c("orange", "maroon")) +
+  facet_grid(E~D, scales = "free") +
+  theme_bw() + ggtitle("Chromosome IV, Position 1000343")
+
+#What do our ratios look like on the fixed chromosome?
+example.cb %>% filter(CHROM == "XV", POS == 100003) %>%
+  ggplot(aes(x = C, y = Reads, fill = Allele)) + geom_col(position = "fill") +
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed") +
+  xlab("Parent (O = Wine XV)") +
+  facet_grid(E~D, scales = "free") +
+  scale_fill_manual(values = c("orange", "maroon")) +
+  theme_bw() + ggtitle("Chromosome XV (fixed), Position 100003")
+```
+
+## Running a logistic regression on dilute vs copper without parent
+
+```{r}
+#Let's look at just one position and Dilute (D) versus Copper (C)
+example.cb %>% filter(POS == 1000343, CHROM == "IV", D %in% c("D", "C")) -> sample_glm_input
+```
+
+Using glm() to calculate slope and z-score of generalized linear model for a single position.
+
+```{r}
+#need to make your category a factor
+sample_glm_input %>% mutate_if(is.character, as.factor) %>% mutate(Bulk = D) -> input.fct
+
+head(input.fct)
+
+#Make sure D (dilute) is at 0
+contrasts(input.fct$Bulk)
+contrasts(input.fct$Bulk) <- c(1,0)
+
+#Use glm() to calculate z-score and effect size
+testglm <- glm(formula = "Allele ~ Bulk", 
+               data = as.data.frame(input.fct), 
+               weights = Reads, 
+               family = binomial)
+
+#Print your results
+testglm
+
+#Use summary() to get the useful results
+summary(testglm)
+```
+Plotting what we just did here
+
+```{r}
+
+input.fct %>% 
+  mutate(Bulk = as.numeric(Bulk == "C")) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  group_by(D,E,POS, CHROM) %>%
+  mutate(logOdds = log(Wine/Oak),
+         totalReads = sum(Wine, Oak)) %>%
+  ggplot(aes(x = as.numeric(Bulk), 
+                         y = logOdds)) + 
+  geom_jitter(aes(color = factor(Bulk), size = totalReads), width = 0, height = 0, size = 3, alpha = 0.5) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_abline(aes(slope = -0.02580, intercept = -0.07709), color = "red", linetype = "dashed") +
+  geom_smooth(method = "lm",
+              mapping = aes(weight = totalReads)) +
+  xlim(-0.5, 1.5) + ylim(-1, 1) +
+  scale_color_manual(values = c("black", "darkturquoise")) +
+  ggtitle("Allele ~ Bulk") +
+  theme(legend.position = "none") -> plot.bulk
+
+plot.bulk
+```
+
+
+Using the EZ tools
+
+```{r}
+#Set contrasts to make your groups factors
+sample_glm_input.fct <- ez_glmprep.setcontrasts(sample_glm_input, colname = "D", ctrl = "D", exp = "C")
+
+#Compare these by running both at once:
+head(sample_glm_input)
+head(sample_glm_input.fct)
+
+#Run this to get your z-score
+ez_glm.single(sample_glm_input.fct, ReadsCol = "Reads", AlleleCol = "Allele", ExpCol = "D")
+
+glm_cb2_short
+```
+
+Running a logistic regression on selection (dilute vs copper) x parent (oak vs wine XV)
+
+```{r}
+#need to make your category a factor
+sample_glm_input %>% mutate_if(is.character, as.factor) %>% mutate(Bulk = D, Parent = C) -> input.fct.epistasis
+
+head(input.fct.epistasis)
+
+#Make sure D (dilute) is at 0
+contrasts(input.fct.epistasis$Bulk)
+contrasts(input.fct.epistasis$Bulk) <- c(1,0)
+
+contrasts(input.fct.epistasis$Parent)
+contrasts(input.fct.epistasis$Parent) <- c(-0.5,0.5)
+
+#Use glm() to calculate z-score and effect size
+testglm.epistasis <- glm(formula = "Allele ~ Bulk*Parent", 
+               data = as.data.frame(input.fct.epistasis), 
+               weights = Reads, 
+               family = binomial)
+
+#Print your results
+testglm.epistasis
+
+#Use summary() to get the useful results
+summary(testglm.epistasis)
+
+```
+
+And to quickly plot what this looks like:  
+
+```{r}
+
+input.fct.epistasis %>% 
+  mutate(Bulk = as.numeric(Bulk == "C")) %>%
+  pivot_wider(names_from = Allele, values_from = Reads) %>%
+  mutate(logOdds = log(Wine/Oak)) %>%
+  ggplot(aes(x = as.numeric(Bulk), 
+                         y = logOdds,
+             color = factor(Parent))) + 
+  geom_jitter(aes(), width = 0, height = 0, size = 3, alpha = 0.5) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_smooth(method = "lm") +
+  xlim(-0.5, 1.5) + ylim(-1, 1) +
+  scale_color_manual(values = c("orange", "maroon")) +
+  theme(legend.position = "none") +
+  ggtitle("Allele ~ B*P") -> plot.epistasis
+
+library(cowplot)
+plot_grid(plot.bulk, plot.epistasis)
+```
+
+
+# Practice 
+
+## Example usage of all EZ functions
+
+```{r}
+#Where are you on your computer?
+getwd()
+
+#Do you have the files that you need in this directory?
+dir()
+
+#Do you have an output.table file in your directory? (This is gross code, who can make it better?)
+dir()[which(grepl("output.table", dir()))]
+```
+
+```{r}
+#Input is vcf output table, which should be in your CURRENT working directory
+rawdata <- ez_getrawdata(tablefilename = "HGV.SortedCat.vcf.output.table")
+
+head(rawdata)
+unique(rawdata$CHROM)
+```
+
+```{r}
+#add SNPs to the data frame
+rawdata_called <- ez_callSNPs(mydata = rawdata)
+
+head(rawdata_called)
+
+```
+
+
+```{r}
+#smooth the reads column; MUST be named "Reads"
+rawdata_smoothed <- ez_smooth(rawdata_called)
+
+#print out which columns are which
+ez_colselect(mydata = rawdata_smoothed, 
+             mode = "SELECTCOLS")
+```
+
+```{r}
+#use the above to select columns
+dtest <- ez_colselect(mydata = rawdata_smoothed, mode = "FILTERCOLS", 
+                      library = "HNGLVDRXY", keeplist = c("E"))
+head(dtest)
+```
+
+```{r}
+#set up what the control and experiment groups are for your bulk (experiment) column
+#CHANGE THESE ARGUMENTS
+torun <- ez_glmprep.setcontrasts(mydata = dtest, colname = "E", ctrl = "UnselectedA", exp = "UnselectedC")
+head(torun)
+```
+
+```{r}
+#run a single variable logistic regression
+outputglm <- ez_glm.single(torun)
+head(outputglm)
+```
+
+```{r}
+#plot the output of the logistic regression
+ez_plotting(outputglm, cutoff = 0.5)
+```
+
+## Practice for using EZ functions
+
+Starting with these options, choose another library to analyze:
+
+```{r}
+ez_colselect(mydata = rawdata_smoothed, 
+             mode = "SELECTCOLS")
+```
+
+Use ez_colselect() under FILTERCOLS mode to create a new test dataset
+
+```{r}
+
+```
+
+Use ez_glmprep.setcontrasts() to decide which experiment groups you are comparing
+
+```{r}
+
+```
+
+Use ez_glm.single() to produce your output
+
+```{r}
+
+```
+
+Use ez_plotting() to make a plot of your glm output
+
+```{r}
+
+```
+
+# Try this with your own data
+
+```{r, eval = FALSE}
+rawdata <- ez_getrawdata(tablefilename = "YOUR_FILE_HERE.output.table")
+
+head(rawdata)
+unique(rawdata$CHROM)
+```
+
+```{r}
+
+```
+

@@ -34,7 +34,7 @@ CBchromPalette <- c("#F26430", "#0A369D", "#7EA3CC","#FF9F1C", "#C14953","#92DCE
                   "#F26430", "#0A369D", "#7EA3CC")
 
 
-library("QTLseqr")
+#library("QTLseqr")
 
 ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", 
                                        "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "M"), 
@@ -43,7 +43,7 @@ ChromKey <- data.frame(chromosomes = c("I", "II", "III", "IV", "V", "VI", "VII",
                                  "NC_001141.2", "NC_001142.9", "NC_001143.9", "NC_001144.5", 
                                  "NC_001145.3", "NC_001146.8", "NC_001147.6", "NC_001148.4", "NC_001224.1"))
 
-setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
+#setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 # load("RdataFiles/SAUA_4-13-22.Rdata")
 # load("RdataFiles/SCUC_4-13-22.Rdata")
 # load("RdataFiles/bsa_glm_results.Rdata")
@@ -55,6 +55,8 @@ setwd("C:/Users/cassa/OneDrive/Documents/GitHub/Sequencing/Analysis")
 ## Convert Parental Alleles
 
 ```{r, eval = FALSE}
+getwd()
+
 parentSNPids <- cybrConvertParentalAlleles(ParentFiles = c("Wine_VCF.txt", "Oak_VCF.txt"), Truncate = TRUE)
 
 head(parentSNPids)
@@ -66,7 +68,6 @@ CSS I Fluconazole
 
 ```{r, eval = FALSE}
 mydatatotest = "HGV.SortedCat.vcf.output.table"
-
 CSSI_Fluc <- cybrInputGATKTable(mydatatotest) %>% 
   cybrQualityFilter() %>% 
   cybrIDAlleles(BSAdfstart = ., Parentdf = parentSNPids, yeast = TRUE) %>% 
@@ -1971,5 +1972,40 @@ Zeo_SmoothedZ$Experiment <- "Zeocin"
 Fluc_SmoothedZ$Experiment <- "Fluconazole"
 
 rbind(Cyc_SmoothedZ, Zeo_SmoothedZ, Fluc_SmoothedZ) %>% filter(CHROM != "I") %>% ggplot(aes(x = abs(Parent), color = Experiment)) + geom_density(size = 1)
+```
+
+```{r}
+glm_cb2_short
+
+glm_cb2_effectonly <-function (..., W, formula, numgroups = FALSE, outputlength = 4, 
+    return = c("Z")) 
+{
+  
+    data <- list(...)
+    if (is.null(W) || is.null(formula)) {
+        stop("Weights (W) and formula must be provided")
+    }
+    glm_formula <- as.formula(formula)
+    if (!all(names(data) %in% all.vars(glm_formula))) {
+        stop("One or more variables in the formula are not provided as arguments")
+    }
+    for (i in all.vars(glm_formula)) {
+        if (length(unique(as.data.frame(data)[, i])) < 2) {
+            output <- rep(NA, outputlength)
+            return(output)
+        }
+    }
+    glm_fit <- glm(glm_formula, data = as.data.frame(data), weights = W, 
+        family = binomial)
+    if (return %in% "Z") {
+        output <- summary(glm_fit)$coefficients[1:((length(summary(glm_fit)$coefficients) * 0.25))]
+    }
+    if (length(output) == outputlength) {
+        return(output)
+    }
+    else {
+        return(rep(NA, outputlength))
+    }
+}
 ```
 
