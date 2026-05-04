@@ -304,20 +304,143 @@ saveRDS(Fluconazole_CSS1_q5, file = "Fluconazole_CSS1_q5_J25.rds")
 
 ```
 
-## Plot these
+## Call Peaks
 
 ```{r}
+Data <- Fluconazole_CSS1_glm
+cutoff <- 1.591914
+width = 700
+  
+CrossoverPoints <- Data %>% mutate(abs_zscore = abs(zscore)) %>% 
+        mutate_at(vars(abs_zscore), funs(replace(., . < cutoff, 
+            -2))) %>% arrange(POS) %>% group_by(CSS, CHROM) %>% 
+        summarize(POS = POS, abs_zscore = abs_zscore, smooth_abs_z = frollapply(abs_zscore, 
+            FUN = mean, n = 1, align = "center")) %>% na.omit() %>% 
+        group_by(CHROM, CSS) %>% arrange(POS) %>% summarize(POS = POS, 
+        abs_zscore = abs_zscore, smooth_abs_z = smooth_abs_z, 
+        slope = frollapply(smooth_abs_z, FUN = slope_change, 
+            n = width, align = "center")) %>% mutate(negative = slope < 
+        0) %>% na.omit() %>% summarize(POSc = POS, crossover = frollapply(negative, 
+        FUN = subtract2, n = 2)) %>% filter(crossover == 1)
 
-Fluconazole_CSS8_q5 %>% mutate(CSS = "Fixed VIII") -> temp
+    tempStartEnd <- data.frame(CHROM = as.factor(as.character(as.roman(1:16)))) %>% 
+        merge(data.frame(CSS = c("VIII", "I"))) %>% mutate(POSc = 1, 
+        crossover = 0) %>% rbind(CrossoverPoints) %>% group_by(CHROM, 
+        CSS) %>% arrange(POSc) %>% mutate(order = paste("A", 
+        row_number(POSc), sep = "_")) %>% select(-crossover) %>% 
+        pivot_wider(names_from = order, values_from = POSc) %>% 
+        pivot_longer(cols = starts_with("A"), names_to = "segment", 
+            values_to = "value") %>% filter(!is.na(value)) %>% 
+        arrange(CHROM, CSS, value) %>% group_by(CHROM, CSS) %>% 
+        mutate(End = lead(value, default = Inf)) %>% ungroup() %>% 
+        rename(Start = value) %>% select(CHROM, CSS, Start, End)
+    peakdata <- data.frame(CHROM = NA, CSS = NA, zscore = NA)
+    for (i in unique(tempStartEnd$CHROM)) {
+        for (c in unique(tempStartEnd$CSS)) {
+            newtemp <- tempStartEnd %>% filter(CHROM == i, CSS == 
+                c)
+            for (k in 1:length(newtemp$Start)) {
+                something <- Data %>% filter(CHROM == i, CSS == 
+                  c, label == "Bulk") %>% filter(POS > newtemp$Start[k], 
+                  POS < newtemp$End[k]) %>% ungroup() %>% group_by(CHROM, 
+                  CSS) %>% summarize(zscore = max(abs(zscore)))
+                peakdata <- rbind(peakdata, something)
+            }
+            rm(newtemp)
+        }
+    }
+    peaks <- Data %>% mutate(zscore = abs(zscore)) %>% merge(peakdata) %>% 
+        filter(zscore > cutoff)
+
+peaks_8 <- cybr_lmpeaks(Data = Fluconazole_CSS8_glm, cutoff = 1.591914)
+saveRDS(peaks_8, file = "Fluc_CSS8_peaks_w700.rds")
+
+peaks_1 <- cybr_lmpeaks(Data = Fluconazole_CSS1_glm, cutoff = 1.591914, width = 900)
+saveRDS(peaks_1, file = "Fluc_CSS1_peaks_w900.rds")
+```
+
+```{r}
+table(CrossoverPoints$CHROM)
+
+CrossoverPoints %>% filter(CHROM == "IX")
+```
+
+
+## Plotting Scripts
+
+Load in pre-processed data here:  
+
+```{r}
+#Load in data
+Fluconazole_CSS1_glm <- readRDS("Fluconazole_CSS1_glm_J25.rds")
+Fluconazole_CSS8_glm <- readRDS("Fluconazole_CSS8_glm_J25.rds")
+
+#Load in peaks
+peaks_8 <- readRDS("Fluc_CSS8_peaks_w700.rds")
+peaks_1 <- readRDS("Fluc_CSS1_peaks_w700.rds")
+
+rbind(peaks_1, peaks_8) -> FlucPeaks
+
+#Load in cutoffs
+Fluconazole_CSS8_q5 <- readRDS("Fluconazole_CSS8_q5_J25.rds")
+Fluconazole_CSS1_q5 <- readRDS("Fluconazole_CSS1_q5_J25.rds")
+
+Fluconazole_CSS8_q5 %>% mutate(CSS = "Fixed VIII") %>% filter(label %in% c("Bulk", "Interaction"))-> temp
 Fluconazole_CSS1_q5 %>% mutate(CSS = "Fixed I") %>%
   rbind(temp) %>%
    filter(label %in% c("Bulk", "Interaction")) -> cutoffs
 
-rbind(Fluconazole_CSS1_glm, Fluconazole_CSS8_glm) %>% filter(label %in% c("Bulk", "Interaction")) %>%
+```
+
+```{r, fig.width = 12, fig.height = 5}
+
+rbind(Fluconazole_CSS1_glm, Fluconazole_CSS8_glm) %>% filter(label %in% c("Bulk", "Interaction")) -> DataToPlot
+
+DataToPlot %>% mutate(CHROM = factor(CHROM, levels = as.character(as.roman(1:16)))) -> dfplot
+
+```
+
+```{r, fig.width = 12, fig.height = 7}
+Fluconazole_CSS8_q5 %>% mutate(CSS = "Fixed VIII") %>% filter(label %in% c("Bulk", "Interaction"))-> temp
+
+Fluconazole_CSS1_glm %>% filter(CHROM == "VIII") %>% 
+  ungroup() %>%
+  summarize(min(POS), max(POS))
+
+CHROM_VIII <- data.frame(CHROM = "VIII",
+                         POS = c(0, 524417),
+                         zscore = NA,
+                         label = "Bulk",
+                         Selection = NA,
+                         CSS = "Fixed VIII")
+
+Fluconazole_CSS8_glm %>% rbind(CHROM_VIII) %>%
+   filter(label %in% c("Bulk", "Interaction")) %>%
+mutate(CHROM = factor(CHROM, levels = as.character(as.roman(1:16)))) %>%
   ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
-  geom_hline(data = cutoffs, aes(yintercept = quant), linetype = "dashed") +
-  facet_grid(CSS ~ CHROM, scales = "free", space = "free") +
-  scale_color_manual(values = c("black", "maroon")) +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+  geom_hline(data = temp, aes(yintercept = quant), linetype = "dashed") +
+  #geom_point(data = FlucPeaks) + #this is being weird and inconsistent
+  facet_grid( ~ CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "orange")) +
+  ylab("|zscore|") + xlab("") + 
+  #ylim(0, 12) + 
+  theme_bw() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") -> zoomout
+
+Fluconazole_CSS8_glm %>% rbind(CHROM_VIII) %>%
+  filter(CHROM %in% c("XVI", "VIII")) %>%
+     filter(label %in% c("Bulk", "Interaction")) %>%
+  #mutate(CHROM = factor(CHROM, levels = as.character(as.roman(1:16)))) %>%
+  ggplot(aes(x = POS, y = abs(zscore), color = label)) + geom_line() +
+  geom_hline(data = temp, aes(yintercept = quant), linetype = "dashed") +
+  facet_grid( ~ CHROM, scales = "free", space = "free") +
+  scale_color_manual(values = c("black", "orange")) +
+  ylab("|zscore|") + xlab("Position") + 
+  #ylim(0, 12) + 
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "bottom") -> zoomin
+  
+cowplot::plot_grid(zoomout, zoomin, ncol = 1, rel_heights = c(1,2))
+  
 ```
 
